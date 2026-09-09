@@ -4,7 +4,7 @@ Milestones are planning boundaries. They do not authorize additional implementat
 
 ## Current milestone
 
-M0 Engineering Governance (issue #1).
+M1 preparation. Issues #3 and #5 (documentation formalization and corrections) completed.
 
 ## Planned milestones
 

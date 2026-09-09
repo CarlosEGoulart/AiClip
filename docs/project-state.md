@@ -8,11 +8,15 @@ Issue #1 governance foundation merged into master: four OpenCode roles, six loca
 
 Issue #3 documentation formalization: complete MVP product definition, system architecture, and architectural decision record.
 
+Issue #5 architecture inconsistencies resolved: pinned technology versions (React 19, Laravel 11, PHP 8.3, Python 3.12), standardized REST API with /api/v1, documented Sanctum SPA authentication, replaced OpenAI image provider with Flux/SDXL, clarified video AI pipeline, documented development AI vs product AI distinction, clarified queue boundary and worker database access, corrected scope definitions, reclassified performance benchmarks, and replaced issue references with milestone references.
+
 # Important Decisions
 
 Strict issue linearity with one active implementation issue. TDD RED before implementation content. Independent Tester review. English-only repository content.
 
 Laravel remains authoritative application backend. Python media worker handles ML/media workloads outside PHP. Provider abstractions isolate external service dependencies. Object storage for media binaries. Deterministic fakes for CI testing.
+
+Architecture is modular application with dedicated media worker boundary (not microservices). Sanctum SPA authentication with HTTP-only session cookies. REST JSON API with /api/v1 versioning. Open-weight image generation providers (Flux, SDXL). Long-video clipping does NOT require generative video models. Worker communicates results through explicit application boundary, never directly writes to PostgreSQL.
 
 # Known Limitations
 
