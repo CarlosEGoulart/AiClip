@@ -22,7 +22,7 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 - **Use Cases**:
   - Connect multiple social accounts (YouTube, Instagram, TikTok)
   - Schedule and publish clips from various video sources
-  - Track publishing status and performance metrics
+  - Track publishing status across platforms
 
 ### 3. Independent Artist
 
@@ -65,6 +65,9 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 ### 3. Social Publishing Workflow
 
 **Trigger**: User selects content for publishing
+
+**One-Click Publishing Semantics**:
+"One-click publishing" means: after accounts are already connected and publishing metadata has been reviewed, the user can trigger publication to selected destinations with one explicit confirmation action. The backend creates a publication batch. Each destination has independent status. A failure on one platform does not rollback successful publications on another. Publication operations are idempotent.
 
 **Steps**:
 1. User selects approved clips or images to publish
@@ -166,6 +169,11 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 
 - Page load time under 3 seconds on 3G connection
 - API response time under 500ms for 95th percentile
+
+### Performance Benchmarks
+
+The following are target benchmarks subject to measurement, not guaranteed requirements. Actual performance depends on infrastructure and content characteristics.
+
 - Video upload supports files up to 10GB
 - Transcription processes 1 hour of video in under 10 minutes
 - Image generation completes within 30 seconds
@@ -189,7 +197,7 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 
 The following are explicitly NOT included in MVP:
 
-1. **Advanced video editing features** (trimming, merging, effects beyond reframing)
+1. **Advanced video editing features** (multi-track professional timeline, complex transitions, manual compositing, advanced effects, keyframe animation, professional color grading, full nonlinear editor)
 2. **Real-time collaboration** (multiple users editing simultaneously)
 3. **Team management** (roles, permissions, organization features)
 4. **Advanced analytics** (engagement metrics, ROI tracking)
@@ -205,7 +213,7 @@ The following are explicitly NOT included in MVP:
 ## Dependencies
 
 - Issue #1 (Governance Bootstrap): Completed
-- Issue #2 (Application Scaffolding): Pending
+- M1 — Application Foundation: Pending
 - External APIs: YouTube Data API, Instagram Graph API, TikTok API
 - AI Providers: Transcription service, Image generation service
 - Infrastructure: Object storage, PostgreSQL database, Queue system
@@ -217,5 +225,5 @@ MVP success will be validated through:
 1. **Beta Testing**: 10-20 content creators using platform for 4 weeks
 2. **Feature Completion**: All in-scope features implemented and tested
 3. **Performance Benchmarks**: All NFR targets met in staging environment
-4. **Security Audit**: Third-party security review completed
+4. **Security Audit**: Internal security review completed
 5. **User Feedback**: Structured feedback sessions with target personas

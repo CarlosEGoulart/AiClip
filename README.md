@@ -96,14 +96,14 @@ The following is the planned target. No application is implemented in M0.
 
 ## Backend
 
-* Laravel
-* PHP
+* Laravel 11
+* PHP 8.3
 * PostgreSQL
 * Laravel queues
 
 ## Frontend
 
-* React
+* React 19
 * TypeScript
 * Vite
 * Vitest
@@ -111,7 +111,7 @@ The following is the planned target. No application is implemented in M0.
 
 ## Media / AI
 
-* Python
+* Python 3.12
 * FFmpeg
 * FFprobe
 * faster-whisper
@@ -358,7 +358,7 @@ M1 preparation
 Current issue:
 
 ```text
-#3 — Formalize MVP product definition and system architecture
+#5 — Resolve MVP architecture inconsistencies before scaffolding
 ```
 
 See [docs/project-state.md](docs/project-state.md) for current status and [AGENTS.md](AGENTS.md) for complete rules.
@@ -366,7 +366,7 @@ See [docs/project-state.md](docs/project-state.md) for current status and [AGENT
 Current goal:
 
 ```text
-Formalize MVP product definition and system architecture before application scaffolding.
+Resolve MVP architecture inconsistencies before application scaffolding.
 ```
 
 After each issue closes, update this section or `docs/project-state.md`.

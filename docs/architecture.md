@@ -2,7 +2,7 @@
 
 ## System Overview
 
-AiClip is a microservices-based platform designed to transform long-form video into short-form social content, generate AI images, and publish across multiple social platforms. The architecture separates concerns across four primary service boundaries: a React web frontend, a Laravel API backend, a Python media worker, and infrastructure components. This separation enables independent scaling, technology selection per service, and clear ownership boundaries.
+AiClip is a modular application with a dedicated media worker boundary, designed to transform long-form video into short-form social content, generate AI images, and publish across multiple social platforms. The architecture separates concerns across four primary boundaries: a React web frontend, a Laravel API backend, a Python media worker, and infrastructure components. This separation enables clear ownership boundaries and technology selection per boundary.
 
 The platform follows a request-response pattern for user interactions and an event-driven pattern for media processing. User actions trigger API calls that may enqueue background jobs for heavyweight processing like transcription, scene detection, and image generation. Results are stored in object storage and metadata in PostgreSQL, with the frontend polling or using websockets for status updates.
 
@@ -13,7 +13,7 @@ The platform follows a request-response pattern for user interactions and an eve
 **Responsibility**: User interface for all platform interactions
 
 **Technology Stack**:
-- React 18+ with TypeScript
+- React 19 with TypeScript
 - Vite for build tooling
 - Vitest and React Testing Library for testing
 - Responsive CSS framework (Tailwind CSS or similar)
@@ -29,7 +29,7 @@ The platform follows a request-response pattern for user interactions and an eve
 - Media library browsing and organization
 
 **Boundaries**:
-- Communicates with Laravel API via REST/GraphQL
+- Communicates with Laravel API via REST
 - No direct database access
 - No file system access
 - Stateless, can be served from CDN
@@ -39,7 +39,7 @@ The platform follows a request-response pattern for user interactions and an eve
 **Responsibility**: Application logic, authentication, authorization, data persistence
 
 **Technology Stack**:
-- Laravel 10+ with PHP 8.2+
+- Laravel 11 with PHP 8.3
 - PostgreSQL for primary data store
 - Laravel Queues for job dispatching
 - Laravel Sanctum for API authentication
@@ -64,8 +64,10 @@ The platform follows a request-response pattern for user interactions and an eve
 
 **Responsibility**: Heavy ML/media processing outside PHP runtime
 
+**Queue Boundary**: Laravel dispatches jobs to a queue (Redis/SQS). The Python worker consumes from the same queue using a compatible client library (rq for Redis, boto3 for SQS), not Laravel-native serialized jobs. This ensures the worker does not depend on Laravel's internal serialization format.
+
 **Technology Stack**:
-- Python 3.11+
+- Python 3.12
 - FFmpeg/FFprobe for video processing
 - faster-whisper for transcription
 - PySceneDetect for scene detection
@@ -84,7 +86,7 @@ The platform follows a request-response pattern for user interactions and an eve
 **Boundaries**:
 - Processes jobs from queue, not HTTP requests
 - Reads/writes to object storage directly
-- Updates metadata in PostgreSQL via API
+- Reports results back to Laravel through an explicit application boundary (HTTP API or job completion contract). Laravel owns application persistence; the worker never directly writes to PostgreSQL.
 - Stateless, horizontally scalable
 - Uses provider abstractions for external AI services
 
@@ -137,6 +139,8 @@ User → React Frontend → Laravel API → PostgreSQL
 
 ### Media Processing Flow
 
+Long-video clipping does NOT require generative video models. The primary pipeline uses FFprobe, transcription, scene detection, ranking, vertical reframing, and FFmpeg rendering. Generative video models may later be evaluated for optional B-roll but must not block the clipping MVP.
+
 1. **Upload**: User uploads video via frontend → Laravel API → Object Storage
 2. **Job Creation**: Laravel creates processing job in queue
 3. **Processing**: Worker picks up job, reads from Object Storage
@@ -163,54 +167,57 @@ User → React Frontend → Laravel API → PostgreSQL
 
 ### Communication Protocol
 
-- REST API with JSON payloads
-- GraphQL for complex queries (optional, can start with REST)
-- WebSocket for real-time status updates (optional)
+- REST JSON API with `/api/v1` versioning
 
 ### Authentication
 
-- Laravel Sanctum for token-based authentication
-- Short-lived access tokens (15 minutes)
-- Refresh tokens stored encrypted server-side only
-- OAuth tokens for social platforms stored encrypted
+- Laravel Sanctum SPA authentication
+- HTTP-only session cookies for first-party authentication
+- CSRF protection via `X-XSRF-TOKEN` header (encrypted cookie)
+- Server-side session management via Laravel session driver
+- Social OAuth tokens stored encrypted server-side only; these are third-party authorization tokens, not first-party user credentials
+
+**First-Party Authentication vs Social OAuth Authorization**:
+- **First-party authentication** (AiClip user login): Sanctum SPA session cookies. User authenticates with email/password. Session is server-side managed.
+- **Social OAuth authorization**: User authorizes AiClip to publish on their behalf. These tokens (YouTube, Instagram, TikTok) are stored encrypted server-side and never exposed to the frontend. They are authorization grants, not authentication credentials.
 
 ### Key Endpoints
 
 **Authentication**:
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `POST /api/auth/verify-email`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/verify-email`
 
 **Projects**:
-- `GET /api/projects`
-- `POST /api/projects`
-- `GET /api/projects/{id}`
-- `DELETE /api/projects/{id}`
+- `GET /api/v1/projects`
+- `POST /api/v1/projects`
+- `GET /api/v1/projects/{id}`
+- `DELETE /api/v1/projects/{id}`
 
 **Media**:
-- `POST /api/projects/{id}/media/upload`
-- `GET /api/projects/{id}/media`
-- `DELETE /api/media/{id}`
+- `POST /api/v1/projects/{id}/media/upload`
+- `GET /api/v1/projects/{id}/media`
+- `DELETE /api/v1/media/{id}`
 
 **Clips**:
-- `GET /api/projects/{id}/clips`
-- `POST /api/projects/{id}/clips/{clipId}/approve`
-- `PUT /api/clips/{id}`
+- `GET /api/v1/projects/{id}/clips`
+- `POST /api/v1/projects/{id}/clips/{clipId}/approve`
+- `PUT /api/v1/clips/{id}`
 
 **Images**:
-- `POST /api/images/generate`
-- `GET /api/images`
-- `GET /api/images/{id}`
+- `POST /api/v1/images/generate`
+- `GET /api/v1/images`
+- `GET /api/v1/images/{id}`
 
 **Social**:
-- `GET /api/social/connections`
-- `POST /api/social/{platform}/connect`
-- `DELETE /api/social/{platform}/disconnect`
+- `GET /api/v1/social/connections`
+- `POST /api/v1/social/{platform}/connect`
+- `DELETE /api/v1/social/{platform}/disconnect`
 
 **Publishing**:
-- `POST /api/publish`
-- `GET /api/publish/{id}/status`
+- `POST /api/v1/publish`
+- `GET /api/v1/publish/{id}/status`
 
 ### Error Handling
 
@@ -306,8 +313,9 @@ User → React Frontend → Laravel API → PostgreSQL
 - `getStylePresets() → List<Style>`
 
 **Implementations**:
-- `OpenAIImageProvider` (primary)
-- `FakeImageProvider` (testing)
+- `FluxImageProvider` (primary)
+- `SdxlImageProvider` (alternative)
+- `FakeImageProvider` (CI and testing)
 
 ### 3. ClipRankingProvider
 
@@ -342,14 +350,30 @@ Providers are selected via configuration, enabling:
 - Easy testing with fakes
 - Future provider changes without domain logic changes
 
+### Development AI vs Product AI
+
+**Development AI**:
+- OpenCode models used for agent reasoning (Planner, Builder, Tester)
+- These models assist with code generation, specification writing, and test analysis
+- They are development tooling, NOT part of the application's runtime
+
+**Product AI**:
+- Image generation models (Flux, SDXL) used by the application
+- Transcription models (faster-whisper) used by the application
+- Clip ranking models used by the application
+- These models serve end-users through the application's processing pipeline
+
+Note: OpenCode free development models are NOT the application's product AI backend. Product AI models are invoked through provider abstractions within the Python media worker.
+
 ## Security Architecture
 
 ### Authentication & Authorization
 
-- **User Authentication**: Laravel Sanctum with token-based auth
+- **User Authentication**: Laravel Sanctum SPA authentication with HTTP-only session cookies
+- **CSRF Protection**: Via encrypted `X-XSRF-TOKEN` cookie
+- **Session Management**: Server-side session management via Laravel session driver
 - **Password Hashing**: bcrypt with appropriate cost factor
-- **Session Management**: Stateless API with refresh tokens
-- **Social OAuth**: Server-side flow, tokens never exposed to frontend
+- **Social OAuth**: Server-side flow, tokens never exposed to frontend; authorization grants, not authentication credentials
 
 ### Data Protection
 
