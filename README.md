@@ -1,6 +1,6 @@
-# AI Content Studio
+# AI Content Studio (Planned Product Vision)
 
-AI-assisted platform for transforming long-form media into short-form social content, generating visual assets, and publishing approved clips to multiple social platforms.
+AI-assisted platform for transforming long-form media into short-form social content, generating visual assets, and publishing approved clips to multiple social platforms. This vision is planned; M0 implements governance only.
 
 The product combines:
 
@@ -51,7 +51,9 @@ They are NOT permission to work on multiple issues simultaneously.
 
 ---
 
-# Architecture
+# Architecture (Planned Target)
+
+The following is the planned target. No application is implemented in M0.
 
 ```text
 ┌───────────────────────┐
@@ -136,18 +138,17 @@ They are NOT permission to work on multiple issues simultaneously.
 
 # Repository Structure
 
+Actual governance files in this issue:
+
 ```text
 .
-├── apps/
-│   ├── api/
-│   └── web/
-├── services/
-│   └── media-worker/
-├── packages/
+├── AGENTS.md
+├── README.md
 ├── docs/
+│   ├── bootstrap.md
+│   ├── project-state.md
 │   ├── prd.md
 │   ├── architecture.md
-│   ├── project-state.md
 │   ├── roadmap.md
 │   └── adr/
 ├── specs/
@@ -156,9 +157,17 @@ They are NOT permission to work on multiple issues simultaneously.
 │   └── skills/
 ├── .github/
 │   └── workflows/
-├── AGENTS.md
-├── README.md
-└── docker-compose.yml
+└── tests/
+    └── governance/
+```
+
+Planned application structure (not created in M0 governance):
+
+```text
+apps/
+services/
+packages/
+docker-compose.yml
 ```
 
 ---
@@ -299,6 +308,14 @@ Every applicable feature requires:
 * E2E tests;
 * Playwright browser validation.
 
+For governance-only changes with no application or interface, application unit, API, E2E, Playwright, visual, and accessibility checks are N/A with an explicit reason. Future user-facing workflows still require running-app interaction and Playwright review.
+
+Governance validation command:
+
+```sh
+python -m unittest discover -s tests/governance -p 'test_*.py' -v
+```
+
 UI changes require visual review at:
 
 ```text
@@ -341,8 +358,10 @@ M0 — Engineering Governance
 Current issue:
 
 ```text
-None
+#1 — Initialize OpenCode agent architecture and repository governance
 ```
+
+See [docs/project-state.md](docs/project-state.md) for current status and [AGENTS.md](AGENTS.md) for complete rules.
 
 Current goal:
 
@@ -358,13 +377,12 @@ After each issue closes, update this section or `docs/project-state.md`.
 
 Important project documents:
 
-```text
-AGENTS.md
-docs/prd.md
-docs/architecture.md
-docs/project-state.md
-docs/roadmap.md
-```
+* [AGENTS.md](AGENTS.md)
+* [docs/bootstrap.md](docs/bootstrap.md)
+* [docs/prd.md](docs/prd.md)
+* [docs/architecture.md](docs/architecture.md)
+* [docs/project-state.md](docs/project-state.md)
+* [docs/roadmap.md](docs/roadmap.md)
 
 Issue-specific specifications:
 
@@ -386,8 +404,8 @@ A change is not complete until:
 * TDD was followed;
 * unit tests pass;
 * integration tests pass when applicable;
-* E2E tests pass;
-* Playwright review passes;
+* E2E tests pass when applicable (N/A with reason for governance-only changes);
+* Playwright review passes when applicable (N/A with reason for governance-only changes);
 * Tester approves;
 * CI is green;
 * PR is merged;

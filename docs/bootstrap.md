@@ -47,7 +47,7 @@ Do NOT create another issue.
 
 # Step 3 — Verify Agent Configuration
 
-Verify that these agent definitions exist or are planned:
+Verify that these project-local agent definitions exist or are planned:
 
 ```text
 .opencode/agents/orchestrator.md
@@ -56,7 +56,7 @@ Verify that these agent definitions exist or are planned:
 .opencode/agents/tester.md
 ```
 
-Verify relevant skills:
+Verify the six project-local skills:
 
 ```text
 issue-linearity
@@ -65,11 +65,16 @@ token-efficient-context
 playwright-visual-qa
 media-pipeline
 social-publishing
+```
+
+Two external design skills are documented but not installed or vendored in this issue (see External Design Skills below):
+
+```text
 design-taste-frontend
 web-design-guidelines
 ```
 
-Do not create unnecessary skills before they are needed unless they are part of the active governance issue.
+Do not create unnecessary skills before they are needed unless they are part of the active governance issue. Load skills only when relevant, never all at bootstrap by default.
 
 ---
 
@@ -120,7 +125,7 @@ project-state
 repository conventions
 ```
 
-Do NOT include the complete Laravel/React application unless Planner can demonstrate that doing so remains a small cohesive issue.
+No application initialization is permitted in the first issue. This prohibition covers all application initialization, not merely the complete product.
 
 ---
 
@@ -282,7 +287,7 @@ Tester evaluates the result, not Builder confidence.
 
 # Step 13 — Browser and API Validation
 
-For user-facing changes, Tester MUST use Playwright.
+For user-facing changes, Tester MUST use Playwright. For governance-only changes with no application or interface, Playwright execution, screenshots, and visual interaction are N/A with an explicit reason.
 
 Default viewports:
 
@@ -412,7 +417,7 @@ Merge only when:
 acceptance criteria satisfied
 Tester approved
 tests green
-Playwright green
+Playwright green when applicable (N/A with reason for governance-only changes)
 CI green
 branch valid
 commits valid
@@ -426,17 +431,11 @@ Prefer squash merge unless repository policy defines otherwise.
 
 # Step 19 — Close and Update State
 
-Verify that the issue is officially closed.
+Keep `docs/project-state.md` and `evidence.md` accurate as of the reviewed commit before merge. Keep them concise.
 
-Update:
+Verify that the issue is officially closed after merge.
 
-```text
-docs/project-state.md
-```
-
-Keep it concise.
-
-Do not copy the complete issue history into project-state.
+Do not copy the complete issue history into project-state. Do not use an issue-less post-closure commit for state updates.
 
 ---
 
@@ -448,9 +447,58 @@ After the issue closes, return to:
 NO_ACTIVE_ISSUE
 ```
 
-Only then may Planner define the next issue.
+Only then, with explicit authorization, may Planner define the next issue. Otherwise stop.
 
 Do not automatically implement several roadmap items in a single uncontrolled execution.
+
+---
+
+# External Design Skills (Documented, Not Installed)
+
+No external skill is installed or vendored in this issue. Keep exactly six project-local skill definitions. When UI work begins, install manually as follows.
+
+## Taste (design-taste-frontend)
+
+- Upstream repository: `Leonxlnx/taste-skill`. Install source directory: `skills/taste-skill`.
+- Verified frontmatter name: `design-taste-frontend`. The directory name differs from the frontmatter name; preserve the upstream `SKILL.md` name field.
+- Review an explicit upstream revision before installing and record that revision in the installing issue. Preserve required companion resources and attribution and license files from the reviewed revision.
+- Install to the global destination `~/.config/opencode/skills/design-taste-frontend/SKILL.md` with its resources alongside, so the skill directory name matches the frontmatter name.
+- Applicability limit: upstream v2 is experimental and describes landing pages, portfolios, and redesigns, explicitly excluding dashboards, data tables, and multi-step product UI. External guidance cannot authorize Next.js adoption, dependencies, placeholders, scope expansion, or accessibility regressions contrary to project rules.
+- Load this guidance before UI implementation when applicable.
+
+## Vercel (web-design-guidelines)
+
+- Upstream repository: `vercel-labs/agent-skills`. Install source: `skills/web-design-guidelines/SKILL.md`.
+- Verified frontmatter name: `web-design-guidelines`.
+- Review an explicit upstream revision before installing and record that revision. Preserve required resources, attribution, and license. The skill requires fresh retrieval of its referenced guideline document at use time.
+- Install to `~/.config/opencode/skills/web-design-guidelines/SKILL.md`.
+- Review UI work with this skill after implementation and before Tester Playwright QA.
+
+## Verify installation
+
+1. Check name and directory agreement and look for duplicate discoveries or global overrides.
+2. Restart OpenCode. Configuration is loaded at startup and is not hot-reloaded.
+3. Verify native skill discovery and loading. Source inspection alone does not mean installed or runtime-verified.
+
+---
+
+# Runtime Models and Role Invocation
+
+- Prefer GPT-6 Astra for Planner. Builder uses an appropriate currently available free OpenCode model, selected at execution time.
+- Discover candidates with `opencode --help` and `opencode models` for the installed version. Verify current free availability and perform a bounded minimal actual call. A catalogue entry or self-description does not prove a successful call or the effective model.
+- Configure runtime selection through external configuration using `agent.model` with provider and model identifiers. Do not put ephemeral model IDs in durable role definitions or instructions. Execution evidence may record IDs actually used.
+- An omitted subagent `model` inherits its parent. Orchestrator must explicitly arrange and verify runtime model selection rather than assuming inheritance satisfies the free-Builder policy.
+- Built-in agents (`build`, `plan`, `general`, `explore`) remain available. Invoke configured roles through the primary Orchestrator with `--agent orchestrator` and named Task delegation to `planner`, `builder`, and `tester`. If direct CLI selection of a subagent falls back to a primary, it is not successful subagent verification; use the supported task path and inspect actual role and model events.
+- Keep session overrides untracked and limited to authorized runtime selection, not permission bypass. If only the harness `general` context is available during bootstrap, Orchestrator may assign isolated explicitly named responsibilities through separate general contexts with limitations recorded. One context must not build and independently approve its own work.
+
+---
+
+# Permissions and Guardrails
+
+- Permissions deny unneeded tools by default, then narrowly allow required operations. In ordered pattern maps, broad defaults precede specific exceptions because the last matching rule wins.
+- `edit` governs file edits. `task` patterns target agent names. Shell access allows only documented test entry points and narrowly selected read-only inspection commands, except Orchestrator which also owns necessary mutating Git and GitHub commands. No blanket `git *`, `gh *`, `python *`, arbitrary shell execution, or recursive OpenCode execution is granted to subagents.
+- Every role explicitly prohibits bypass through shell redirection, command composition, interpreters, scripts, alternate tools, nested agents or CLI sessions, environment overrides, or global configuration changes.
+- Allowed test commands execute code. Pattern checks are workflow controls, not a sandbox against hostile agents. Inherited and global configuration affects effective behavior. Manual user invocation is not prevented by task rules. Review effective runtime permissions; do not claim exhaustive isolation from a few probes.
 
 ---
 
