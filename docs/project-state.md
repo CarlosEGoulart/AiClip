@@ -10,6 +10,8 @@ Issue #3 documentation formalization: complete MVP product definition, system ar
 
 Issue #5 architecture inconsistencies resolved: pinned technology versions (React 19, Laravel 11, PHP 8.3, Python 3.12), standardized REST API with /api/v1, documented Sanctum SPA authentication, replaced OpenAI image provider with Flux/SDXL, clarified video AI pipeline, documented development AI vs product AI distinction, clarified queue boundary and worker database access, corrected scope definitions, reclassified performance benchmarks, and replaced issue references with milestone references.
 
+Issue #7 governance enforcement: automated validation for commit messages (Conventional Commits), branch naming, PR-to-issue linkage, Tester approval evidence, and TDD evidence structure. CI extended with PR enforcement job.
+
 # Important Decisions
 
 Strict issue linearity with one active implementation issue. TDD RED before implementation content. Independent Tester review. English-only repository content.

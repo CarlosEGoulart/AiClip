@@ -6,6 +6,8 @@ name: governance
       - master
 permissions:
   contents: read
+  pull-requests: read
+  issues: read
 jobs:
   governance:
     runs-on: ubuntu-latest
@@ -18,3 +20,45 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -r tests/governance/requirements.txt
       - run: python -m unittest discover -s tests/governance -p 'test_*.py' -v
+  pr-enforcement:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r tests/governance/requirements.txt
+      - name: Validate PR governance
+        run: |
+          python -c "
+          import os, subprocess, sys
+          sys.path.insert(0, 'tests/governance')
+          from validators import validate_commit_message, validate_branch_name
+
+          errors = []
+
+          # Validate branch name
+          branch = os.environ.get('GITHUB_HEAD_REF', '')
+          if branch:
+              errors.extend(validate_branch_name(branch))
+
+          # Validate commit messages (skip merge commits)
+          base = os.environ.get('GITHUB_BASE_REF', 'master')
+          result = subprocess.run(
+              ['git', 'log', '--format=%s', '--no-merges', f'origin/{base}..HEAD'],
+              capture_output=True, text=True
+          )
+          for msg in result.stdout.strip().split('\n'):
+              if msg.strip():
+                  errors.extend(validate_commit_message(msg))
+
+          if errors:
+              for e in errors:
+                  print(f'ERROR: {e}', file=sys.stderr)
+              sys.exit(1)
+          print('PR enforcement checks passed')
+          "
