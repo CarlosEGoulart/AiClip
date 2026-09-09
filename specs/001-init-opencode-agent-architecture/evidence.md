@@ -155,3 +155,9 @@ Result: 9 tests OK. Refactor rerun after the checkout-assertion fix remains GREE
 - `opencode debug agent orchestrator`, `planner`, `builder`, `tester`: each exit 0 with narrow effective permissions; orchestrator edit allows only project-state and evidence with lifecycle bash; planner edits exact three spec files; tester edits only evidence; builder has scoped allowlist with unittest-only bash.
 - `opencode debug skill`: exit 0; discovers six local skills `issue-linearity`, `tdd-enforcer`, `token-efficient-context`, `playwright-visual-qa`, `media-pipeline`, `social-publishing`.
 - Builder execution model: harness-provided free runtime context, cost 0 probe per Orchestrator delegation. No ephemeral model ID was committed in role definitions. A bounded free-model call, named task routing demonstration, Tester rerun, CI execution, PR, merge, and closure remain pending with Orchestrator and Tester. No approval, CI success, or closure is claimed here.
+
+## Independent Tester approval — 2026-09-09
+
+Independent read-only review ran through an isolated OpenCode tester context using `opencode/nemotron-3-ultra-free`. The review reran governance tests, verified native agent/skill discovery, confirmed issue #1 was the only active issue, reviewed artifact scope and English-only content, checked role isolation and permission narrowing, and inspected the documented external/runtime procedures. No implementation repairs, lifecycle mutations, or self-approval occurred during review.
+
+Decision: **APPROVE**. No blocking defects were found for the governance bootstrap scope. Pending remaining lifecycle gates are expected follow-on Orchestrator operations (CI execution, PR, merge, and verified closure), not approval defects.
