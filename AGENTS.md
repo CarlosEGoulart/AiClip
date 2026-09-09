@@ -74,7 +74,7 @@ Responsibilities:
 * merge approved Pull Requests;
 * verify issue closure;
 * update project state;
-* initiate the next cycle only after the previous issue is closed.
+* stop after closure and await explicit authorization before any next issue.
 
 The Orchestrator is the only agent authorized to perform repository lifecycle operations.
 
@@ -203,7 +203,7 @@ Responsibilities:
 
 Tester MUST NOT approve work solely because automated tests pass.
 
-Tester MUST interact with the running application.
+Tester MUST interact with the running application when application behavior is affected. For governance-only changes with no application or interface, Tester exercises the relevant tooling and reviews the actual artifacts instead, recording application checks as N/A with a reason.
 
 Tester MUST NOT directly repair production implementation.
 
@@ -261,7 +261,7 @@ Merge
 Issue Closure
 ```
 
-Only after the active issue is officially closed may Planner define the next issue.
+Only after the active issue is officially closed, with explicit authorization, may Planner define the next issue. Otherwise stop at NO_ACTIVE_ISSUE.
 
 Milestones and roadmap entries are not active issues.
 
@@ -550,6 +550,8 @@ All tests must remain green.
 # 13. Testing Requirements
 
 Every feature requires unit and E2E coverage when applicable.
+
+For governance-only changes with no application or interface, application unit, API, E2E, Playwright, visual, and accessibility interaction are N/A with an explicit reason. Future user-facing workflows still require running-app interaction and Playwright review.
 
 ## Laravel
 
@@ -1022,9 +1024,9 @@ Expected scope:
 * baseline CI structure;
 * `docs/project-state.md`.
 
-Do not implement the complete product in the first issue.
+Do not initialize any application implementation in the first issue, including partial Laravel, React, database, media, social, UI, container, or deployment scaffolding.
 
-After the issue is tested, merged, and closed, invoke Planner again.
+After the issue is tested, merged, and closed, stop. Return to NO_ACTIVE_ISSUE and do not invoke Planner for another issue without explicit authorization.
 
 ---
 
