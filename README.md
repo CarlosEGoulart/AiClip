@@ -352,13 +352,13 @@ This includes:
 Current milestone:
 
 ```text
-M0 — Engineering Governance
+M1 preparation
 ```
 
 Current issue:
 
 ```text
-#1 — Initialize OpenCode agent architecture and repository governance
+#3 — Formalize MVP product definition and system architecture
 ```
 
 See [docs/project-state.md](docs/project-state.md) for current status and [AGENTS.md](AGENTS.md) for complete rules.
@@ -366,7 +366,7 @@ See [docs/project-state.md](docs/project-state.md) for current status and [AGENT
 Current goal:
 
 ```text
-Initialize repository governance and SDD agent architecture.
+Formalize MVP product definition and system architecture before application scaffolding.
 ```
 
 After each issue closes, update this section or `docs/project-state.md`.
@@ -379,10 +379,12 @@ Important project documents:
 
 * [AGENTS.md](AGENTS.md)
 * [docs/bootstrap.md](docs/bootstrap.md)
-* [docs/prd.md](docs/prd.md)
-* [docs/architecture.md](docs/architecture.md)
-* [docs/project-state.md](docs/project-state.md)
-* [docs/roadmap.md](docs/roadmap.md)
+* [docs/prd.md](docs/prd.md) — Complete MVP product definition
+* [docs/architecture.md](docs/architecture.md) — Complete system architecture
+* [docs/project-state.md](docs/project-state.md) — Current project state
+* [docs/roadmap.md](docs/roadmap.md) — Milestone roadmap
+* [docs/adr/0001-governance-bootstrap.md](docs/adr/0001-governance-bootstrap.md) — Governance bootstrap ADR
+* [docs/adr/0002-mvp-product-and-architecture.md](docs/adr/0002-mvp-product-and-architecture.md) — MVP architecture decisions ADR
 
 Issue-specific specifications:
 
