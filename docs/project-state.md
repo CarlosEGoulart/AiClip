@@ -4,7 +4,7 @@ Governance-only M0 baseline. Planned stack is Laravel, React with TypeScript, Po
 
 # Completed Capabilities
 
-Issue #1 governance foundation: four OpenCode roles, six local skills, planning documents, governance tests, and lightweight CI.
+Issue #1 governance foundation merged into master: four OpenCode roles, six local skills, planning documents, governance tests, and lightweight CI.
 
 # Important Decisions
 
