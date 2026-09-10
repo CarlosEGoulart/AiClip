@@ -1,6 +1,6 @@
 # Current Architecture
 
-MVP product definition and system architecture formalized. Planned stack is Laravel, React with TypeScript, PostgreSQL, Python media worker with FFmpeg, Playwright, Docker, and GitHub Actions. No application is deployed.
+MVP product definition and system architecture formalized. Application foundation established with Laravel API, React frontend, and PostgreSQL.
 
 # Completed Capabilities
 
@@ -8,7 +8,7 @@ Issue #1 governance foundation merged into master: four OpenCode roles, six loca
 
 Issue #3 documentation formalization: complete MVP product definition, system architecture, and architectural decision record.
 
-Issue #5 architecture inconsistencies resolved: pinned technology versions (React 19, Laravel 11, PHP 8.3, Python 3.12), standardized REST API with /api/v1, documented Sanctum SPA authentication, replaced OpenAI image provider with Flux/SDXL, clarified video AI pipeline, documented development AI vs product AI distinction, clarified queue boundary and worker database access, corrected scope definitions, reclassified performance benchmarks, and replaced issue references with milestone references.
+Issue #5 architecture inconsistencies resolved: pinned technology versions, standardized REST API with /api/v1, documented Sanctum SPA authentication, replaced OpenAI image provider with Flux/SDXL, clarified video AI pipeline, documented development AI vs product AI distinction, clarified queue boundary and worker database access, corrected scope definitions, reclassified performance benchmarks, and replaced issue references with milestone references.
 
 Issue #7 governance enforcement: automated validation for commit messages (Conventional Commits), branch naming, PR-to-issue linkage, Tester approval evidence, and TDD evidence structure. CI extended with PR enforcement job.
 
@@ -20,6 +20,8 @@ Issue #13 SDD bundle enforcement: generic `validate_sdd_bundle()` validates ever
 
 Issue #15 SDD bundle wiring: `validate_sdd_bundle()` now executed by `run_checks()` in actual PR governance. Generic validation catches any incomplete `specs/<issue>-*` directory without hardcoded issue list. Integration tests exercise `run_checks()` orchestration with isolated temporary directories.
 
+Issue #17 M1 Application Foundation: Laravel 13 API in apps/api/, React 19 + TypeScript + Vite frontend in apps/web/, PostgreSQL 16 via Docker Compose, GET /api/v1/health endpoint with real database connectivity check, backend Pest tests, frontend Jest tests, CI workflows for backend, frontend, and E2E.
+
 # Important Decisions
 
 Strict issue linearity with one active implementation issue. TDD RED before implementation content. Independent Tester review. English-only repository content.
@@ -30,12 +32,12 @@ Architecture is modular application with dedicated media worker boundary (not mi
 
 # Known Limitations
 
-No running application exists, so application unit, API, E2E, Playwright, visual, and accessibility interaction are N/A for this issue. Runtime model selection and native role invocation require Orchestrator arrangement and fresh restarts.
+Vitest has compatibility issues with Node.js v24 in this environment; Jest is used for frontend testing instead. Playwright E2E tests are configured but require full stack startup for execution.
 
 # Current Milestone
 
-M1 preparation.
+M1 Application Foundation.
 
 # Next Architectural Goal
 
-Application scaffolding: initialize Laravel and React projects, set up development environment, create basic API endpoints and database migrations.
+Authentication and user management: implement Sanctum SPA authentication, user registration, and login flows.

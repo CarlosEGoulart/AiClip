@@ -13,9 +13,9 @@ The platform follows a request-response pattern for user interactions and an eve
 **Responsibility**: User interface for all platform interactions
 
 **Technology Stack**:
-- React 19 with TypeScript
-- Vite for build tooling
-- Vitest and React Testing Library for testing
+- React 19.2.8 with TypeScript 6.0.2
+- Vite 8.2.2 for build tooling
+- Jest + React Testing Library for testing
 - Responsive CSS framework (Tailwind CSS or similar)
 
 **Key Capabilities**:
@@ -39,8 +39,8 @@ The platform follows a request-response pattern for user interactions and an eve
 **Responsibility**: Application logic, authentication, authorization, data persistence
 
 **Technology Stack**:
-- Laravel 11 with PHP 8.3
-- PostgreSQL for primary data store
+- Laravel 13 with PHP 8.3.6
+- PostgreSQL 16 for primary data store
 - Laravel Queues for job dispatching
 - Laravel Sanctum for API authentication
 
