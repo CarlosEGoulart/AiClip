@@ -1,153 +1,315 @@
-"""Tests proving durable agent configuration is reusable across issues.
+"""Permission regression tests using parsed frontmatter and rule decisions.
 
-These tests verify that agent role definitions are not dependent on any
-specific issue number and support ordinary future development cycles.
+These tests load agent frontmatter, parse the YAML permission mappings,
+and evaluate rules with the same last-match glob logic used by OpenCode.
+Substring checks are replaced by actual permission-decision assertions.
 """
 
-import re
+import fnmatch
 import unittest
 from pathlib import Path
 
+import yaml
+from yaml.constructor import ConstructorError
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    pass
+
+
+def _unique_construct_mapping(self, node, deep=False):
+    seen = set()
+    for k_node, _ in node.value:
+        key = self.construct_object(k_node, deep=True)
+        if key in seen:
+            raise ConstructorError(
+                "while constructing a mapping", node.start_mark,
+                f"found duplicate key: {key}", k_node.start_mark)
+        seen.add(key)
+    return yaml.SafeLoader.construct_mapping(self, node, deep=deep)
+
+
+_UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_construct_mapping)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+AGENTS_DIR = REPO_ROOT / ".opencode" / "agents"
+
+FRONTMATTER_RE = __import__("re").compile(r"^---\s*\n(.*?)\n---\s*\n", __import__("re").DOTALL)
 
 
-class TestPlannerPermissions(unittest.TestCase):
-    """Verify Planner supports arbitrary future SDD planning paths."""
+def load_frontmatter(path):
+    p = Path(path)
+    text = p.read_text()
+    m = FRONTMATTER_RE.match(text)
+    if not m:
+        raise AssertionError(f"No YAML frontmatter in {p}")
+    try:
+        data = yaml.load(m.group(1), Loader=_UniqueKeyLoader)
+    except ConstructorError as e:
+        raise AssertionError(f"Duplicate YAML key in {p}: {e}")
+    except yaml.YAMLError as e:
+        raise AssertionError(f"Malformed YAML in {p}: {e}")
+    if not isinstance(data, dict):
+        raise AssertionError(f"Frontmatter in {p} must be a mapping")
+    return data
 
-    def setUp(self):
-        self.config_path = Path(__file__).resolve().parents[2] / ".opencode/agents/planner.md"
-        self.content = self.config_path.read_text()
 
-    def test_allows_arbitrary_spec_paths(self):
-        self.assertIn('specs/*/spec.md', self.content)
-        self.assertIn('specs/*/plan.md', self.content)
-        self.assertIn('specs/*/test-plan.md', self.content)
-
-    def test_does_not_reference_specific_issue(self):
-        self.assertNotIn('001-init', self.content)
-        self.assertNotIn('019-', self.content)
-        self.assertNotIn('022-', self.content)
-
-    def test_cannot_edit_production_code(self):
-        self.assertNotIn('apps/**', self.content)
-
-    def test_cannot_edit_evidence(self):
-        edit_section = self.content[self.content.index('edit:'):]
-        edit_section = edit_section[:edit_section.index('task:')]
-        self.assertNotIn('evidence.md', edit_section)
-
-    def test_cannot_commit_or_push(self):
-        self.assertNotIn('git commit', self.content.lower())
-        self.assertNotIn('git push', self.content.lower())
-
-    def test_bash_denied(self):
-        self.assertIn('bash: deny', self.content)
+def decide(rules, key):
+    """Last-match glob decision; flat string applies to every key."""
+    if rules is None:
+        return None
+    if isinstance(rules, str):
+        return rules
+    result = None
+    for pattern, action in rules.items():
+        if fnmatch.fnmatch(key, pattern):
+            result = action
+    return result
 
 
 class TestBuilderPermissions(unittest.TestCase):
-    """Verify Builder supports application implementation paths."""
+    """Verify Builder has correct permission boundaries via parsed rules."""
 
     def setUp(self):
-        self.config_path = Path(__file__).resolve().parents[2] / ".opencode/agents/builder.md"
-        self.content = self.config_path.read_text()
+        fm = load_frontmatter(AGENTS_DIR / "builder.md")
+        self.perm = fm.get("permission", {})
+        self.edit_rules = self.perm.get("edit", {})
+        self.read_rules = self.perm.get("read", {})
+        self.bash_rules = self.perm.get("bash", {})
+        self.content = (AGENTS_DIR / "builder.md").read_text()
 
-    def test_allows_application_paths(self):
-        self.assertIn('apps/**', self.content)
-        self.assertIn('tests/**', self.content)
+    def test_builder_denies_governance_test_edits(self):
+        self.assertEqual(decide(self.edit_rules, "tests/governance/test_governance.py"), "deny")
+        self.assertEqual(decide(self.edit_rules, "tests/governance/test_agent_permissions.py"), "deny")
 
-    def test_allows_evidence(self):
-        self.assertIn('specs/*/evidence.md', self.content)
+    def test_builder_allows_application_test_edits(self):
+        self.assertEqual(decide(self.edit_rules, "apps/api/tests/Feature/ExampleTest.php"), "allow")
+        self.assertEqual(decide(self.edit_rules, "apps/web/src/__tests__/App.test.tsx"), "allow")
 
-    def test_cannot_edit_planner_files(self):
-        self.assertNotIn('specs/*/spec.md', self.content.split('deny')[0] if 'deny' in self.content else '')
-        spec_pattern = re.search(r'specs/\*/spec\.md', self.content)
-        if spec_pattern:
-            context_start = max(0, spec_pattern.start() - 50)
-            context = self.content[context_start:spec_pattern.end() + 50]
-            self.assertIn('deny', context.lower())
+    def test_builder_denies_planner_files(self):
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/spec.md"), "deny")
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/plan.md"), "deny")
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/test-plan.md"), "deny")
 
-    def test_cannot_commit_or_push(self):
-        self.assertNotIn('git commit', self.content)
-        self.assertNotIn('git push', self.content)
+    def test_builder_allows_evidence(self):
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/evidence.md"), "allow")
 
-    def test_cannot_create_issues(self):
-        self.assertNotIn('gh issue create', self.content)
+    def test_builder_allows_application_code(self):
+        self.assertEqual(decide(self.edit_rules, "apps/api/app/Http/Controllers/AuthController.php"), "allow")
+        self.assertEqual(decide(self.edit_rules, "apps/web/src/components/App.tsx"), "allow")
 
-    def test_cannot_modify_agent_config(self):
-        self.assertNotIn('.opencode/agents/', self.content.split('deny')[0] if 'deny' in self.content else 'denied')
+    def test_builder_denies_control_plane_files(self):
+        self.assertEqual(decide(self.edit_rules, "apps/api/AGENTS.md"), "deny")
+        self.assertEqual(decide(self.edit_rules, "apps/api/opencode.json"), "deny")
+        self.assertEqual(decide(self.edit_rules, "apps/api/boost.json"), "deny")
+        self.assertEqual(decide(self.edit_rules, "apps/api/.agents/skills/test.md"), "deny")
+        self.assertEqual(decide(self.edit_rules, "apps/api/.claude/skills/test.md"), "deny")
+
+    def test_builder_denies_agent_config(self):
+        self.assertEqual(decide(self.edit_rules, ".opencode/agents/builder.md"), "deny")
+        self.assertEqual(decide(self.edit_rules, ".opencode/agents/planner.md"), "deny")
+
+    def test_builder_denies_env_secrets(self):
+        self.assertEqual(decide(self.read_rules, ".env"), "deny")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env"), "deny")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env.production"), "deny")
+        self.assertEqual(decide(self.read_rules, ".env.local"), "deny")
+        self.assertEqual(decide(self.read_rules, ".env.staging"), "deny")
+
+    def test_builder_allows_env_example(self):
+        self.assertEqual(decide(self.read_rules, ".env.example"), "allow")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env.example"), "allow")
+
+    def test_builder_bash_allows_laravel_tests(self):
+        self.assertEqual(decide(self.bash_rules, "cd apps/api && php artisan test"), "allow")
+        self.assertEqual(decide(self.bash_rules, "cd apps/api && vendor/bin/pest"), "allow")
+
+    def test_builder_bash_denies_git(self):
+        self.assertEqual(decide(self.bash_rules, "git commit -m test"), "deny")
+        self.assertEqual(decide(self.bash_rules, "git push origin main"), "deny")
+
+    def test_bash_requires_command_prefix(self):
+        bash_rules = self.bash_rules
+        self.assertIsInstance(bash_rules, dict)
+        first_key = list(bash_rules.keys())[0]
+        self.assertEqual(first_key, "**")
+
+
+class TestPlannerPermissions(unittest.TestCase):
+    """Verify Planner has correct permission boundaries via parsed rules."""
+
+    def setUp(self):
+        fm = load_frontmatter(AGENTS_DIR / "planner.md")
+        self.perm = fm.get("permission", {})
+        self.edit_rules = self.perm.get("edit", {})
+        self.read_rules = self.perm.get("read", {})
+        self.bash_rules = self.perm.get("bash", {})
+
+    def test_planner_allows_spec_files(self):
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/spec.md"), "allow")
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/plan.md"), "allow")
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/test-plan.md"), "allow")
+
+    def test_planner_denies_evidence(self):
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/evidence.md"), "deny")
+
+    def test_planner_denies_production_code(self):
+        self.assertEqual(decide(self.edit_rules, "apps/api/app/Models/User.php"), "deny")
+        self.assertEqual(decide(self.edit_rules, "apps/web/src/App.tsx"), "deny")
+
+    def test_planner_bash_denied(self):
+        self.assertEqual(self.bash_rules, "deny")
+
+    def test_planner_denies_env_secrets(self):
+        self.assertEqual(decide(self.read_rules, ".env"), "deny")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env"), "deny")
+        self.assertEqual(decide(self.read_rules, ".env.production"), "deny")
+
+    def test_planner_allows_env_example(self):
+        self.assertEqual(decide(self.read_rules, ".env.example"), "allow")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env.example"), "allow")
 
 
 class TestTesterPermissions(unittest.TestCase):
-    """Verify Tester can update evidence but not production files."""
+    """Verify Tester has correct permission boundaries via parsed rules."""
 
     def setUp(self):
-        self.config_path = Path(__file__).resolve().parents[2] / ".opencode/agents/tester.md"
-        self.content = self.config_path.read_text()
+        fm = load_frontmatter(AGENTS_DIR / "tester.md")
+        self.perm = fm.get("permission", {})
+        self.edit_rules = self.perm.get("edit", {})
+        self.read_rules = self.perm.get("read", {})
+        self.bash_rules = self.perm.get("bash", {})
 
-    def test_allows_evidence(self):
-        self.assertIn('specs/*/evidence.md', self.content)
+    def test_tester_allows_evidence_only(self):
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/evidence.md"), "allow")
 
-    def test_cannot_edit_production_code(self):
-        self.assertNotIn('apps/**', self.content.split('deny')[0] if 'deny' in self.content else '')
+    def test_tester_denies_production_code(self):
+        self.assertEqual(decide(self.edit_rules, "apps/api/app/Models/User.php"), "deny")
+        self.assertEqual(decide(self.edit_rules, "apps/web/src/App.tsx"), "deny")
 
-    def test_cannot_edit_planner_files(self):
-        self.assertNotIn('specs/*/spec.md', self.content.split('deny')[0] if 'deny' in self.content else '')
-        self.assertNotIn('specs/*/plan.md', self.content.split('deny')[0] if 'deny' in self.content else '')
+    def test_tester_denies_planner_files(self):
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/spec.md"), "deny")
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/plan.md"), "deny")
+        self.assertEqual(decide(self.edit_rules, "specs/025-new-feature/test-plan.md"), "deny")
 
-    def test_cannot_commit_or_push(self):
-        self.assertNotIn('git commit', self.content)
-        self.assertNotIn('git push', self.content)
+    def test_tester_bash_allows_test_commands(self):
+        self.assertEqual(decide(self.bash_rules, "cd apps/api && php artisan test"), "allow")
+        self.assertEqual(decide(self.bash_rules, "cd apps/web && npm test"), "allow")
+        self.assertEqual(decide(self.bash_rules, "python -m unittest discover -s tests/governance"), "allow")
 
-    def test_can_inspect_git_state(self):
-        self.assertIn('git status', self.content)
-        self.assertIn('git diff', self.content)
+    def test_tester_bash_denies_git_mutation(self):
+        self.assertEqual(decide(self.bash_rules, "git commit -m test"), "deny")
+        self.assertEqual(decide(self.bash_rules, "git push"), "deny")
 
-    def test_cannot_perform_lifecycle(self):
-        self.assertNotIn('gh pr merge', self.content)
-        self.assertNotIn('gh issue close', self.content)
+    def test_tester_bash_allows_git_readonly(self):
+        self.assertEqual(decide(self.bash_rules, "git status"), "allow")
+        self.assertEqual(decide(self.bash_rules, "git diff"), "allow")
+        self.assertEqual(decide(self.bash_rules, "git log --oneline -5"), "allow")
+
+    def test_tester_bash_denies_lifecycle(self):
+        self.assertEqual(decide(self.bash_rules, "gh pr merge 1 --merge"), "deny")
+        self.assertEqual(decide(self.bash_rules, "gh issue close 1"), "deny")
+
+    def test_tester_denies_env_secrets(self):
+        self.assertEqual(decide(self.read_rules, ".env"), "deny")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env"), "deny")
+        self.assertEqual(decide(self.read_rules, ".env.production"), "deny")
+
+    def test_tester_allows_env_example(self):
+        self.assertEqual(decide(self.read_rules, ".env.example"), "allow")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env.example"), "allow")
 
 
 class TestOrchestratorPermissions(unittest.TestCase):
-    """Verify Orchestrator owns lifecycle commands."""
+    """Verify Orchestrator owns lifecycle commands via parsed rules."""
 
     def setUp(self):
-        self.config_path = Path(__file__).resolve().parents[2] / ".opencode/agents/orchestrator.md"
-        self.content = self.config_path.read_text()
+        fm = load_frontmatter(AGENTS_DIR / "orchestrator.md")
+        self.perm = fm.get("permission", {})
+        self.edit_rules = self.perm.get("edit", {})
+        self.read_rules = self.perm.get("read", {})
+        self.bash_rules = self.perm.get("bash", {})
+        self.task_rules = self.perm.get("task", {})
 
-    def test_allows_git_lifecycle(self):
-        self.assertIn('git commit', self.content)
-        self.assertIn('git push', self.content)
-        self.assertIn('git add', self.content)
-        self.assertIn('git branch', self.content)
+    def test_orchestrator_allows_git_lifecycle(self):
+        self.assertEqual(decide(self.bash_rules, "git commit -m test"), "allow")
+        self.assertEqual(decide(self.bash_rules, "git push origin main"), "allow")
+        self.assertEqual(decide(self.bash_rules, "git add ."), "allow")
+        self.assertEqual(decide(self.bash_rules, "git branch feature/test"), "allow")
 
-    def test_allows_github_lifecycle(self):
-        self.assertIn('gh pr create', self.content)
-        self.assertIn('gh pr merge', self.content)
-        self.assertIn('gh issue create', self.content)
-        self.assertIn('gh issue close', self.content)
+    def test_orchestrator_allows_github_lifecycle(self):
+        self.assertEqual(decide(self.bash_rules, "gh pr create --title test"), "allow")
+        self.assertEqual(decide(self.bash_rules, "gh pr merge 1 --merge"), "allow")
+        self.assertEqual(decide(self.bash_rules, "gh issue create --title test"), "allow")
+        self.assertEqual(decide(self.bash_rules, "gh issue close 1"), "allow")
 
-    def test_allows_task_delegation(self):
-        self.assertIn('planner', self.content)
-        self.assertIn('builder', self.content)
-        self.assertIn('tester', self.content)
+    def test_orchestrator_delegates_to_known_agents(self):
+        self.assertEqual(decide(self.task_rules, "planner"), "allow")
+        self.assertEqual(decide(self.task_rules, "builder"), "allow")
+        self.assertEqual(decide(self.task_rules, "tester"), "allow")
 
-    def test_cannot_implement_features(self):
-        self.assertNotIn('apps/**', self.content.split('deny')[0] if 'deny' in self.content else '')
+    def test_orchestrator_denies_unknown_agents(self):
+        self.assertEqual(decide(self.task_rules, "explorer"), "deny")
+        self.assertEqual(decide(self.task_rules, "unknown-agent"), "deny")
 
-    def test_delegates_only_to_known_agents(self):
-        task_section = self.content[self.content.index('task:'):]
-        self.assertNotIn('explorer', task_section.split('---')[0])
+    def test_orchestrator_cannot_edit_production_code(self):
+        self.assertEqual(decide(self.edit_rules, "apps/api/app/Models/User.php"), "deny")
+        self.assertEqual(decide(self.edit_rules, "apps/web/src/App.tsx"), "deny")
+
+    def test_orchestrator_allows_project_state(self):
+        self.assertEqual(decide(self.edit_rules, "docs/project-state.md"), "allow")
+
+    def test_orchestrator_denies_env_secrets(self):
+        self.assertEqual(decide(self.read_rules, ".env"), "deny")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env"), "deny")
+        self.assertEqual(decide(self.read_rules, ".env.production"), "deny")
+
+    def test_orchestrator_allows_env_example(self):
+        self.assertEqual(decide(self.read_rules, ".env.example"), "allow")
+        self.assertEqual(decide(self.read_rules, "apps/api/.env.example"), "allow")
+
+
+class TestEnvProtection(unittest.TestCase):
+    """Verify all agents protect .env secrets but allow .env.example."""
+
+    def setUp(self):
+        self.agents = {}
+        for name in ["orchestrator.md", "planner.md", "builder.md", "tester.md"]:
+            fm = load_frontmatter(AGENTS_DIR / name)
+            self.agents[name] = fm.get("permission", {}).get("read", {})
+
+    def test_all_agents_deny_root_env(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, ".env"), "deny", f"{name} must deny .env")
+
+    def test_all_agents_deny_nested_env(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, "apps/api/.env"), "deny", f"{name} must deny apps/api/.env")
+
+    def test_all_agents_deny_env_production(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, ".env.production"), "deny", f"{name} must deny .env.production")
+
+    def test_all_agents_allow_env_example(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, ".env.example"), "allow", f"{name} must allow .env.example")
+
+    def test_all_agents_allow_nested_env_example(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, "apps/api/.env.example"), "allow", f"{name} must allow apps/api/.env.example")
 
 
 class TestNoIssueSpecificDependencies(unittest.TestCase):
     """Verify no agent configuration depends on a specific issue number."""
 
-    def setUp(self):
-        self.agents_dir = Path(__file__).resolve().parents[2] / ".opencode" / "agents"
-
     def test_no_issue_001_references(self):
-        for agent_file in self.agents_dir.glob("*.md"):
+        for agent_file in AGENTS_DIR.glob("*.md"):
             content = agent_file.read_text()
             self.assertNotIn(
                 '001-init-opencode-agent-architecture',
@@ -156,14 +318,15 @@ class TestNoIssueSpecificDependencies(unittest.TestCase):
             )
 
     def test_no_issue_specific_evidence_paths(self):
-        for agent_file in self.agents_dir.glob("*.md"):
+        import re
+        for agent_file in AGENTS_DIR.glob("*.md"):
             content = agent_file.read_text()
             matches = re.findall(r'specs/\d{3}-[a-z-]+/evidence\.md', content)
             for match in matches:
                 self.fail(f"{agent_file.name} contains issue-specific path: {match}")
 
     def test_no_self_configuration_exceptions(self):
-        for agent_file in self.agents_dir.glob("*.md"):
+        for agent_file in AGENTS_DIR.glob("*.md"):
             content = agent_file.read_text()
             self.assertNotIn(
                 'Self-Configuration Exception',
@@ -211,8 +374,8 @@ class TestReadmeStructure(unittest.TestCase):
     def test_has_definition_of_done(self):
         self.assertIn('Definition of Done', self.content)
 
-    def test_not_milestone_specific(self):
-        self.assertNotIn('M1 Application Foundation', self.content.split('## ')[0] if '## ' in self.content else '')
+    def test_dod_requires_explicit_authorization(self):
+        self.assertIn('explicit authorization', self.content.lower())
 
 
 if __name__ == '__main__':

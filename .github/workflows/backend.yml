@@ -37,11 +37,6 @@ jobs:
           extensions: pdo, pdo_pgsql, mbstring, xml, ctype, bcmath
           coverage: none
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
       - name: Install Composer dependencies
         working-directory: apps/api
         run: composer install --no-interaction --prefer-dist --no-progress

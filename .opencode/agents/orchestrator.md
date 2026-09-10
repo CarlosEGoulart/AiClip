@@ -3,7 +3,18 @@ description: Orchestrates the development lifecycle, delegates to Planner/Builde
 mode: primary
 permission:
   "*": deny
-  read: allow
+  read:
+    "**": allow
+    ".env": deny
+    "**/.env": deny
+    ".env.production": deny
+    "**/.env.production": deny
+    ".env.local": deny
+    "**/.env.local": deny
+    ".env.staging": deny
+    "**/.env.staging": deny
+    ".env.ci": deny
+    "**/.env.ci": deny
   glob: allow
   grep: allow
   skill: allow

@@ -2,18 +2,21 @@
 
 Milestones are planning boundaries. They do not authorize additional implementation issues. Only one implementation issue is active at a time.
 
-## Current Milestone
-
-### M1 — Application Foundation (in progress)
+## M0 — Governance Bootstrap (completed)
 
 Completed slices:
 
 - Governance bootstrap (Issue #1)
 - Documentation formalization (Issues #3, #5)
 - Governance enforcement automation (Issues #7, #9, #11, #13, #15)
+- Repository baseline normalization (Issues #22, #24)
+
+## M1 — Application Foundation (in progress)
+
+Completed slices:
+
 - Application foundation: Laravel API, React frontend, PostgreSQL, health endpoint (Issue #17)
 - Foundation stabilization: Vitest, Playwright lifecycle, mutation-proven tests (Issue #19)
-- Repository baseline normalization (Issue #22)
 
 Next slice:
 

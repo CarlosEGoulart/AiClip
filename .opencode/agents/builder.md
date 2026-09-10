@@ -3,7 +3,18 @@ description: Implements the active issue following TDD, creating only scoped app
 mode: subagent
 permission:
   "*": deny
-  read: allow
+  read:
+    "**": allow
+    ".env": deny
+    "**/.env": deny
+    ".env.production": deny
+    "**/.env.production": deny
+    ".env.local": deny
+    "**/.env.local": deny
+    ".env.staging": deny
+    "**/.env.staging": deny
+    ".env.ci": deny
+    "**/.env.ci": deny
   glob: allow
   grep: allow
   skill: allow
@@ -11,21 +22,24 @@ permission:
   edit:
     "**": deny
     "apps/**": allow
+    "apps/api/AGENTS.md": deny
+    "apps/api/opencode.json": deny
+    "apps/api/boost.json": deny
+    "apps/api/.agents/**": deny
+    "apps/api/.claude/**": deny
     "services/**": allow
     "packages/**": allow
     "specs/*/evidence.md": allow
-    "tests/**": allow
   bash:
     "**": deny
-    "cd apps/api && php artisan test *": allow
-    "cd apps/api && vendor/bin/pest *": allow
-    "cd apps/api && vendor/bin/pint *": allow
-    "cd apps/web && npm test *": allow
-    "cd apps/web && npm run lint *": allow
-    "cd apps/web && npm run build *": allow
-    "cd apps/web && npx playwright test *": allow
-    "cd apps/web && npm run test:e2e *": allow
-    "python -m unittest discover -s tests/governance *": allow
+    "cd apps/api && php artisan test*": allow
+    "cd apps/api && vendor/bin/pest*": allow
+    "cd apps/api && vendor/bin/pint*": allow
+    "cd apps/web && npm test*": allow
+    "cd apps/web && npm run lint*": allow
+    "cd apps/web && npm run build*": allow
+    "cd apps/web && npx playwright test*": allow
+    "cd apps/web && npm run test:e2e*": allow
     "python --version": allow
   task: deny
 ---
@@ -48,6 +62,8 @@ The Builder implements the active issue following strict Test-Driven Development
 
 - Must not create issues, branches, commits, pushes, Pull Requests, or merge
 - Must not edit Planner-owned files (spec.md, plan.md, test-plan.md)
+- Must not edit root governance tests (tests/governance/)
+- Must not modify control-plane files (AGENTS.md, opencode.json, boost.json, .agents/, .claude/) under apps/
 - Must not modify unrelated code
 - Must not weaken tests or disable tests
 - Must not silently expand scope

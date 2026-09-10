@@ -187,4 +187,4 @@ An issue is done when all applicable items are satisfied:
 - PR merged
 - Issue closed
 
-Then repeat with the next issue.
+Return to NO_ACTIVE_ISSUE and wait for explicit authorization before starting another issue.

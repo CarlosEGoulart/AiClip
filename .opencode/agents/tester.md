@@ -3,7 +3,18 @@ description: Independently validates the active issue implementation, reruns gov
 mode: subagent
 permission:
   "*": deny
-  read: allow
+  read:
+    "**": allow
+    ".env": deny
+    "**/.env": deny
+    ".env.production": deny
+    "**/.env.production": deny
+    ".env.local": deny
+    "**/.env.local": deny
+    ".env.staging": deny
+    "**/.env.staging": deny
+    ".env.ci": deny
+    "**/.env.ci": deny
   glob: allow
   grep: allow
   skill: allow
@@ -13,24 +24,24 @@ permission:
     "specs/*/evidence.md": allow
   bash:
     "**": deny
-    "cd apps/api && php artisan test *": allow
-    "cd apps/api && vendor/bin/pest *": allow
-    "cd apps/web && npm test *": allow
-    "cd apps/web && npm run lint *": allow
-    "cd apps/web && npm run build *": allow
-    "cd apps/web && npx playwright test *": allow
-    "cd apps/web && npm run test:e2e *": allow
-    "python -m unittest discover -s tests/governance *": allow
+    "cd apps/api && php artisan test*": allow
+    "cd apps/api && vendor/bin/pest*": allow
+    "cd apps/web && npm test*": allow
+    "cd apps/web && npm run lint*": allow
+    "cd apps/web && npm run build*": allow
+    "cd apps/web && npx playwright test*": allow
+    "cd apps/web && npm run test:e2e*": allow
+    "python -m unittest discover -s tests/governance*": allow
     "python --version": allow
-    "git status *": allow
-    "git diff *": allow
-    "git log *": allow
-    "gh issue view *": allow
-    "gh pr view *": allow
+    "git status*": allow
+    "git diff*": allow
+    "git log*": allow
+    "gh issue view*": allow
+    "gh pr view*": allow
     "opencode --version": allow
     "opencode agent list": allow
-    "opencode debug agent *": allow
-    "opencode debug skill *": allow
+    "opencode debug agent*": allow
+    "opencode debug skill*": allow
   task: deny
 ---
 
