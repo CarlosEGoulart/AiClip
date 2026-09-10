@@ -66,13 +66,14 @@ def extract_closes_issues(body: str) -> list[int]:
     return [int(m.group(1)) for m in CLOSES_RE.finditer(body)]
 
 
-def find_evidence_file(issue_number: int) -> Path | None:
+def find_evidence_file(issue_number: int, specs_dir: Path | None = None) -> Path | None:
     """Find evidence.md for the given issue number.
 
     Returns None if no match or multiple matches (ambiguous).
     Returns the evidence path only if exactly one match exists.
     """
-    specs_dir = Path(__file__).resolve().parents[2] / "specs"
+    if specs_dir is None:
+        specs_dir = Path(__file__).resolve().parents[2] / "specs"
     if not specs_dir.exists():
         return None
     prefix = f"{issue_number:03d}"

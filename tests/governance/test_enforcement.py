@@ -1,16 +1,20 @@
 """Governance enforcement tests for issue #7.
 
-Tests five validator functions: commit messages, branch names, PR bodies,
-evidence decisions, and TDD sections. Covers valid, invalid, and edge cases.
+Tests six validator functions: commit messages, branch names, PR bodies,
+evidence decisions, TDD sections, and SDD bundles.
 """
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from validators import (
     validate_branch_name,
     validate_commit_message,
     validate_evidence_decision,
+    validate_merge_approval,
     validate_pr_body,
+    validate_sdd_bundle,
     validate_tdd_sections,
 )
 
@@ -351,6 +355,95 @@ class TestMergeApprovalValidator(unittest.TestCase):
         errors = validate_merge_approval("")
         self.assertEqual(len(errors), 1)
         self.assertIn("must not be empty", errors[0])
+
+
+class TestSddBundleValidator(unittest.TestCase):
+    """RED tests proving incomplete SDD directories are currently accepted."""
+
+    def _make_bundle(self, tmp: Path, name: str, files: dict[str, str]):
+        d = tmp / name
+        d.mkdir()
+        for fname, content in files.items():
+            (d / fname).write_text(content)
+
+    def test_complete_bundle_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_bundle(Path(tmp), "001-test", {
+                "spec.md": "# Spec",
+                "plan.md": "# Plan",
+                "test-plan.md": "# Test Plan",
+                "evidence.md": "# Evidence",
+            })
+            errors = validate_sdd_bundle(Path(tmp))
+            self.assertEqual(errors, [])
+
+    def test_missing_plan_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_bundle(Path(tmp), "001-test", {
+                "spec.md": "# Spec",
+                "test-plan.md": "# Test Plan",
+                "evidence.md": "# Evidence",
+            })
+            errors = validate_sdd_bundle(Path(tmp))
+            self.assertTrue(any("plan.md" in e for e in errors))
+
+    def test_missing_test_plan_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_bundle(Path(tmp), "001-test", {
+                "spec.md": "# Spec",
+                "plan.md": "# Plan",
+                "evidence.md": "# Evidence",
+            })
+            errors = validate_sdd_bundle(Path(tmp))
+            self.assertTrue(any("test-plan.md" in e for e in errors))
+
+    def test_missing_evidence_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_bundle(Path(tmp), "001-test", {
+                "spec.md": "# Spec",
+                "plan.md": "# Plan",
+                "test-plan.md": "# Test Plan",
+            })
+            errors = validate_sdd_bundle(Path(tmp))
+            self.assertTrue(any("evidence.md" in e for e in errors))
+
+    def test_missing_spec_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_bundle(Path(tmp), "001-test", {
+                "plan.md": "# Plan",
+                "test-plan.md": "# Test Plan",
+                "evidence.md": "# Evidence",
+            })
+            errors = validate_sdd_bundle(Path(tmp))
+            self.assertTrue(any("spec.md" in e for e in errors))
+
+    def test_empty_required_file_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_bundle(Path(tmp), "001-test", {
+                "spec.md": "# Spec",
+                "plan.md": "",
+                "test-plan.md": "# Test Plan",
+                "evidence.md": "# Evidence",
+            })
+            errors = validate_sdd_bundle(Path(tmp))
+            self.assertTrue(any("plan.md" in e and "empty" in e for e in errors))
+
+    def test_multiple_valid_directories_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_bundle(Path(tmp), "001-first", {
+                "spec.md": "# Spec",
+                "plan.md": "# Plan",
+                "test-plan.md": "# Test Plan",
+                "evidence.md": "# Evidence",
+            })
+            self._make_bundle(Path(tmp), "002-second", {
+                "spec.md": "# Spec",
+                "plan.md": "# Plan",
+                "test-plan.md": "# Test Plan",
+                "evidence.md": "# Evidence",
+            })
+            errors = validate_sdd_bundle(Path(tmp))
+            self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":
