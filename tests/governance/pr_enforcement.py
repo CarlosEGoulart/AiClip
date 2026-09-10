@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from validators import (
     validate_branch_name,
     validate_commit_message,
-    validate_evidence_decision,
+    validate_merge_approval,
     validate_pr_body,
     validate_tdd_sections,
 )
@@ -67,16 +67,23 @@ def extract_closes_issues(body: str) -> list[int]:
 
 
 def find_evidence_file(issue_number: int) -> Path | None:
-    """Find evidence.md for the given issue number."""
+    """Find evidence.md for the given issue number.
+
+    Returns None if no match or multiple matches (ambiguous).
+    Returns the evidence path only if exactly one match exists.
+    """
     specs_dir = Path(__file__).resolve().parents[2] / "specs"
     if not specs_dir.exists():
         return None
     prefix = f"{issue_number:03d}"
-    for d in specs_dir.iterdir():
+    matches = []
+    for d in sorted(specs_dir.iterdir()):
         if d.is_dir() and d.name.startswith(prefix):
             evidence = d / "evidence.md"
             if evidence.exists():
-                return evidence
+                matches.append(evidence)
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
@@ -128,7 +135,7 @@ def run_checks() -> list[str]:
             errors.append(f"No evidence.md found for issue #{branch_issue}")
         else:
             content = evidence_path.read_text()
-            errors.extend(validate_evidence_decision(content))
+            errors.extend(validate_merge_approval(content))
             errors.extend(validate_tdd_sections(content))
 
     return errors
