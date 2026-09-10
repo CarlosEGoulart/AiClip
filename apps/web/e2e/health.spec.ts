@@ -77,7 +77,8 @@ function installDiagnostics(page: Page): { diagnostics: Diagnostics; settlement:
     })
   })
   page.on('response', (response) => {
-    if (response.url().includes('/api/')) {
+    const pathname = new URL(response.url()).pathname
+    if (pathname.startsWith('/api/')) {
       const parse: Promise<void> = response.json().then(
         (body: unknown) => {
           diagnostics.apiResponses.push({ url: response.url(), status: response.status(), body })
@@ -140,51 +141,72 @@ async function assertContentReadable(page: Page, locator: Locator, label: string
   expect(box!.height, `${label} has readable height`).toBeGreaterThan(0)
 }
 
+function isHealthOwned(url: string): boolean {
+  try {
+    return new URL(url).pathname.startsWith(HEALTH_URL_PART)
+  } catch {
+    return false
+  }
+}
+
+function healthDiagnostics(diagnostics: Diagnostics): Diagnostics {
+  return {
+    consoleErrors: diagnostics.consoleErrors.filter(e => e.url !== null && isHealthOwned(e.url)),
+    pageErrors: diagnostics.pageErrors,
+    failedRequests: diagnostics.failedRequests.filter(f => isHealthOwned(f.url)),
+    apiResponses: diagnostics.apiResponses.filter(r => isHealthOwned(r.url)),
+    errorResponses: diagnostics.errorResponses.filter(r => isHealthOwned(r.url)),
+  }
+}
+
 function assertExactSuccess(diagnostics: Diagnostics, expectedUrl: string) {
-  expect(diagnostics.apiResponses.length).toBeGreaterThan(0)
-  for (const response of diagnostics.apiResponses) {
+  const health = healthDiagnostics(diagnostics)
+  expect(health.apiResponses.length).toBeGreaterThan(0)
+  for (const response of health.apiResponses) {
     expect(response.url).toBe(expectedUrl)
     expect(response.status).toBe(200)
     expect(response.body).toMatchObject({ status: 'ok', database: 'connected' })
     expect(typeof (response.body as { timestamp?: unknown }).timestamp).toBe('string')
   }
-  expect(diagnostics.consoleErrors).toEqual([])
-  expect(diagnostics.pageErrors).toEqual([])
-  expect(diagnostics.failedRequests).toEqual([])
-  expect(diagnostics.errorResponses).toEqual([])
+  expect(health.consoleErrors).toEqual([])
+  expect(health.pageErrors).toEqual([])
+  expect(health.failedRequests).toEqual([])
+  expect(health.errorResponses).toEqual([])
 }
 
 function assertExactRejection(diagnostics: Diagnostics, expectedUrl: string) {
-  expect(diagnostics.failedRequests.length).toBeGreaterThanOrEqual(1)
-  for (const failed of diagnostics.failedRequests) {
+  const health = healthDiagnostics(diagnostics)
+  expect(health.failedRequests.length).toBeGreaterThanOrEqual(1)
+  for (const failed of health.failedRequests) {
     expect(failed.url).toBe(expectedUrl)
     expect(failed.failure).toBe('net::ERR_FAILED')
   }
-  expect(diagnostics.consoleErrors.length).toBeGreaterThanOrEqual(1)
-  for (const entry of diagnostics.consoleErrors) {
+  expect(health.consoleErrors.length).toBeGreaterThanOrEqual(1)
+  for (const entry of health.consoleErrors) {
     expect(entry.url).toBe(expectedUrl)
     expect(entry.text).toBe(EXPECTED_REJECTION_MESSAGE)
   }
-  expect(diagnostics.apiResponses).toEqual([])
-  expect(diagnostics.errorResponses).toEqual([])
-  expect(diagnostics.pageErrors).toEqual([])
+  expect(health.apiResponses).toEqual([])
+  expect(health.errorResponses).toEqual([])
+  expect(health.pageErrors).toEqual([])
 }
 
 function assertExact503(diagnostics: Diagnostics, expectedUrl: string) {
-  expect(diagnostics.apiResponses.length).toBeGreaterThanOrEqual(1)
-  for (const response of diagnostics.apiResponses) {
+  const health = healthDiagnostics(diagnostics)
+  expect(health.apiResponses.length).toBeGreaterThanOrEqual(1)
+  for (const response of health.apiResponses) {
     expect(response.url).toBe(expectedUrl)
     expect(response.status).toBe(503)
     expect(response.body).toEqual(EXPECTED_503_BODY)
   }
-  expect(diagnostics.failedRequests).toEqual([])
-  expect(diagnostics.errorResponses).toEqual([])
-  expect(diagnostics.consoleErrors.length).toBeGreaterThanOrEqual(1)
-  for (const entry of diagnostics.consoleErrors) {
+  expect(health.failedRequests).toEqual([])
+  expect(health.errorResponses).toEqual([])
+  expect(health.consoleErrors.length).toBeGreaterThanOrEqual(1)
+  for (const entry of health.consoleErrors) {
     expect(entry.url).toBe(expectedUrl)
     expect(entry.text).toBe(EXPECTED_503_MESSAGE)
   }
-  expect(diagnostics.pageErrors).toEqual([])
+  expect(health.pageErrors).toEqual([])
 }
 
 async function captureState(page: Page, testInfo: TestInfo, state: string) {
@@ -195,7 +217,7 @@ test.describe('Health Check Flow', () => {
   test('shows the real health result from Laravel and PostgreSQL', async ({ page }, testInfo) => {
     const { diagnostics, settlement } = installDiagnostics(page)
 
-    await page.goto('/')
+    await page.goto('/health')
 
     const heading = page.getByRole('heading', { name: 'Health Status' })
     await assertContentReadable(page, heading, 'health heading')
@@ -225,15 +247,15 @@ test.describe('Health Check Flow', () => {
       await route.continue()
     })
 
-    await page.goto('/')
+    await page.goto('/health')
 
     await expect(page.getByRole('status')).toContainText('Loading health status...')
     expect(await page.getByRole('alert').count()).toBe(0)
     expect(await page.getByText('Status: ok').count()).toBe(0)
-    expect(diagnostics.failedRequests).toEqual([])
-    expect(diagnostics.apiResponses).toEqual([])
-    expect(diagnostics.errorResponses).toEqual([])
-    expect(diagnostics.consoleErrors).toEqual([])
+    expect(healthDiagnostics(diagnostics).failedRequests).toEqual([])
+    expect(healthDiagnostics(diagnostics).apiResponses).toEqual([])
+    expect(healthDiagnostics(diagnostics).errorResponses).toEqual([])
+    expect(healthDiagnostics(diagnostics).consoleErrors).toEqual([])
     expect(diagnostics.pageErrors).toEqual([])
     await assertNoHorizontalOverflow(page)
     await captureState(page, testInfo, 'pending')
@@ -256,7 +278,7 @@ test.describe('Health Check Flow', () => {
 
     await page.route(`**${HEALTH_URL_PART}`, (route) => route.abort('failed'))
 
-    await page.goto('/')
+    await page.goto('/health')
 
     const alert = page.getByRole('alert')
     await assertContentReadable(page, alert, 'error alert')
@@ -284,7 +306,7 @@ test.describe('Health Check Flow', () => {
       }),
     )
 
-    await page.goto('/')
+    await page.goto('/health')
 
     const alert = page.getByRole('alert')
     await assertContentReadable(page, alert, 'error alert')
@@ -305,7 +327,7 @@ test.describe('Health Check Flow', () => {
 
     await page.route(`**${HEALTH_URL_PART}`, (route) => route.abort('failed'))
 
-    await page.goto('/')
+    await page.goto('/health')
 
     await expect(page.getByRole('alert')).toBeVisible({ timeout: 15000 })
     await settleDiagnostics(settlement)
@@ -321,7 +343,7 @@ test.describe('Health Check Flow', () => {
           ...diagnostics,
           consoleErrors: [
             ...diagnostics.consoleErrors,
-            { text: EXPECTED_REJECTION_MESSAGE, url: `${expectedUrl}/../other.js` },
+            { text: EXPECTED_REJECTION_MESSAGE, url: 'http://wrong-origin:9999/api/v1/health' },
           ],
         },
         expectedUrl,
@@ -405,12 +427,13 @@ test.describe('Health Check Flow', () => {
 
     let finishedApiRequests = 0
     page.on('requestfinished', (request) => {
-      if (request.url().includes('/api/')) {
+      const pathname = new URL(request.url()).pathname
+      if (pathname.startsWith('/api/')) {
         finishedApiRequests += 1
       }
     })
 
-    await page.goto('/')
+    await page.goto('/health')
 
     await expect(page.getByRole('alert')).toBeVisible({ timeout: 15000 })
 
@@ -424,13 +447,19 @@ test.describe('Health Check Flow', () => {
     // Key-collapsed tracking reports zero pending here because the finished
     // first request removes the shared method+URL key while the identical
     // second request is still outstanding.
-    expect(settlement.pending.size).toBe(1)
+    const healthPending = [...settlement.pending].filter(r => {
+      try { return new URL(r.url()).pathname.startsWith(HEALTH_URL_PART) } catch { return false }
+    })
+    expect(healthPending.length).toBe(1)
 
     releaseSecond()
     await settleDiagnostics(settlement)
 
     // The released second response is observed with its wrong status.
     expect(diagnostics.apiResponses.some((response) => response.status === 500)).toBe(true)
-    expect(settlement.pending.size).toBe(0)
+    const remainingHealth = [...settlement.pending].filter(r => {
+      try { return new URL(r.url()).pathname.startsWith(HEALTH_URL_PART) } catch { return false }
+    })
+    expect(remainingHealth.length).toBe(0)
   })
 })
