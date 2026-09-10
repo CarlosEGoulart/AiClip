@@ -17,6 +17,7 @@ from validators import (
     validate_commit_message,
     validate_merge_approval,
     validate_pr_body,
+    validate_sdd_bundle,
     validate_tdd_sections,
 )
 
@@ -88,7 +89,7 @@ def find_evidence_file(issue_number: int, specs_dir: Path | None = None) -> Path
     return None
 
 
-def run_checks() -> list[str]:
+def run_checks(specs_dir: Path | None = None) -> list[str]:
     """Run all governance checks and return list of errors."""
     errors = []
 
@@ -131,13 +132,17 @@ def run_checks() -> list[str]:
 
     # Validate evidence file
     if branch_issue is not None:
-        evidence_path = find_evidence_file(branch_issue)
+        evidence_path = find_evidence_file(branch_issue, specs_dir)
         if evidence_path is None:
             errors.append(f"No evidence.md found for issue #{branch_issue}")
         else:
             content = evidence_path.read_text()
             errors.extend(validate_merge_approval(content))
             errors.extend(validate_tdd_sections(content))
+
+    # Validate SDD bundle completeness
+    resolved_specs = specs_dir if specs_dir is not None else Path(__file__).resolve().parents[2] / "specs"
+    errors.extend(validate_sdd_bundle(resolved_specs))
 
     return errors
 

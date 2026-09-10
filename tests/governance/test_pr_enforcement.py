@@ -61,11 +61,14 @@ Decision: APPROVE
 
 
 def _create_temp_specs(tmp: Path, issue_number: int, evidence_content: str) -> Path:
-    """Create temporary specs directory with evidence file."""
+    """Create temporary specs directory with complete SDD bundle."""
     specs_dir = tmp / "specs"
     specs_dir.mkdir()
     issue_dir = specs_dir / f"{issue_number:03d}-test-issue"
     issue_dir.mkdir()
+    (issue_dir / "spec.md").write_text(f"# Spec for issue #{issue_number}")
+    (issue_dir / "plan.md").write_text(f"# Plan for issue #{issue_number}")
+    (issue_dir / "test-plan.md").write_text(f"# Test plan for issue #{issue_number}")
     (issue_dir / "evidence.md").write_text(evidence_content)
     return specs_dir
 
@@ -101,10 +104,9 @@ class TestPrEnforcementIntegration(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmp:
                 specs_dir = _create_temp_specs(Path(tmp), 99, VALID_EVIDENCE)
                 with patch.dict(os.environ, {"GITHUB_EVENT_PATH": event_file}):
-                    from pr_enforcement import find_evidence_file, run_checks
-                    evidence = find_evidence_file(99, specs_dir)
-                    self.assertIsNotNone(evidence)
-                    self.assertEqual(evidence.name, "evidence.md")
+                    from pr_enforcement import run_checks
+                    errors = run_checks(specs_dir)
+                    self.assertEqual(errors, [])
         finally:
             os.unlink(event_file)
 
@@ -122,12 +124,10 @@ class TestPrEnforcementIntegration(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 specs_dir = _create_temp_specs(Path(tmp), 99, REJECT_EVIDENCE)
-                from pr_enforcement import find_evidence_file
-                evidence = find_evidence_file(99, specs_dir)
-                self.assertIsNotNone(evidence)
-                from validators import validate_merge_approval
-                errors = validate_merge_approval(evidence.read_text())
-                self.assertTrue(any("REJECT" in e for e in errors))
+                with patch.dict(os.environ, {"GITHUB_EVENT_PATH": event_file}):
+                    from pr_enforcement import run_checks
+                    errors = run_checks(specs_dir)
+                    self.assertTrue(any("REJECT" in e for e in errors))
         finally:
             os.unlink(event_file)
 
@@ -145,12 +145,10 @@ class TestPrEnforcementIntegration(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 specs_dir = _create_temp_specs(Path(tmp), 99, BARE_NA_EVIDENCE)
-                from pr_enforcement import find_evidence_file
-                evidence = find_evidence_file(99, specs_dir)
-                self.assertIsNotNone(evidence)
-                from validators import validate_tdd_sections
-                errors = validate_tdd_sections(evidence.read_text())
-                self.assertTrue(any("TDD" in e for e in errors))
+                with patch.dict(os.environ, {"GITHUB_EVENT_PATH": event_file}):
+                    from pr_enforcement import run_checks
+                    errors = run_checks(specs_dir)
+                    self.assertTrue(any("TDD" in e for e in errors))
         finally:
             os.unlink(event_file)
 
@@ -283,6 +281,114 @@ class TestPrEnforcementIntegration(unittest.TestCase):
             from pr_enforcement import find_evidence_file
             result = find_evidence_file(99, specs_dir)
             self.assertIsNone(result)
+
+
+def _create_incomplete_bundle(tmp: Path, issue_number: int, files: dict[str, str]) -> Path:
+    """Create temporary specs directory with specified files (may be incomplete)."""
+    specs_dir = tmp / "specs"
+    specs_dir.mkdir()
+    issue_dir = specs_dir / f"{issue_number:03d}-test-issue"
+    issue_dir.mkdir()
+    for fname, content in files.items():
+        (issue_dir / fname).write_text(content)
+    return specs_dir
+
+
+def _make_event_file(body: str) -> str:
+    """Create a temp event file with custom PR body, return path."""
+    data = {
+        "pull_request": {
+            "number": 99,
+            "body": body,
+        }
+    }
+    f = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+    json.dump(data, f)
+    f.close()
+    return f.name
+
+
+class TestRunChecksSddBundle(unittest.TestCase):
+    """RED tests proving run_checks() accepts incomplete SDD bundles."""
+
+    @patch("pr_enforcement.get_commit_messages")
+    @patch("pr_enforcement.get_branch_name")
+    @patch.dict(os.environ, {"GITHUB_BASE_REF": "master"})
+    def test_run_checks_missing_plan_fails(self, mock_branch, mock_commits):
+        """run_checks() fails when plan.md is missing."""
+        mock_branch.return_value = "@carlosegoulart/99/fix/test-issue"
+        mock_commits.return_value = ["fix(governance): test enforcement"]
+        event_file = _make_event_file(
+            "## Summary\n\nFix.\n\n## Scope\n\n- governance\n\n"
+            "## TDD Evidence\n\n### RED\n\nFail.\n\n### GREEN\n\nPass.\n\n"
+            "### REFACTOR\n\nClean.\n\n## Tests\n\n- [x] Pass\n\nCloses #99"
+        )
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                specs_dir = _create_incomplete_bundle(Path(tmp), 99, {
+                    "spec.md": "# Spec",
+                    "test-plan.md": "# Test Plan",
+                    "evidence.md": VALID_EVIDENCE,
+                })
+                with patch.dict(os.environ, {"GITHUB_EVENT_PATH": event_file}):
+                    from pr_enforcement import run_checks
+                    errors = run_checks(specs_dir)
+                    self.assertTrue(any("plan.md" in e for e in errors))
+        finally:
+            os.unlink(event_file)
+
+    @patch("pr_enforcement.get_commit_messages")
+    @patch("pr_enforcement.get_branch_name")
+    @patch.dict(os.environ, {"GITHUB_BASE_REF": "master"})
+    def test_run_checks_missing_test_plan_fails(self, mock_branch, mock_commits):
+        """run_checks() fails when test-plan.md is missing."""
+        mock_branch.return_value = "@carlosegoulart/99/fix/test-issue"
+        mock_commits.return_value = ["fix(governance): test enforcement"]
+        event_file = _make_event_file(
+            "## Summary\n\nFix.\n\n## Scope\n\n- governance\n\n"
+            "## TDD Evidence\n\n### RED\n\nFail.\n\n### GREEN\n\nPass.\n\n"
+            "### REFACTOR\n\nClean.\n\n## Tests\n\n- [x] Pass\n\nCloses #99"
+        )
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                specs_dir = _create_incomplete_bundle(Path(tmp), 99, {
+                    "spec.md": "# Spec",
+                    "plan.md": "# Plan",
+                    "evidence.md": VALID_EVIDENCE,
+                })
+                with patch.dict(os.environ, {"GITHUB_EVENT_PATH": event_file}):
+                    from pr_enforcement import run_checks
+                    errors = run_checks(specs_dir)
+                    self.assertTrue(any("test-plan.md" in e for e in errors))
+        finally:
+            os.unlink(event_file)
+
+    @patch("pr_enforcement.get_commit_messages")
+    @patch("pr_enforcement.get_branch_name")
+    @patch.dict(os.environ, {"GITHUB_BASE_REF": "master"})
+    def test_run_checks_empty_required_fails(self, mock_branch, mock_commits):
+        """run_checks() fails when required file is empty."""
+        mock_branch.return_value = "@carlosegoulart/99/fix/test-issue"
+        mock_commits.return_value = ["fix(governance): test enforcement"]
+        event_file = _make_event_file(
+            "## Summary\n\nFix.\n\n## Scope\n\n- governance\n\n"
+            "## TDD Evidence\n\n### RED\n\nFail.\n\n### GREEN\n\nPass.\n\n"
+            "### REFACTOR\n\nClean.\n\n## Tests\n\n- [x] Pass\n\nCloses #99"
+        )
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                specs_dir = _create_incomplete_bundle(Path(tmp), 99, {
+                    "spec.md": "# Spec",
+                    "plan.md": "",
+                    "test-plan.md": "# Test Plan",
+                    "evidence.md": VALID_EVIDENCE,
+                })
+                with patch.dict(os.environ, {"GITHUB_EVENT_PATH": event_file}):
+                    from pr_enforcement import run_checks
+                    errors = run_checks(specs_dir)
+                    self.assertTrue(any("plan.md" in e and "empty" in e for e in errors))
+        finally:
+            os.unlink(event_file)
 
 
 if __name__ == "__main__":
