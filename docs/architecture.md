@@ -39,7 +39,7 @@ The platform follows a request-response pattern for user interactions and an eve
 **Responsibility**: Application logic, authentication, authorization, data persistence
 
 **Technology Stack**:
-- Laravel 11 with PHP 8.3.6
+- Laravel 13 with PHP 8.3.6
 - PostgreSQL 16 for primary data store
 - Laravel Queues for job dispatching
 - Laravel Sanctum for API authentication

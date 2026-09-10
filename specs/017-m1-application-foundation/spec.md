@@ -13,7 +13,7 @@ Create a working vertical slice proving React Web → GET /api/v1/health → Lar
 | Technology | Version | Source |
 |---|---|---|
 | PHP | 8.3.6 | php.net |
-| Laravel | 11.x | laravel.com |
+| Laravel | 13.x | laravel.com |
 | Node.js | v24.20.0 | nodejs.org |
 | npm | 12.0.2 | npmjs.com |
 | Docker | 29.7.2 | docker.com |
@@ -32,7 +32,7 @@ docker-compose.yml
 
 ## Laravel API (apps/api/)
 
-- Laravel 11 with PHP 8.3
+- Laravel 13 with PHP 8.3
 - PostgreSQL 16 via Docker Compose
 - `GET /api/v1/health` endpoint
 - CORS configured for localhost:5173
@@ -72,5 +72,5 @@ Failure (503):
 ## CI Workflows
 
 - Backend: PHP, Composer, PostgreSQL, Pest
-- Frontend: Node.js, npm, Vitest, build
+- Frontend: Node.js, npm, Jest, build
 - E2E: Docker Compose, Playwright

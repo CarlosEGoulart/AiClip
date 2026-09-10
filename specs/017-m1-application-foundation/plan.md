@@ -13,10 +13,10 @@
 ## Phase 2: Laravel API Scaffolding
 
 1. Create apps/api/ directory
-2. Initialize Laravel 11 via composer create-project
+2. Initialize Laravel 13 via composer create-project
 3. Configure .env for PostgreSQL
 4. Create GET /api/v1/health route
-5. Implement health controller with real DB check
+5. Implement health endpoint with real DB check
 6. Configure CORS for localhost:5173
 7. Create .env.example
 
@@ -42,7 +42,7 @@
 
 ## Phase 6: Frontend Tests
 
-1. Write Vitest + RTL tests for HealthCheck
+1. Write Jest + RTL tests for HealthCheck
 2. Test loading/success/error states
 3. Verify all tests pass
 

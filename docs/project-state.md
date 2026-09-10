@@ -20,7 +20,7 @@ Issue #13 SDD bundle enforcement: generic `validate_sdd_bundle()` validates ever
 
 Issue #15 SDD bundle wiring: `validate_sdd_bundle()` now executed by `run_checks()` in actual PR governance. Generic validation catches any incomplete `specs/<issue>-*` directory without hardcoded issue list. Integration tests exercise `run_checks()` orchestration with isolated temporary directories.
 
-Issue #17 M1 Application Foundation: Laravel 11 API in apps/api/, React 19 + TypeScript + Vite frontend in apps/web/, PostgreSQL 16 via Docker Compose, GET /api/v1/health endpoint with real database connectivity check, backend Pest tests, frontend Jest tests, CI workflows for backend, frontend, and E2E.
+Issue #17 M1 Application Foundation: Laravel 13 API in apps/api/, React 19 + TypeScript + Vite frontend in apps/web/, PostgreSQL 16 via Docker Compose, GET /api/v1/health endpoint with real database connectivity check, backend Pest tests, frontend Jest tests, CI workflows for backend, frontend, and E2E.
 
 # Important Decisions
 

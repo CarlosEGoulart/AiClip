@@ -6,10 +6,10 @@ Initialize the M1 Application Foundation with a working vertical slice: React We
 
 ## Scope
 
-- Laravel 11 API in apps/api/ with GET /api/v1/health endpoint
+- Laravel 13 API in apps/api/ with GET /api/v1/health endpoint
 - React 19 + TypeScript + Vite frontend in apps/web/
 - PostgreSQL 16 via Docker Compose
-- Backend: 6 Pest tests (health endpoint, CORS, validation)
+- Backend: 4 Pest tests (health endpoint response, fields, timestamp, DB connectivity)
 - Frontend: 3 Jest tests (HealthCheck component states)
 - CI workflows for backend, frontend, and E2E testing
 
@@ -22,17 +22,15 @@ Initialize the M1 Application Foundation with a working vertical slice: React We
 Failed health endpoint tests written before implementation:
 
 ```
-tests/Feature/HealthTest.php — 6 tests
+tests/Feature/HealthTest.php — 4 tests
 ```
 
-- `test_health_endpoint_returns_ok_status` — asserts 200 + JSON structure
-- `test_health_endpoint_returns_database_status` — asserts `database` key present
-- `test_health_endpoint_returns_timestamp` — asserts ISO-8601 timestamp
-- `test_health_endpoint_is_get_only` — asserts POST/PUT/DELETE return 405
-- `test_health_endpoint_does_not_require_authentication` — asserts no 401/403
-- `test_health_endpoint_responds_under_500ms` — asserts performance
+- `returns 200 when database is connected` — asserts HTTP 200
+- `returns valid JSON with expected fields` — asserts status, database, timestamp keys
+- `has a timestamp in ISO 8601 format` — asserts timestamp regex
+- `actually queries the database` — asserts database field is "connected"
 
-All 6 tests failed before the health controller was implemented (RED confirmed).
+All 4 tests failed before the health route was implemented (RED confirmed).
 
 #### Frontend (Jest + React Testing Library)
 
@@ -52,35 +50,29 @@ All 3 tests failed before component implementation (RED confirmed).
 
 #### Backend
 
-Health endpoint implemented in `app/Http/Controllers/HealthController.php`:
+Health endpoint implemented as closure in `routes/api.php`:
 
 ```php
-public function __invoke(): JsonResponse
-{
-    try {
-        DB::connection()->getPdo();
-        $database = 'connected';
-        $status = Response::HTTP_OK;
-    } catch (Exception) {
-        $database = 'disconnected';
-        $status = Response::HTTP_SERVICE_UNAVAILABLE;
-    }
-
-    return response()->json([
-        'status' => $database === 'connected' ? 'ok' : 'error',
-        'database' => $database,
-        'timestamp' => now()->toIso8601String(),
-    ], $status);
-}
+Route::prefix('v1')->group(function () {
+    Route::get('/health', function () {
+        try {
+            DB::select('SELECT 1');
+            return response()->json([
+                'status' => 'ok',
+                'database' => 'connected',
+                'timestamp' => now()->toIso8601String(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'database' => 'disconnected',
+            ], 503);
+        }
+    });
+});
 ```
 
-Route registered in `routes/api.php`:
-
-```php
-Route::get('/v1/health', HealthController::class)->name('health.show');
-```
-
-All 6 Pest tests pass (GREEN confirmed).
+All 4 Pest tests pass (GREEN confirmed).
 
 #### Frontend
 
@@ -94,7 +86,7 @@ All 3 Jest tests pass (GREEN confirmed).
 
 ### REFACTOR
 
-- Health controller uses `__invoke` (single-action) — clean and idiomatic
+- Health endpoint uses closure — appropriate for a single simple endpoint
 - Component uses `useEffect` with `fetch` — standard pattern
 - No additional refactoring needed; implementations were minimal from GREEN
 
