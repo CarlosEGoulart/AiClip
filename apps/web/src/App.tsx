@@ -47,13 +47,30 @@ function AuthView() {
 }
 
 function App() {
+  const [showAuth, setShowAuth] = React.useState(false);
+
+  if (showAuth) {
+    return (
+      <AuthProvider>
+        <main>
+          <button onClick={() => setShowAuth(false)} className="link-button back-button">
+            ← Back
+          </button>
+          <AuthView />
+        </main>
+      </AuthProvider>
+    );
+  }
+
   return (
-    <AuthProvider>
-      <main>
-        <AuthView />
-        <HealthCheck />
-      </main>
-    </AuthProvider>
+    <main>
+      <HealthCheck />
+      <div className="auth-entry">
+        <button onClick={() => setShowAuth(true)} className="link-button">
+          Sign In
+        </button>
+      </div>
+    </main>
   );
 }
 
