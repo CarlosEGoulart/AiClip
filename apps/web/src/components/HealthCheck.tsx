@@ -12,8 +12,7 @@ export default function HealthCheck() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // @ts-ignore - Vite-specific import.meta.env
-    const API_BASE = import.meta?.env?.VITE_API_BASE_URL || ''
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
     fetch(`${API_BASE}/api/v1/health`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)

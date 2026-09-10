@@ -15,7 +15,7 @@ The platform follows a request-response pattern for user interactions and an eve
 **Technology Stack**:
 - React 19.2.8 with TypeScript 6.0.2
 - Vite 8.2.2 for build tooling
-- Jest + React Testing Library for testing
+- Vitest + React Testing Library for testing
 - Responsive CSS framework (Tailwind CSS or similar)
 
 **Key Capabilities**:

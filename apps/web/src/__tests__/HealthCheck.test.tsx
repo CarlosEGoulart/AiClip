@@ -1,87 +1,120 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import '@testing-library/jest-dom'
-import React from 'react'
-
-// Mock the HealthCheck module to avoid import.meta.env issues
-jest.mock('../components/HealthCheck', () => {
-  const HealthCheck = () => {
-    const [health, setHealth] = React.useState<{ status: string; database: string; timestamp?: string } | null>(null)
-    const [loading, setLoading] = React.useState(true)
-    const [error, setError] = React.useState<string | null>(null)
-
-    React.useEffect(() => {
-      fetch('/api/v1/health')
-        .then((res: Response) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          return res.json()
-        })
-        .then((data: { status: string; database: string; timestamp?: string }) => {
-          setHealth(data)
-          setLoading(false)
-        })
-        .catch((err: Error) => {
-          setError(err.message || 'Failed to fetch health status')
-          setLoading(false)
-        })
-    }, [])
-
-    if (loading) return <div role="status">Loading health status...</div>
-    if (error) return <div role="alert"><h2>Error</h2><p>{error}</p></div>
-    return (
-      <div>
-        <h1>Health Status</h1>
-        <p>Status: {health?.status}</p>
-        <p>Database: {health?.database}</p>
-        {health?.timestamp && <p>Timestamp: {health.timestamp}</p>}
-      </div>
-    )
-  }
-
-  return { __esModule: true, default: HealthCheck }
-})
-
-// Mock fetch globally
-const mockFetch = jest.fn()
-Object.defineProperty(globalThis, 'fetch', {
-  value: mockFetch,
-  writable: true,
-})
-
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HealthCheck from '../components/HealthCheck'
 
+const HEALTH_PATH = '/api/v1/health'
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function jsonResponse(body: unknown, init?: { ok: boolean; status: number }) {
+  return {
+    ok: init?.ok ?? true,
+    status: init?.status ?? 200,
+    json: () => Promise.resolve(body),
+  }
+}
+
 describe('HealthCheck', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+  })
+
   afterEach(() => {
-    jest.restoreAllMocks()
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
   })
 
-  it('renders loading state initially', () => {
-    mockFetch.mockImplementation(() => new Promise(() => {}))
+  it('remains pending while the health fetch is unresolved', () => {
+    const gate = deferred<unknown>()
+    fetchMock.mockReturnValue(gate.promise)
     render(<HealthCheck />)
+
     expect(screen.getByRole('status')).toHaveTextContent('Loading health status...')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText('Status: ok')).not.toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('renders success state after successful API call', async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
+  it('renders status, database, and timestamp after a successful response', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
         status: 'ok',
         database: 'connected',
         timestamp: '2026-09-10T00:00:00.000000Z',
       }),
-    })
+    )
     render(<HealthCheck />)
+
     await waitFor(() => {
       expect(screen.getByText('Status: ok')).toBeInTheDocument()
-      expect(screen.getByText('Database: connected')).toBeInTheDocument()
     })
+    expect(screen.getByRole('heading', { name: 'Health Status' })).toBeInTheDocument()
+    expect(screen.getByText('Database: connected')).toBeInTheDocument()
+    expect(screen.getByText('Timestamp: 2026-09-10T00:00:00.000000Z')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('renders error state after failed API call', async () => {
-    mockFetch.mockRejectedValue(new Error('Network error'))
+  it('renders an error alert when the fetch rejects', async () => {
+    fetchMock.mockRejectedValue(new Error('Network error'))
     render(<HealthCheck />)
+
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
-      expect(screen.getByText('Network error')).toBeInTheDocument()
     })
+    expect(screen.getByText('Network error')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('Status: ok')).not.toBeInTheDocument()
+  })
+
+  it('renders an error alert for a non-2xx response instead of success content', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ status: 'error', database: 'disconnected' }, { ok: false, status: 503 }),
+    )
+    render(<HealthCheck />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+    expect(screen.getByText('HTTP 503')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('Status: error')).not.toBeInTheDocument()
+  })
+
+  it('requests the relative health URL when no public origin is configured', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ status: 'ok', database: 'connected', timestamp: '2026-09-10T00:00:00Z' }),
+    )
+    render(<HealthCheck />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Status: ok')).toBeInTheDocument()
+    })
+    expect(fetchMock).toHaveBeenCalledWith(HEALTH_PATH)
+  })
+
+  it('prefixes the health path with the configured public origin', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'http://api.example.com')
+    fetchMock.mockResolvedValue(
+      jsonResponse({ status: 'ok', database: 'connected', timestamp: '2026-09-10T00:00:00Z' }),
+    )
+    render(<HealthCheck />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Status: ok')).toBeInTheDocument()
+    })
+    expect(fetchMock).toHaveBeenCalledWith(`http://api.example.com${HEALTH_PATH}`)
   })
 })
