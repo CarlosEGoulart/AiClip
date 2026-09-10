@@ -5,9 +5,10 @@ health endpoint (`GET /api/v1/health`) with a real database check.
 
 # Completed Capabilities
 
-M1 foundation: health API/page, Pest backend suite, Vitest frontend suite with
-mutation-proven assertions, Playwright-managed E2E at three viewports, and
-backend/frontend/E2E/governance CI.
+M0 governance foundation (Issues #1–#15). M1 foundation: health API/page, Pest
+backend suite, Vitest frontend suite with mutation-proven assertions,
+Playwright-managed E2E at three viewports, and backend/frontend/E2E/governance
+CI.
 
 # Important Decisions
 
@@ -22,7 +23,8 @@ E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
 
 # Current Milestone
 
-M1 Application Foundation.
+M1 Application Foundation (in progress). Next slice: authentication and user
+management.
 
 # Next Architectural Goal
 

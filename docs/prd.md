@@ -43,7 +43,7 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 1. User uploads video file to a project
 2. System transcribes audio to text
 3. System detects scenes and identifies interesting segments
-4. System ranks segments by potential viral appeal
+4. System ranks segments by recommendation relevance
 5. User reviews ranked clip suggestions
 6. User selects clips, adds captions, and adjusts framing
 7. System renders vertical clips with captions
@@ -213,7 +213,7 @@ The following are explicitly NOT included in MVP:
 ## Dependencies
 
 - Issue #1 (Governance Bootstrap): Completed
-- M1 — Application Foundation: Pending
+- M1 — Application Foundation: In progress (foundation established, authentication next)
 - External APIs: YouTube Data API, Instagram Graph API, TikTok API
 - AI Providers: Transcription service, Image generation service
 - Infrastructure: Object storage, PostgreSQL database, Queue system
