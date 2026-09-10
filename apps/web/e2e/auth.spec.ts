@@ -1,7 +1,5 @@
 import { expect, test } from '@playwright/test'
 
-const API_HOST = 'http://127.0.0.1:8000'
-
 function uniqueEmail() {
   return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`
 }
