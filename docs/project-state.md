@@ -14,6 +14,8 @@ Issue #7 governance enforcement: automated validation for commit messages (Conve
 
 Issue #9 PR enforcement completion: orchestration script integrating all five validators, cross-validation of branch issue against PR body, evidence file resolution, Tester APPROVE gate, TDD evidence validation. Integration tests with deterministic fixtures.
 
+Issue #11 merge gate finalization: APPROVE-only merge gate (REJECT now fails), deterministic evidence resolution (multiple matches fail), TDD N/A requires meaningful reason. Integration tests use real temporary evidence without error filtering.
+
 # Important Decisions
 
 Strict issue linearity with one active implementation issue. TDD RED before implementation content. Independent Tester review. English-only repository content.

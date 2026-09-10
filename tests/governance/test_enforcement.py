@@ -309,6 +309,49 @@ class TestTddSectionsValidator(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("must not be empty", errors[0])
 
+    def test_invalid_bare_na_without_reason(self):
+        errors = validate_tdd_sections("TDD: N/A")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("must contain", errors[0])
+
+    def test_invalid_na_with_empty_reason(self):
+        errors = validate_tdd_sections("TDD: N/A —")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("must contain", errors[0])
+
+
+class TestMergeApprovalValidator(unittest.TestCase):
+    """Tests for the new validate_merge_approval function."""
+
+    def test_approve_passes(self):
+        from validators import validate_merge_approval
+        errors = validate_merge_approval("Decision: APPROVE")
+        self.assertEqual(errors, [])
+
+    def test_reject_fails(self):
+        from validators import validate_merge_approval
+        errors = validate_merge_approval("Decision: REJECT")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("APPROVE", errors[0])
+
+    def test_missing_decision_fails(self):
+        from validators import validate_merge_approval
+        errors = validate_merge_approval("No decision here")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("APPROVE", errors[0])
+
+    def test_both_decisions_fail(self):
+        from validators import validate_merge_approval
+        errors = validate_merge_approval("Decision: APPROVE\nDecision: REJECT")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("exactly one", errors[0])
+
+    def test_empty_content_fails(self):
+        from validators import validate_merge_approval
+        errors = validate_merge_approval("")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("must not be empty", errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

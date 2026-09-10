@@ -30,7 +30,7 @@ DECISION_APPROVE = "Decision: APPROVE"
 DECISION_REJECT = "Decision: REJECT"
 
 TDD_HEADINGS = ["### RED", "### GREEN", "### REFACTOR"]
-TDD_NA_PATTERN = re.compile(r"TDD:\s*N/A", re.IGNORECASE)
+TDD_NA_PATTERN = re.compile(r"TDD:\s*N/A\s*[—-]\s*\S", re.IGNORECASE)
 
 
 def validate_commit_message(message: str) -> list[str]:
@@ -138,7 +138,30 @@ def validate_tdd_sections(content: str) -> list[str]:
     if not has_all_headings and not has_na:
         errors.append(
             "Evidence must contain '### RED', '### GREEN', '### REFACTOR' "
-            "sections or explicit 'TDD: N/A' with reason"
+            "sections or explicit 'TDD: N/A — <reason>'"
         )
+
+    return errors
+
+
+def validate_merge_approval(content: str) -> list[str]:
+    """Validate evidence file has explicit APPROVE decision for merge gate.
+
+    Returns empty list for APPROVE, list of error strings for REJECT, missing, or conflicting.
+    """
+    errors = []
+    if not content or not content.strip():
+        errors.append("Evidence content must not be empty")
+        return errors
+
+    has_approve = DECISION_APPROVE in content
+    has_reject = DECISION_REJECT in content
+
+    if has_approve and has_reject:
+        errors.append("Evidence must contain exactly one decision, not both APPROVE and REJECT")
+    elif has_reject:
+        errors.append("Merge gate requires 'Decision: APPROVE', found 'Decision: REJECT'")
+    elif not has_approve:
+        errors.append("Merge gate requires 'Decision: APPROVE' in evidence file")
 
     return errors
