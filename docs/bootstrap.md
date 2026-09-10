@@ -200,7 +200,25 @@ evidence.md
 
 Do not turn evidence into a complete execution transcript.
 
-Store only information useful for auditability.
+Evidence should contain concise audit artifacts:
+
+* RED cause and result;
+* GREEN result;
+* REFACTOR verification;
+* important commands and their exit status;
+* test counts;
+* Tester decision;
+* meaningful limitations.
+
+Do not store:
+
+* large raw logs;
+* temporary script source;
+* long `/tmp/...` narratives;
+* complete tool transcripts;
+* repeated verification prose.
+
+Logs and screenshots belong in CI artifacts where applicable. Evidence exists for auditability, not as a session recording.
 
 ---
 

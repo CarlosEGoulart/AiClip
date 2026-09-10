@@ -11,20 +11,29 @@ permission:
   edit:
     "**": deny
     "docs/project-state.md": allow
-    "specs/001-init-opencode-agent-architecture/evidence.md": allow
+    "specs/*/evidence.md": allow
   bash:
     "**": deny
     "git status *": allow
     "git diff *": allow
     "git branch *": allow
+    "git checkout *": allow
     "git add *": allow
     "git commit *": allow
     "git push *": allow
+    "git log *": allow
+    "gh issue list *": allow
     "gh issue view *": allow
     "gh issue create *": allow
+    "gh issue close *": allow
     "gh pr list *": allow
     "gh pr view *": allow
     "gh pr create *": allow
+    "gh pr merge *": allow
+    "gh pr checks *": allow
+    "gh pr close *": allow
+    "gh run view *": allow
+    "gh run list *": allow
     "python -m unittest discover -s tests/governance *": allow
     "python --version": allow
     "opencode --version": allow
@@ -70,8 +79,4 @@ The Orchestrator controls the development lifecycle. It is the only agent author
 
 ## Shell guardrail limitations
 
-Allowed test and inspection commands execute code. Command pattern checks are workflow controls, not a sandbox against hostile agents. Arbitrary composition inside an allowed interpreter, nested OpenCode sessions, environment overrides, or global configuration changes can bypass static patterns. Inherited and global configuration affects effective behavior. Manual user invocation of any agent is not prevented by task rules. Orchestrator reviews effective runtime permissions and arranges restarts; report denied required operations to Orchestrator.
-
-## Issue #1 Self-Configuration Exception
-
-For issue #1 only, Builder creates the scoped governance artifacts under this specification after verified RED. Orchestrator reviews configuration changes and launches restarts. This exception grants no continuing self-authorization. Reuse in future issues requires explicit scope review. Static path allowances cannot themselves check GitHub issue state.
+Allowed test and inspection commands execute code. Command pattern checks are workflow controls, not a sandbox. Arbitrary composition inside an allowed interpreter, nested OpenCode sessions, environment overrides, or global configuration changes can bypass static patterns. Inherited and global configuration affects effective behavior. Report denied required operations to Orchestrator.
