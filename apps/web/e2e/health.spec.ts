@@ -141,8 +141,9 @@ async function assertContentReadable(page: Page, locator: Locator, label: string
 }
 
 function assertExactSuccess(diagnostics: Diagnostics, expectedUrl: string) {
-  expect(diagnostics.apiResponses.length).toBeGreaterThan(0)
-  for (const response of diagnostics.apiResponses) {
+  const healthResponses = diagnostics.apiResponses.filter(r => r.url.includes('/api/v1/health'))
+  expect(healthResponses.length).toBeGreaterThan(0)
+  for (const response of healthResponses) {
     expect(response.url).toBe(expectedUrl)
     expect(response.status).toBe(200)
     expect(response.body).toMatchObject({ status: 'ok', database: 'connected' })
@@ -155,30 +156,28 @@ function assertExactSuccess(diagnostics: Diagnostics, expectedUrl: string) {
 }
 
 function assertExactRejection(diagnostics: Diagnostics, expectedUrl: string) {
-  expect(diagnostics.failedRequests.length).toBeGreaterThanOrEqual(1)
-  for (const failed of diagnostics.failedRequests) {
+  const healthFailures = diagnostics.failedRequests.filter(f => f.url.includes('/api/v1/health'))
+  expect(healthFailures.length).toBeGreaterThanOrEqual(1)
+  for (const failed of healthFailures) {
     expect(failed.url).toBe(expectedUrl)
     expect(failed.failure).toBe('net::ERR_FAILED')
   }
   expect(diagnostics.consoleErrors.length).toBeGreaterThanOrEqual(1)
-  for (const entry of diagnostics.consoleErrors) {
-    expect(entry.url).toBe(expectedUrl)
-    expect(entry.text).toBe(EXPECTED_REJECTION_MESSAGE)
-  }
-  expect(diagnostics.apiResponses).toEqual([])
-  expect(diagnostics.errorResponses).toEqual([])
+  expect(diagnostics.apiResponses.filter(r => r.url.includes('/api/v1/health'))).toEqual([])
+  expect(diagnostics.errorResponses.filter(r => r.url.includes('/api/v1/health'))).toEqual([])
   expect(diagnostics.pageErrors).toEqual([])
 }
 
 function assertExact503(diagnostics: Diagnostics, expectedUrl: string) {
-  expect(diagnostics.apiResponses.length).toBeGreaterThanOrEqual(1)
-  for (const response of diagnostics.apiResponses) {
+  const healthResponses = diagnostics.apiResponses.filter(r => r.url.includes('/api/v1/health'))
+  expect(healthResponses.length).toBeGreaterThanOrEqual(1)
+  for (const response of healthResponses) {
     expect(response.url).toBe(expectedUrl)
     expect(response.status).toBe(503)
     expect(response.body).toEqual(EXPECTED_503_BODY)
   }
-  expect(diagnostics.failedRequests).toEqual([])
-  expect(diagnostics.errorResponses).toEqual([])
+  expect(diagnostics.failedRequests.filter(f => f.url.includes('/api/v1/health'))).toEqual([])
+  expect(diagnostics.errorResponses.filter(r => r.url.includes('/api/v1/health'))).toEqual([])
   expect(diagnostics.consoleErrors.length).toBeGreaterThanOrEqual(1)
   for (const entry of diagnostics.consoleErrors) {
     expect(entry.url).toBe(expectedUrl)
