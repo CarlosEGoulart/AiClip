@@ -5,6 +5,7 @@ evidence decisions, and TDD sections. No side effects, no network calls.
 """
 
 import re
+from pathlib import Path
 
 COMMIT_RE = re.compile(
     r"^(feat|fix|chore|refactor|docs|test|perf|ci)"
@@ -141,6 +142,28 @@ def validate_tdd_sections(content: str) -> list[str]:
             "sections or explicit 'TDD: N/A — <reason>'"
         )
 
+    return errors
+
+
+def validate_sdd_bundle(specs_dir: Path) -> list[str]:
+    """Validate that every issue directory contains all required SDD artifacts.
+
+    Returns empty list for valid bundles, list of error strings for invalid.
+    """
+    errors = []
+    if not specs_dir.exists():
+        return ["specs directory does not exist"]
+    for d in sorted(specs_dir.iterdir()):
+        if not d.is_dir() or not re.match(r"\d{3}-", d.name):
+            continue
+        for required in ["spec.md", "plan.md", "test-plan.md", "evidence.md"]:
+            path = d / required
+            if not path.exists():
+                errors.append(f"{d.name}: missing required file {required}")
+            elif not path.is_file():
+                errors.append(f"{d.name}: {required} is not a regular file")
+            elif path.stat().st_size == 0:
+                errors.append(f"{d.name}: {required} is empty")
     return errors
 
 

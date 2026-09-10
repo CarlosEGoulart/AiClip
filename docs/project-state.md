@@ -16,6 +16,8 @@ Issue #9 PR enforcement completion: orchestration script integrating all five va
 
 Issue #11 merge gate finalization: APPROVE-only merge gate (REJECT now fails), deterministic evidence resolution (multiple matches fail), TDD N/A requires meaningful reason. Integration tests use real temporary evidence without error filtering.
 
+Issue #13 SDD bundle enforcement: generic `validate_sdd_bundle()` validates every specs/ directory contains spec.md, plan.md, test-plan.md, evidence.md. Dependency injection for test isolation. Historical Issues #9 and #11 repaired with retrospective markers. Integration tests use temporary directories without mutating real specs/.
+
 # Important Decisions
 
 Strict issue linearity with one active implementation issue. TDD RED before implementation content. Independent Tester review. English-only repository content.
