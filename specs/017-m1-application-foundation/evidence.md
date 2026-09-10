@@ -1,8 +1,23 @@
 # Evidence: Issue #17 — M1 Application Foundation
 
-## RED Phase
+## Summary
 
-### Backend (Pest)
+Initialize the M1 Application Foundation with a working vertical slice: React Web → GET /api/v1/health → Laravel API → PostgreSQL.
+
+## Scope
+
+- Laravel 11 API in apps/api/ with GET /api/v1/health endpoint
+- React 19 + TypeScript + Vite frontend in apps/web/
+- PostgreSQL 16 via Docker Compose
+- Backend: 6 Pest tests (health endpoint, CORS, validation)
+- Frontend: 3 Jest tests (HealthCheck component states)
+- CI workflows for backend, frontend, and E2E testing
+
+## TDD Evidence
+
+### RED
+
+#### Backend (Pest)
 
 Failed health endpoint tests written before implementation:
 
@@ -19,7 +34,7 @@ tests/Feature/HealthTest.php — 6 tests
 
 All 6 tests failed before the health controller was implemented (RED confirmed).
 
-### Frontend (Jest + React Testing Library)
+#### Frontend (Jest + React Testing Library)
 
 Failed HealthCheck component tests written before implementation:
 
@@ -33,9 +48,9 @@ src/__tests__/HealthCheck.test.tsx — 3 tests
 
 All 3 tests failed before component implementation (RED confirmed).
 
-## GREEN Phase
+### GREEN
 
-### Backend
+#### Backend
 
 Health endpoint implemented in `app/Http/Controllers/HealthController.php`:
 
@@ -67,7 +82,7 @@ Route::get('/v1/health', HealthController::class)->name('health.show');
 
 All 6 Pest tests pass (GREEN confirmed).
 
-### Frontend
+#### Frontend
 
 HealthCheck component implemented in `src/components/HealthCheck.tsx`:
 
@@ -77,19 +92,11 @@ HealthCheck component implemented in `src/components/HealthCheck.tsx`:
 
 All 3 Jest tests pass (GREEN confirmed).
 
-## REFACTOR Phase
+### REFACTOR
 
 - Health controller uses `__invoke` (single-action) — clean and idiomatic
 - Component uses `useEffect` with `fetch` — standard pattern
 - No additional refactoring needed; implementations were minimal from GREEN
-
-## TDD Summary
-
-| Layer | Tests | RED | GREEN | REFACTOR |
-|---|---|---|---|---|
-| Backend (Pest) | 6 | Verified | All pass | Minimal |
-| Frontend (Jest) | 3 | Verified | All pass | Minimal |
-| E2E (Playwright) | 5 | N/A — environment constraints | N/A | N/A |
 
 ## Backend Verification
 
@@ -112,5 +119,16 @@ Playwright E2E tests (`e2e/health.spec.ts`) are written and configured but canno
 2. Playwright Chromium browser download (186MB) exceeds available `/home` partition space (119MB free)
 
 CI workflows (`.github/workflows/e2e.yml`) will run these tests on a clean GitHub Actions runner with sufficient disk and compatible Node.js.
+
+## Risks
+
+- Node.js v24 causes Vite/Vitest Bus errors locally; CI should use compatible Node.js version
+- Playwright E2E tests require Chromium browser download (186MB) which may fail on constrained CI runners
+
+## CI
+
+- Backend: PHP, Composer, PostgreSQL, Pest
+- Frontend: Node.js, npm, Jest, build
+- E2E: Docker Compose, Playwright
 
 ## Decision: APPROVE
