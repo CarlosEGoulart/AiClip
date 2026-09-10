@@ -271,7 +271,7 @@ class TestOrchestratorPermissions(unittest.TestCase):
 
 
 class TestEnvProtection(unittest.TestCase):
-    """Verify all agents protect .env secrets but allow .env.example."""
+    """Verify all agents protect .env secrets with generic wildcard patterns."""
 
     def setUp(self):
         self.agents = {}
@@ -294,6 +294,41 @@ class TestEnvProtection(unittest.TestCase):
             with self.subTest(agent=name):
                 self.assertEqual(decide(rules, ".env.production"), "deny", f"{name} must deny .env.production")
 
+    def test_all_agents_deny_env_testing(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, ".env.testing"), "deny", f"{name} must deny .env.testing")
+
+    def test_all_agents_deny_env_development(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, ".env.development"), "deny", f"{name} must deny .env.development")
+
+    def test_all_agents_deny_env_backup(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, ".env.backup"), "deny", f"{name} must deny .env.backup")
+
+    def test_all_agents_deny_arbitrary_future_env_variant(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, ".env.some-random-name"), "deny", f"{name} must deny arbitrary .env.*")
+
+    def test_all_agents_deny_nested_env_testing(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, "apps/api/.env.testing"), "deny", f"{name} must deny apps/api/.env.testing")
+
+    def test_all_agents_deny_nested_env_development(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, "apps/web/.env.development"), "deny", f"{name} must deny apps/web/.env.development")
+
+    def test_all_agents_deny_nested_env_backup(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, "apps/api/.env.backup"), "deny", f"{name} must deny apps/api/.env.backup")
+
     def test_all_agents_allow_env_example(self):
         for name, rules in self.agents.items():
             with self.subTest(agent=name):
@@ -303,6 +338,12 @@ class TestEnvProtection(unittest.TestCase):
         for name, rules in self.agents.items():
             with self.subTest(agent=name):
                 self.assertEqual(decide(rules, "apps/api/.env.example"), "allow", f"{name} must allow apps/api/.env.example")
+
+    def test_all_agents_allow_normal_source_files(self):
+        for name, rules in self.agents.items():
+            with self.subTest(agent=name):
+                self.assertEqual(decide(rules, "README.md"), "allow", f"{name} must allow README.md")
+                self.assertEqual(decide(rules, "apps/api/app/Models/User.php"), "allow", f"{name} must allow source files")
 
 
 class TestNoIssueSpecificDependencies(unittest.TestCase):
