@@ -14,7 +14,25 @@
 - Roadmap M0/M1 separation done
 - README lifecycle ending fixed
 
-## Test Results
+## TDD Evidence
+
+### RED
+- Updated test assertions to reflect new Builder governance boundaries
+- Existing g3/g4 tests expected Builder to edit governance tests (now denied)
+- New permission tests verify deny/allow decisions via parsed frontmatter
+
+### GREEN
+- All 135 governance tests pass
+- Backend 8/8 tests pass
+- Frontend 6/6 tests pass
+- Lint clean
+- Build clean
+
+### REFACTOR
+- Permission tests rewritten with parsed frontmatter and decide() helper
+- Bash patterns simplified (removed trailing space requirement)
+
+## Tests
 
 - Governance tests: 135/135 passed
 - Backend tests: 8/8 passed
@@ -35,4 +53,4 @@ OpenCode debug probes confirm:
 
 ## Decision
 
-APPROVE
+Decision: APPROVE
