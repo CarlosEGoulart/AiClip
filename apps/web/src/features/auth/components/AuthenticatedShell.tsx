@@ -1,10 +1,27 @@
+import { useEffect } from 'react';
 import { useAuth } from '../hooks';
+import { CreateProjectForm, ProjectList, useProjects } from '../../projects';
 
 export function AuthenticatedShell() {
   const { user, logout, state, errorMessage } = useAuth();
+  const {
+    projects,
+    loading,
+    error: projectError,
+    validationErrors,
+    fetchProjects,
+    createProject,
+    deleteProject,
+  } = useProjects();
 
   const isLoggingOut = state === 'logging-out';
   const logoutFailed = state === 'authenticated' && errorMessage;
+
+  useEffect(() => {
+    if (state === 'authenticated') {
+      fetchProjects();
+    }
+  }, [state, fetchProjects]);
 
   return (
     <div className="authenticated-shell">
@@ -24,6 +41,20 @@ export function AuthenticatedShell() {
             {errorMessage || 'Logout failed. The server session may still be active.'}
           </div>
         )}
+
+        <div className="projects-section">
+          <CreateProjectForm
+            onSubmit={createProject}
+            validationErrors={validationErrors}
+            error={projectError}
+          />
+
+          <ProjectList
+            projects={projects}
+            onDelete={deleteProject}
+            loading={loading}
+          />
+        </div>
 
         <button onClick={logout} disabled={isLoggingOut} className="logout-button">
           {isLoggingOut ? 'Logging out...' : 'Log out'}
