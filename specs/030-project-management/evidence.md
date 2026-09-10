@@ -204,6 +204,15 @@ cd apps/api && vendor/bin/pint --dirty
 | Tests | 5 | 0 |
 | **Total** | **23** | **4** |
 
+## Governance Constraint
+
+The governance checks require a complete SDD bundle (spec.md, plan.md, test-plan.md, evidence.md).
+Due to permission restrictions, only evidence.md could be created. The other files are missing.
+This causes the governance check to fail.
+
+**Resolution needed:** Create spec.md, plan.md, and test-plan.md in specs/030-project-management/
+to satisfy the SDD bundle validation.
+
 ## Tester Review (2026-09-10)
 
 **Decision: APPROVE**
