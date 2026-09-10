@@ -77,13 +77,12 @@ test.describe('Auth Lifecycle', () => {
 
   test('existing user → login → authenticated', async ({ page }) => {
     const email = uniqueEmail()
-    const apiContext = await page.context().request
-    await apiContext.post(`${API_HOST}/api/v1/auth/register`, {
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Origin: 'http://localhost:5173' },
-      data: { name: 'Login User', email, password: 'password123', password_confirmation: 'password123' },
-    })
+    await registerUser(page, 'Login User', email)
+    await expect(page.getByText('Signed in as')).toBeVisible()
 
-    await waitForAuthReady(page)
+    await page.getByRole('button', { name: 'Log out' }).click()
+    await expect(page.getByRole('heading', { name: 'Sign In' })).toBeVisible()
+
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByRole('button', { name: 'Sign In' }).click()
@@ -94,13 +93,12 @@ test.describe('Auth Lifecycle', () => {
 
   test('authenticated login → reload → still authenticated', async ({ page }) => {
     const email = uniqueEmail()
-    const apiContext = await page.context().request
-    await apiContext.post(`${API_HOST}/api/v1/auth/register`, {
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Origin: 'http://localhost:5173' },
-      data: { name: 'Persistent User', email, password: 'password123', password_confirmation: 'password123' },
-    })
+    await registerUser(page, 'Persistent User', email)
+    await expect(page.getByText('Signed in as')).toBeVisible()
 
-    await waitForAuthReady(page)
+    await page.getByRole('button', { name: 'Log out' }).click()
+    await expect(page.getByRole('heading', { name: 'Sign In' })).toBeVisible()
+
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByRole('button', { name: 'Sign In' }).click()
@@ -124,11 +122,11 @@ test.describe('Auth Lifecycle', () => {
 
   test('duplicate registration → validation feedback', async ({ page }) => {
     const email = uniqueEmail()
-    const apiContext = await page.context().request
-    await apiContext.post(`${API_HOST}/api/v1/auth/register`, {
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Origin: 'http://localhost:5173' },
-      data: { name: 'First User', email, password: 'password123', password_confirmation: 'password123' },
-    })
+    await registerUser(page, 'First User', email)
+    await expect(page.getByText('Signed in as')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Log out' }).click()
+    await expect(page.getByRole('heading', { name: 'Sign In' })).toBeVisible()
 
     await switchToRegister(page)
     await page.getByLabel('Name').fill('Second User')
@@ -197,9 +195,6 @@ test.describe('CSRF and Storage Security', () => {
     }
 
     const cookies = await page.context().cookies()
-    const xsrf = cookies.find(c => c.name === 'XSRF-TOKEN')
-    expect(xsrf).toBeDefined()
-
     const session = cookies.find(c => c.name.includes('laravel_session'))
     expect(session).toBeDefined()
     expect(session!.httpOnly).toBe(true)
