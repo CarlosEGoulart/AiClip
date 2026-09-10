@@ -2,7 +2,6 @@ import type { AuthResponse } from '../types';
 
 export type AuthErrorType =
   | 'validation'
-  | 'credentials'
   | 'unauthorized'
   | 'throttle'
   | 'csrf'

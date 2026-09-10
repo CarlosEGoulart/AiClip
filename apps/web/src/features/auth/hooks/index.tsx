@@ -31,8 +31,6 @@ function classifyError(error: unknown): { state: AuthState; validationErrors?: V
   switch (authError.type) {
     case 'validation':
       return { state: 'validation-error', validationErrors: authError.errors || {} };
-    case 'credentials':
-      return { state: 'credential-error', message: 'Invalid email or password' };
     case 'throttle':
       return { state: 'throttle-error', message: 'Too many attempts. Please try again later.' };
     case 'unauthorized':

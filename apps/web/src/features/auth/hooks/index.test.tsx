@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from './index';
 import * as api from '../api';
@@ -17,6 +17,17 @@ function deferred<T>() {
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(api.getMe).mockRejectedValue({ type: 'unauthorized' }); });
 afterEach(cleanup);
 const mount = () => renderHook(useAuth, { wrapper: AuthProvider });
+
+function AuthProbe() {
+  const { user: currentUser, state, errorMessage } = useAuth();
+  return (
+    <div>
+      <span data-testid="state">{state}</span>
+      <span data-testid="user">{currentUser ? JSON.stringify(currentUser) : 'null'}</span>
+      <span data-testid="error">{errorMessage ?? 'null'}</span>
+    </div>
+  );
+}
 
 describe('auth provider state (F2)', () => {
   it('checks the session before restoring the sanitized identity', async () => {
@@ -95,14 +106,78 @@ describe('auth provider state (F2)', () => {
     expect(result.current.errorMessage).toMatch(/expired/i);
   });
 
-  it('ignores the stale StrictMode bootstrap when its second request settles first', async () => {
+  it('stale StrictMode bootstrap cannot overwrite a newer valid bootstrap', async () => {
+    const stale = deferred<AuthResponse>();
+    const secondUser = { ...user, id: 99, name: 'Second Load' };
+    vi.mocked(api.getMe).mockReturnValueOnce(stale.promise).mockResolvedValueOnce({ user: secondUser });
+
+    render(
+      <StrictMode>
+        <AuthProvider>
+          <AuthProbe />
+        </AuthProvider>
+      </StrictMode>,
+    );
+
+    expect(api.getMe).toHaveBeenCalledTimes(2);
+
+    await waitFor(() => expect(screen.getByTestId('user').textContent).toContain('Second Load'));
+    expect(screen.getByTestId('state').textContent).toBe('authenticated');
+
+    await act(async () => stale.resolve({ user: { ...user, name: 'Stale Winner' } }));
+    expect(screen.getByTestId('user').textContent).toContain('Second Load');
+    expect(screen.getByTestId('state').textContent).toBe('authenticated');
+  });
+
+  it('stale StrictMode bootstrap failure cannot turn an authenticated user into guest', async () => {
     const stale = deferred<AuthResponse>();
     vi.mocked(api.getMe).mockReturnValueOnce(stale.promise).mockResolvedValueOnce({ user });
-    const { result } = renderHook(useAuth, { wrapper: ({ children }) => <StrictMode><AuthProvider>{children}</AuthProvider></StrictMode> });
-    await waitFor(() => expect(result.current.user).toEqual(user));
+
+    render(
+      <StrictMode>
+        <AuthProvider>
+          <AuthProbe />
+        </AuthProvider>
+      </StrictMode>,
+    );
+
+    expect(api.getMe).toHaveBeenCalledTimes(2);
+
+    await waitFor(() => expect(screen.getByTestId('state').textContent).toBe('authenticated'));
+    expect(screen.getByTestId('user').textContent).toContain('Mira Vale');
+
     await act(async () => stale.reject({ type: 'unauthorized' }));
+    expect(screen.getByTestId('state').textContent).toBe('authenticated');
+    expect(screen.getByTestId('user').textContent).toContain('Mira Vale');
+  });
+
+  it('newer login cannot be overwritten by an old bootstrap', async () => {
+    const stale = deferred<AuthResponse>();
+    vi.mocked(api.getMe).mockReturnValue(stale.promise);
+    vi.mocked(api.login).mockResolvedValue({ user });
+
+    const { result } = mount();
+    expect(result.current.state).toBe('checking-session');
+    await act(async () => result.current.login(credentials));
     expect(result.current.user).toEqual(user);
     expect(result.current.state).toBe('authenticated');
+
+    await act(async () => stale.resolve({ user: { ...user, name: 'Stale Overwrite' } }));
+    expect(result.current.user).toEqual(user);
+    expect(result.current.user!.name).toBe('Mira Vale');
+  });
+
+  it('unmounted StrictMode provider ignores pending bootstrap completions', async () => {
+    const pending = deferred<AuthResponse>();
+    vi.mocked(api.getMe).mockReturnValue(pending.promise);
+
+    const { result, unmount } = mount();
+    const saved = result.current;
+    unmount();
+
+    await act(async () => pending.resolve({ user }));
+    await act(async () => saved.login(credentials));
+    expect(api.login).not.toHaveBeenCalled();
   });
 
   it('does not let stale bootstrap overwrite a newer successful login', async () => {

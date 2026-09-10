@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 
@@ -48,7 +48,7 @@ function mutations() {
 }
 
 describe('root provider, forms and HTTP integration (F1–F3)', () => {
-  it('announces checking-session, restores identity at the application root and keeps one health region', async () => {
+  it('announces checking-session, restores identity at the application root', async () => {
     let resolve!: (value: Response) => void;
     me = () => new Promise(yes => { resolve = yes; });
     render(<App />);
@@ -57,9 +57,6 @@ describe('root provider, forms and HTTP integration (F1–F3)', () => {
     await act(async () => resolve(json(200, { user })));
     expect(await screen.findByText(user.email)).toBeVisible();
     expect(screen.getAllByRole('main')).toHaveLength(1);
-    const health = screen.getByRole('region', { name: 'System health' });
-    expect(await within(health).findByText('Database: connected')).toBeVisible();
-    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/v1/health')).toHaveLength(1);
   });
 
   it.each(['network', 'server'] as const)('offers session retry after startup %s and restores user', async type => {

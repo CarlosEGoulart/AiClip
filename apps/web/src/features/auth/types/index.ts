@@ -21,7 +21,6 @@ export type AuthState =
   | 'authenticated'
   | 'logging-out'
   | 'validation-error'
-  | 'credential-error'
   | 'network-error'
   | 'session-expired'
   | 'throttle-error'

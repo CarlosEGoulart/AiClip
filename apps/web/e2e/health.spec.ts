@@ -217,7 +217,7 @@ test.describe('Health Check Flow', () => {
   test('shows the real health result from Laravel and PostgreSQL', async ({ page }, testInfo) => {
     const { diagnostics, settlement } = installDiagnostics(page)
 
-    await page.goto('/')
+    await page.goto('/health')
 
     const heading = page.getByRole('heading', { name: 'Health Status' })
     await assertContentReadable(page, heading, 'health heading')
@@ -247,7 +247,7 @@ test.describe('Health Check Flow', () => {
       await route.continue()
     })
 
-    await page.goto('/')
+    await page.goto('/health')
 
     await expect(page.getByRole('status')).toContainText('Loading health status...')
     expect(await page.getByRole('alert').count()).toBe(0)
@@ -278,7 +278,7 @@ test.describe('Health Check Flow', () => {
 
     await page.route(`**${HEALTH_URL_PART}`, (route) => route.abort('failed'))
 
-    await page.goto('/')
+    await page.goto('/health')
 
     const alert = page.getByRole('alert')
     await assertContentReadable(page, alert, 'error alert')
@@ -306,7 +306,7 @@ test.describe('Health Check Flow', () => {
       }),
     )
 
-    await page.goto('/')
+    await page.goto('/health')
 
     const alert = page.getByRole('alert')
     await assertContentReadable(page, alert, 'error alert')
@@ -327,7 +327,7 @@ test.describe('Health Check Flow', () => {
 
     await page.route(`**${HEALTH_URL_PART}`, (route) => route.abort('failed'))
 
-    await page.goto('/')
+    await page.goto('/health')
 
     await expect(page.getByRole('alert')).toBeVisible({ timeout: 15000 })
     await settleDiagnostics(settlement)
@@ -433,7 +433,7 @@ test.describe('Health Check Flow', () => {
       }
     })
 
-    await page.goto('/')
+    await page.goto('/health')
 
     await expect(page.getByRole('alert')).toBeVisible({ timeout: 15000 })
 

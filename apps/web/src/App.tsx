@@ -1,5 +1,6 @@
 import React from 'react';
 import { AuthProvider, useAuth, LoginForm, RegisterForm, AuthenticatedShell } from './features/auth';
+import HealthCheck from './components/HealthCheck';
 
 function AuthEntry() {
   const [view, setView] = React.useState<'login' | 'register'>('login');
@@ -93,6 +94,16 @@ function AppContent() {
 }
 
 function App() {
+  const isHealthPath = window.location.pathname === '/health';
+
+  if (isHealthPath) {
+    return (
+      <main>
+        <HealthCheck />
+      </main>
+    );
+  }
+
   return (
     <AuthProvider>
       <AppContent />
