@@ -43,4 +43,4 @@ Builder and Tester lifecycle boundaries are defined by root `../../AGENTS.md`. T
 
 ## Skills
 
-Laravel-specific skills are available in `.agents/skills/` and `.claude/skills/`. Load relevant skills when working in the Laravel domain. The primary development harness is OpenCode.
+Laravel-specific skills are available in `.agents/skills/`. Load relevant skills when working in the Laravel domain. The primary development harness is OpenCode.

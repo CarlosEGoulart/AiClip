@@ -18,10 +18,10 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 ### 2. Social Media Manager
 
 - **Role**: Professional managing social presence for brands or agencies
-- **Goal**: Manage publishing schedule across multiple platforms efficiently
+- **Goal**: Manage publishing across multiple platforms efficiently
 - **Use Cases**:
   - Connect multiple social accounts (YouTube, Instagram, TikTok)
-  - Schedule and publish clips from various video sources
+  - Publish clips from various video sources
   - Track publishing status across platforms
 
 ### 3. Independent Artist
