@@ -31,8 +31,9 @@ not implemented.
 # Current Milestone
 
 M1 Application Foundation — Issue #28 COMPLETE. PR #29 merged.
-Next: M2 media processing pipeline.
+Issue #30 (Project Management) IN PROGRESS.
 
 # Next Architectural Goal
 
 Media processing pipeline: upload, transcoding, scene detection, clip analysis.
+Prerequisite: Project ownership established by Issue #30.
