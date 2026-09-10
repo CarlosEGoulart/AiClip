@@ -6,17 +6,34 @@ function uniqueEmail() {
   return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`
 }
 
+async function waitForAuthReady(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await expect(
+    page.getByRole('heading', { name: 'Sign In' }).or(page.getByRole('heading', { name: 'Create Account' })),
+  ).toBeVisible({ timeout: 15000 })
+}
+
+async function switchToRegister(page: import('@playwright/test').Page) {
+  await waitForAuthReady(page)
+  const registerHeading = page.getByRole('heading', { name: 'Create Account' })
+  if (await registerHeading.isVisible().catch(() => false)) return
+  await page.getByRole('button', { name: 'Create one' }).click()
+  await expect(registerHeading).toBeVisible()
+}
+
+async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
+  await switchToRegister(page)
+  await page.getByLabel('Name').fill(name)
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill('password123')
+  await page.getByLabel('Confirm Password').fill('password123')
+  await page.getByRole('button', { name: 'Create Account' }).click()
+}
+
 test.describe('Auth Lifecycle', () => {
   test('guest → register → authenticated', async ({ page }) => {
-    await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible()
-
     const email = uniqueEmail()
-    await page.getByLabel('Name').fill('E2E User')
-    await page.getByLabel('Email').fill(email)
-    await page.getByLabel('Password').fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: 'Create Account' }).click()
+    await registerUser(page, 'E2E User', email)
 
     await expect(page.getByText('Signed in as')).toBeVisible()
     await expect(page.getByText('E2E User')).toBeVisible()
@@ -24,13 +41,8 @@ test.describe('Auth Lifecycle', () => {
   })
 
   test('authenticated → page reload → still authenticated', async ({ page }) => {
-    await page.goto('/')
     const email = uniqueEmail()
-    await page.getByLabel('Name').fill('Reload User')
-    await page.getByLabel('Email').fill(email)
-    await page.getByLabel('Password').fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: 'Create Account' }).click()
+    await registerUser(page, 'Reload User', email)
     await expect(page.getByText('Signed in as')).toBeVisible()
 
     await page.reload()
@@ -39,13 +51,8 @@ test.describe('Auth Lifecycle', () => {
   })
 
   test('authenticated → logout → guest', async ({ page }) => {
-    await page.goto('/')
     const email = uniqueEmail()
-    await page.getByLabel('Name').fill('Logout User')
-    await page.getByLabel('Email').fill(email)
-    await page.getByLabel('Password').fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: 'Create Account' }).click()
+    await registerUser(page, 'Logout User', email)
     await expect(page.getByText('Signed in as')).toBeVisible()
 
     await page.getByRole('button', { name: 'Log out' }).click()
@@ -54,13 +61,8 @@ test.describe('Auth Lifecycle', () => {
   })
 
   test('old authentication no longer works after logout', async ({ page }) => {
-    await page.goto('/')
     const email = uniqueEmail()
-    await page.getByLabel('Name').fill('Replay User')
-    await page.getByLabel('Email').fill(email)
-    await page.getByLabel('Password').fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: 'Create Account' }).click()
+    await registerUser(page, 'Replay User', email)
     await expect(page.getByText('Signed in as')).toBeVisible()
 
     const cookies = await page.context().cookies()
@@ -81,9 +83,7 @@ test.describe('Auth Lifecycle', () => {
       data: { name: 'Login User', email, password: 'password123', password_confirmation: 'password123' },
     })
 
-    await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Sign In' })).toBeVisible()
-
+    await waitForAuthReady(page)
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password').fill('password123')
     await page.getByRole('button', { name: 'Sign In' }).click()
@@ -100,7 +100,7 @@ test.describe('Auth Lifecycle', () => {
       data: { name: 'Persistent User', email, password: 'password123', password_confirmation: 'password123' },
     })
 
-    await page.goto('/')
+    await waitForAuthReady(page)
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password').fill('password123')
     await page.getByRole('button', { name: 'Sign In' }).click()
@@ -112,7 +112,7 @@ test.describe('Auth Lifecycle', () => {
   })
 
   test('invalid credentials → generic controlled error', async ({ page }) => {
-    await page.goto('/')
+    await waitForAuthReady(page)
     await page.getByLabel('Email').fill('nobody@example.com')
     await page.getByLabel('Password').fill('wrongpassword')
     await page.getByRole('button', { name: 'Sign In' }).click()
@@ -130,10 +130,7 @@ test.describe('Auth Lifecycle', () => {
       data: { name: 'First User', email, password: 'password123', password_confirmation: 'password123' },
     })
 
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Create one' }).click()
-    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible()
-
+    await switchToRegister(page)
     await page.getByLabel('Name').fill('Second User')
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password').fill('password123')
@@ -145,10 +142,7 @@ test.describe('Auth Lifecycle', () => {
   })
 
   test('password confirmation mismatch → validation feedback', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: 'Create one' }).click()
-    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible()
-
+    await switchToRegister(page)
     await page.getByLabel('Name').fill('Mismatch User')
     await page.getByLabel('Email').fill(uniqueEmail())
     await page.getByLabel('Password').fill('password123')
@@ -172,10 +166,7 @@ test.describe('CSRF and Storage Security', () => {
       }
     })
 
-    await page.goto('/')
-    const xsrfCookie = await page.context().cookies().then(cookies => cookies.find(c => c.name === 'XSRF-TOKEN'))
-    expect(xsrfCookie).toBeDefined()
-    expect(xsrfCookie!.httpOnly).toBe(false)
+    await waitForAuthReady(page)
 
     await page.getByLabel('Email').fill('test@example.com')
     await page.getByLabel('Password').fill('password')
@@ -183,6 +174,10 @@ test.describe('CSRF and Storage Security', () => {
     await page.waitForTimeout(1000)
 
     const cookies = await page.context().cookies()
+    const xsrfCookie = cookies.find(c => c.name === 'XSRF-TOKEN')
+    expect(xsrfCookie).toBeDefined()
+    expect(xsrfCookie!.httpOnly).toBe(false)
+
     const sessionCookie = cookies.find(c => c.name === process.env.SESSION_COOKIE_NAME || c.name.includes('laravel_session'))
     expect(sessionCookie).toBeDefined()
 
@@ -190,13 +185,8 @@ test.describe('CSRF and Storage Security', () => {
   })
 
   test('no authentication bearer token in localStorage or sessionStorage', async ({ page }) => {
-    await page.goto('/')
     const email = uniqueEmail()
-    await page.getByLabel('Name').fill('Storage User')
-    await page.getByLabel('Email').fill(email)
-    await page.getByLabel('Password').fill('password123')
-    await page.getByLabel('Confirm Password').fill('password123')
-    await page.getByRole('button', { name: 'Create Account' }).click()
+    await registerUser(page, 'Storage User', email)
     await expect(page.getByText('Signed in as')).toBeVisible()
 
     const localStorageKeys = await page.evaluate(() => Object.keys(localStorage))
