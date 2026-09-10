@@ -1,9 +1,16 @@
 import React from 'react';
 import { AuthProvider, useAuth, LoginForm, RegisterForm, AuthenticatedShell } from './features/auth';
-import HealthCheck from './components/HealthCheck';
 
-function GuestView() {
+function AuthEntry() {
   const [view, setView] = React.useState<'login' | 'register'>('login');
+  const { state, clearErrors } = useAuth();
+
+  const isPending = state === 'logging-in' || state === 'registering';
+
+  const switchView = (newView: 'login' | 'register') => {
+    setView(newView);
+    clearErrors();
+  };
 
   return (
     <div className="auth-container">
@@ -12,7 +19,11 @@ function GuestView() {
           <LoginForm />
           <p className="auth-switch">
             Don't have an account?{' '}
-            <button onClick={() => setView('register')} className="link-button">
+            <button
+              onClick={() => switchView('register')}
+              className="link-button"
+              disabled={isPending}
+            >
               Create one
             </button>
           </p>
@@ -22,7 +33,11 @@ function GuestView() {
           <RegisterForm />
           <p className="auth-switch">
             Already have an account?{' '}
-            <button onClick={() => setView('login')} className="link-button">
+            <button
+              onClick={() => switchView('login')}
+              className="link-button"
+              disabled={isPending}
+            >
               Sign in
             </button>
           </p>
@@ -32,45 +47,56 @@ function GuestView() {
   );
 }
 
-function AuthView() {
-  const { state } = useAuth();
+function BootstrapErrorView() {
+  const { errorMessage, retrySession } = useAuth();
+
+  return (
+    <div className="auth-container">
+      <div className="error-message" role="alert">
+        {errorMessage}
+      </div>
+      <button onClick={retrySession} className="link-button">
+        Retry session
+      </button>
+    </div>
+  );
+}
+
+function AuthenticatedView() {
+  const { state, user } = useAuth();
 
   if (state === 'checking-session') {
-    return <div className="loading">Loading...</div>;
+    return <div role="status">Checking session...</div>;
   }
 
-  if (state === 'authenticated') {
+  if (state === 'authenticated' || state === 'logging-out') {
     return <AuthenticatedShell />;
   }
 
-  return <GuestView />;
+  if (user && (state === 'network-error' || state === 'server-error')) {
+    return <AuthenticatedShell />;
+  }
+
+  if (state === 'network-error' || state === 'server-error') {
+    return <BootstrapErrorView />;
+  }
+
+  return <AuthEntry />;
+}
+
+function AppContent() {
+  return (
+    <main>
+      <AuthenticatedView />
+    </main>
+  );
 }
 
 function App() {
-  const [showAuth, setShowAuth] = React.useState(false);
-
-  if (showAuth) {
-    return (
-      <AuthProvider>
-        <main>
-          <button onClick={() => setShowAuth(false)} className="link-button back-button">
-            ← Back
-          </button>
-          <AuthView />
-        </main>
-      </AuthProvider>
-    );
-  }
-
   return (
-    <main>
-      <HealthCheck />
-      <div className="auth-entry">
-        <button onClick={() => setShowAuth(true)} className="link-button">
-          Sign In
-        </button>
-      </div>
-    </main>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

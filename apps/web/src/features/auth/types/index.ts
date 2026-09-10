@@ -23,4 +23,7 @@ export type AuthState =
   | 'validation-error'
   | 'credential-error'
   | 'network-error'
-  | 'session-expired';
+  | 'session-expired'
+  | 'throttle-error'
+  | 'csrf-error'
+  | 'server-error';
