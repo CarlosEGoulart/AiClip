@@ -7,14 +7,10 @@ permission:
     "**": allow
     ".env": deny
     "**/.env": deny
-    ".env.production": deny
-    "**/.env.production": deny
-    ".env.local": deny
-    "**/.env.local": deny
-    ".env.staging": deny
-    "**/.env.staging": deny
-    ".env.ci": deny
-    "**/.env.ci": deny
+    ".env.*": deny
+    "**/.env.*": deny
+    ".env.example": allow
+    "**/.env.example": allow
   glob: allow
   grep: allow
   skill: allow
