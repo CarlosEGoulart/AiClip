@@ -18,6 +18,8 @@ Issue #11 merge gate finalization: APPROVE-only merge gate (REJECT now fails), d
 
 Issue #13 SDD bundle enforcement: generic `validate_sdd_bundle()` validates every specs/ directory contains spec.md, plan.md, test-plan.md, evidence.md. Dependency injection for test isolation. Historical Issues #9 and #11 repaired with retrospective markers. Integration tests use temporary directories without mutating real specs/.
 
+Issue #15 SDD bundle wiring: `validate_sdd_bundle()` now executed by `run_checks()` in actual PR governance. Generic validation catches any incomplete `specs/<issue>-*` directory without hardcoded issue list. Integration tests exercise `run_checks()` orchestration with isolated temporary directories.
+
 # Important Decisions
 
 Strict issue linearity with one active implementation issue. TDD RED before implementation content. Independent Tester review. English-only repository content.

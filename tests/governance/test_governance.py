@@ -303,18 +303,10 @@ class TestGovernanceContract(unittest.TestCase):
         self.assertEqual(decide(ordered, "docs/other.md"), "allow")
 
     def test_g10_historical_issue_bundles_complete(self):
-        """Verify Issues #9 and #11 have all four required SDD artifacts."""
+        """Verify all issue directories have complete SDD bundles."""
         from validators import validate_sdd_bundle
-        for issue_dir in ["009-fix-complete-pr-governance-enforcement",
-                          "011-fix-finalize-governance-merge-gate"]:
-            with self.subTest(issue=issue_dir):
-                d = REPO_ROOT / "specs" / issue_dir
-                self.assertTrue(d.exists(), f"Missing specs/{issue_dir}")
-                for required in ["spec.md", "plan.md", "test-plan.md", "evidence.md"]:
-                    path = d / required
-                    self.assertTrue(path.exists(), f"Missing {required} in {issue_dir}")
-                    self.assertTrue(path.is_file(), f"{required} not a file in {issue_dir}")
-                    self.assertGreater(path.stat().st_size, 0, f"Empty {required} in {issue_dir}")
+        errors = validate_sdd_bundle(REPO_ROOT / "specs")
+        self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":
