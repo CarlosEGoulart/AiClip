@@ -1,0 +1,32 @@
+import { defineConfig } from '@playwright/test'
+
+export default defineConfig({
+  testDir: './e2e',
+  timeout: 30000,
+  retries: 0,
+  use: {
+    baseURL: 'http://localhost:5173',
+    headless: true,
+    screenshot: 'only-on-failure',
+  },
+  webServer: [
+    {
+      command: 'cd ../api && php artisan serve --port=8000',
+      port: 8000,
+      reuseExistingServer: true,
+      timeout: 10000,
+    },
+    {
+      command: 'node test-server.js',
+      port: 5173,
+      reuseExistingServer: true,
+      timeout: 10000,
+    },
+  ],
+  projects: [
+    {
+      name: 'chromium',
+      use: { browserName: 'chromium' },
+    },
+  ],
+})
