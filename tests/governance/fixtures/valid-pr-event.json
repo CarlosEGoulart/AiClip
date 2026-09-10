@@ -1,0 +1,6 @@
+{
+  "pull_request": {
+    "number": 9,
+    "body": "## Summary\n\nFix PR governance enforcement.\n\n## Scope\n\n- governance\n\n## TDD Evidence\n\n### RED\n\nTests written.\n\n### GREEN\n\nImplementation done.\n\n### REFACTOR\n\nCleaned up.\n\n## Tests\n\n- [x] Unit tests\n\nCloses #9"
+  }
+}

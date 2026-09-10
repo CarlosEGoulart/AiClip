@@ -1,0 +1,6 @@
+{
+  "pull_request": {
+    "number": 9,
+    "body": "## Summary\n\nFix.\n\n## Scope\n\n- governance\n\n## TDD Evidence\n\nN/A.\n\n## Tests\n\n- [x] Pass\n\nCloses #11"
+  }
+}
