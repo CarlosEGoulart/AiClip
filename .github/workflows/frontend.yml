@@ -28,7 +28,11 @@ jobs:
 
       - name: Run tests
         working-directory: apps/web
-        run: npm run test
+        run: npm run test -- --maxWorkers=1
+
+      - name: Lint
+        working-directory: apps/web
+        run: npm run lint
 
       - name: Build
         working-directory: apps/web

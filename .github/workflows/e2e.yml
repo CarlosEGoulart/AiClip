@@ -71,8 +71,8 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
-      - name: Start Laravel
-        working-directory: apps/api
+      - name: Run Playwright E2E (managed Laravel and Vite servers)
+        working-directory: apps/web
         env:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
@@ -80,20 +80,15 @@ jobs:
           DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
-        run: php artisan serve --port=8000 &
-        background: true
+        run: npm run test:e2e
 
-      - name: Start Vite
-        working-directory: apps/web
-        run: npm run dev &
-        background: true
-
-      - name: Wait for services
-        run: sleep 5
-
-      - name: Run Playwright tests
-        working-directory: apps/web
-        run: npx playwright test
+      - name: Upload viewport screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: apps/web/test-results/screenshots/
+          retention-days: 7
 
       - name: Upload Playwright report
         if: failure()
