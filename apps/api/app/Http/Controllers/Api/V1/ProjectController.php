@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreProjectRequest;
-use App\Http\Requests\UpdateProjectRequest;
 use App\Http\Resources\ProjectResource;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +34,7 @@ class ProjectController extends Controller
     {
         $project = $request->user()->projects()->create([
             'name' => $request->validated('name'),
+            'description' => $request->validated('description'),
         ]);
 
         return response()->json([
@@ -51,22 +51,6 @@ class ProjectController extends Controller
 
         return response()->json([
             'data' => new ProjectResource($project),
-        ]);
-    }
-
-    /**
-     * Update the specified project (only if owned by user).
-     */
-    public function update(UpdateProjectRequest $request, Project $project): JsonResponse
-    {
-        $this->authorizeOwnership($request, $project);
-
-        $project->update([
-            'name' => $request->validated('name'),
-        ]);
-
-        return response()->json([
-            'data' => new ProjectResource($project->fresh()),
         ]);
     }
 
