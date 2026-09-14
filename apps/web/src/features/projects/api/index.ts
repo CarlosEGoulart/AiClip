@@ -1,5 +1,4 @@
-import type { ProjectsResponse, ProjectResponse, ProjectError, ProjectErrorType } from '../types';
-import type { AuthError } from '../../auth/api';
+import type { ProjectsResponse, ProjectResponse, ProjectError } from '../types';
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);

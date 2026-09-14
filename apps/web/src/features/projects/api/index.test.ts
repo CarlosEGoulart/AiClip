@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getProjects, createProject, deleteProject } from '../api';
 
-const user = { id: 7, name: 'Mira Vale', email: 'mira@example.test', email_verified_at: null };
-const project = { id: 1, name: 'Test Project', user_id: 7, created_at: '2026-09-10T12:00:00.000000Z', updated_at: '2026-09-10T12:00:00.000000Z' };
+const project = { id: 1, name: 'Test Project', created_at: '2026-09-10T12:00:00.000000Z', updated_at: '2026-09-10T12:00:00.000000Z' };
 const response = (status: number, body?: unknown) => new Response(
   body === undefined ? null : JSON.stringify(body), { status },
 );

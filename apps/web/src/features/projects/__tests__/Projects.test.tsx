@@ -20,7 +20,6 @@ afterEach(cleanup);
 const mockProject: Project = {
   id: 1,
   name: 'Test Project',
-  user_id: 1,
   created_at: '2026-09-10T12:00:00.000000Z',
   updated_at: '2026-09-10T12:00:00.000000Z',
 };
