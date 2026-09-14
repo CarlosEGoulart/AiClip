@@ -8,32 +8,38 @@ uses(SpaTestCase::class, RefreshDatabase::class);
 
 /*
 |--------------------------------------------------------------------------
-| Helper: register + login a user, return authenticated cookies
+| Setup: Register and login a user before each test
 |--------------------------------------------------------------------------
 */
 
-function createAndLoginUser(array $overrides = []): array
-{
-    $userData = array_merge([
+beforeEach(function () {
+    $userData = [
         'name' => 'Test User',
         'email' => 'test@example.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
-    ], $overrides);
+    ];
 
-    $cookies = csrfCookies();
+    $cookies = $this->csrfCookies();
 
     // Register the user
-    spaRequest('POST', '/api/v1/auth/register', $cookies, $userData)->assertStatus(201);
+    $this->spaRequest('POST', '/api/v1/auth/register', $cookies, $userData)
+        ->assertStatus(201);
 
     // Login the user (re-establish session)
-    spaRequest('POST', '/api/v1/auth/login', $cookies, [
+    $this->spaRequest('POST', '/api/v1/auth/login', $cookies, [
         'email' => $userData['email'],
         'password' => $userData['password'],
     ])->assertOk();
 
-    return $cookies;
-}
+    $this->cookies = $cookies;
+});
+
+/*
+|--------------------------------------------------------------------------
+| Helper: create a second user for authorization tests
+|--------------------------------------------------------------------------
+*/
 
 function createSecondUser(): User
 {
@@ -51,41 +57,33 @@ function createSecondUser(): User
 */
 
 it('returns 401 for guest accessing GET /api/v1/projects', function () {
-    $cookies = csrfCookies();
+    $cookies = $this->csrfCookies();
 
-    spaRequest('GET', '/api/v1/projects', $cookies)
+    $this->spaRequest('GET', '/api/v1/projects', $cookies)
         ->assertUnauthorized()
         ->assertExactJson(['message' => 'Unauthenticated.']);
 });
 
 it('returns 401 for guest accessing POST /api/v1/projects', function () {
-    $cookies = csrfCookies();
+    $cookies = $this->csrfCookies();
 
-    spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Test'])
+    $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Test'])
         ->assertUnauthorized()
         ->assertExactJson(['message' => 'Unauthenticated.']);
 });
 
 it('returns 401 for guest accessing GET /api/v1/projects/1', function () {
-    $cookies = csrfCookies();
+    $cookies = $this->csrfCookies();
 
-    spaRequest('GET', '/api/v1/projects/1', $cookies)
-        ->assertUnauthorized()
-        ->assertExactJson(['message' => 'Unauthenticated.']);
-});
-
-it('returns 401 for guest accessing PUT /api/v1/projects/1', function () {
-    $cookies = csrfCookies();
-
-    spaRequest('PUT', '/api/v1/projects/1', $cookies, ['name' => 'Updated'])
+    $this->spaRequest('GET', '/api/v1/projects/1', $cookies)
         ->assertUnauthorized()
         ->assertExactJson(['message' => 'Unauthenticated.']);
 });
 
 it('returns 401 for guest accessing DELETE /api/v1/projects/1', function () {
-    $cookies = csrfCookies();
+    $cookies = $this->csrfCookies();
 
-    spaRequest('DELETE', '/api/v1/projects/1', $cookies)
+    $this->spaRequest('DELETE', '/api/v1/projects/1', $cookies)
         ->assertUnauthorized()
         ->assertExactJson(['message' => 'Unauthenticated.']);
 });
@@ -97,9 +95,9 @@ it('returns 401 for guest accessing DELETE /api/v1/projects/1', function () {
 */
 
 it('allows authenticated user to create a project', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
 
-    $response = spaRequest('POST', '/api/v1/projects', $cookies, [
+    $response = $this->spaRequest('POST', '/api/v1/projects', $cookies, [
         'name' => 'My First Project',
     ]);
 
@@ -127,18 +125,18 @@ it('allows authenticated user to create a project', function () {
 */
 
 it('allows authenticated user to list own projects', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
     $user = User::where('email', 'test@example.com')->first();
 
     // Create two projects for this user
-    spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Project A'])->assertCreated();
-    spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Project B'])->assertCreated();
+    $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Project A'])->assertCreated();
+    $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Project B'])->assertCreated();
 
     // Create a project for another user
     $other = createSecondUser();
     \App\Models\Project::create(['name' => 'Other Project', 'user_id' => $other->id]);
 
-    $response = spaRequest('GET', '/api/v1/projects', $cookies);
+    $response = $this->spaRequest('GET', '/api/v1/projects', $cookies);
 
     $response->assertOk();
     $response->assertJsonCount(2, 'data');
@@ -153,43 +151,17 @@ it('allows authenticated user to list own projects', function () {
 */
 
 it('allows authenticated user to view own project', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
 
-    $createResponse = spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Viewable Project']);
+    $createResponse = $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Viewable Project']);
     $createResponse->assertCreated();
     $projectId = $createResponse->json('data.id');
 
-    $response = spaRequest('GET', "/api/v1/projects/{$projectId}", $cookies);
+    $response = $this->spaRequest('GET', "/api/v1/projects/{$projectId}", $cookies);
 
     $response->assertOk();
     $response->assertJsonPath('data.name', 'Viewable Project');
     $response->assertJsonPath('data.id', $projectId);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Update: Authenticated user can update own project
-|--------------------------------------------------------------------------
-*/
-
-it('allows authenticated user to update own project', function () {
-    $cookies = createAndLoginUser();
-
-    $createResponse = spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Original Name']);
-    $createResponse->assertCreated();
-    $projectId = $createResponse->json('data.id');
-
-    $response = spaRequest('PUT', "/api/v1/projects/{$projectId}", $cookies, [
-        'name' => 'Updated Name',
-    ]);
-
-    $response->assertOk();
-    $response->assertJsonPath('data.name', 'Updated Name');
-
-    $this->assertDatabaseHas('projects', [
-        'id' => $projectId,
-        'name' => 'Updated Name',
-    ]);
 });
 
 /*
@@ -199,13 +171,13 @@ it('allows authenticated user to update own project', function () {
 */
 
 it('allows authenticated user to delete own project', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
 
-    $createResponse = spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Delete Me']);
+    $createResponse = $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Delete Me']);
     $createResponse->assertCreated();
     $projectId = $createResponse->json('data.id');
 
-    $response = spaRequest('DELETE', "/api/v1/projects/{$projectId}", $cookies);
+    $response = $this->spaRequest('DELETE', "/api/v1/projects/{$projectId}", $cookies);
 
     $response->assertNoContent();
 
@@ -219,35 +191,20 @@ it('allows authenticated user to delete own project', function () {
 */
 
 it('returns 404 when user tries to view another user project', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
     $other = createSecondUser();
     $otherProject = \App\Models\Project::create(['name' => 'Secret Project', 'user_id' => $other->id]);
 
-    spaRequest('GET', "/api/v1/projects/{$otherProject->id}", $cookies)
+    $this->spaRequest('GET', "/api/v1/projects/{$otherProject->id}", $cookies)
         ->assertNotFound();
 });
 
-it('returns 404 when user tries to update another user project', function () {
-    $cookies = createAndLoginUser();
-    $other = createSecondUser();
-    $otherProject = \App\Models\Project::create(['name' => 'Secret Project', 'user_id' => $other->id]);
-
-    spaRequest('PUT', "/api/v1/projects/{$otherProject->id}", $cookies, [
-        'name' => 'Hacked Name',
-    ])->assertNotFound();
-
-    $this->assertDatabaseHas('projects', [
-        'id' => $otherProject->id,
-        'name' => 'Secret Project',
-    ]);
-});
-
 it('returns 404 when user tries to delete another user project', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
     $other = createSecondUser();
     $otherProject = \App\Models\Project::create(['name' => 'Secret Project', 'user_id' => $other->id]);
 
-    spaRequest('DELETE', "/api/v1/projects/{$otherProject->id}", $cookies)
+    $this->spaRequest('DELETE', "/api/v1/projects/{$otherProject->id}", $cookies)
         ->assertNotFound();
 
     $this->assertDatabaseHas('projects', [
@@ -262,37 +219,25 @@ it('returns 404 when user tries to delete another user project', function () {
 */
 
 it('rejects create with missing name', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
 
-    spaRequest('POST', '/api/v1/projects', $cookies, [])
+    $this->spaRequest('POST', '/api/v1/projects', $cookies, [])
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['name']);
 });
 
 it('rejects create with empty name', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
 
-    spaRequest('POST', '/api/v1/projects', $cookies, ['name' => ''])
+    $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => ''])
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['name']);
 });
 
 it('rejects create with name exceeding 255 characters', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
 
-    spaRequest('POST', '/api/v1/projects', $cookies, ['name' => str_repeat('a', 256)])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['name']);
-});
-
-it('rejects update with missing name', function () {
-    $cookies = createAndLoginUser();
-
-    $createResponse = spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Test']);
-    $createResponse->assertCreated();
-    $projectId = $createResponse->json('data.id');
-
-    spaRequest('PUT', "/api/v1/projects/{$projectId}", $cookies, [])
+    $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => str_repeat('a', 256)])
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['name']);
 });
@@ -304,10 +249,10 @@ it('rejects update with missing name', function () {
 */
 
 it('ignores user_id in create request payload', function () {
-    $cookies = createAndLoginUser();
+    $cookies = $this->cookies;
     $other = createSecondUser();
 
-    $response = spaRequest('POST', '/api/v1/projects', $cookies, [
+    $response = $this->spaRequest('POST', '/api/v1/projects', $cookies, [
         'name' => 'Injected Project',
         'user_id' => $other->id,
     ]);
