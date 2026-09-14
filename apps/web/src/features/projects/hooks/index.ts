@@ -8,7 +8,7 @@ export interface UseProjectsReturn {
   error: string | null;
   validationErrors: ValidationErrors;
   fetchProjects: () => Promise<void>;
-  createProject: (name: string) => Promise<boolean>;
+  createProject: (name: string, description?: string) => Promise<boolean>;
   deleteProject: (id: number) => Promise<boolean>;
   clearErrors: () => void;
 }
@@ -57,11 +57,11 @@ export function useProjects(): UseProjectsReturn {
     }
   }, []);
 
-  const createProject = useCallback(async (name: string): Promise<boolean> => {
+  const createProject = useCallback(async (name: string, description?: string): Promise<boolean> => {
     setError(null);
     setValidationErrors({});
     try {
-      const response = await projectApi.createProject({ name });
+      const response = await projectApi.createProject({ name, description });
       setProjects((prev) => [response.data, ...prev]);
       return true;
     } catch (err: unknown) {

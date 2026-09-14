@@ -22,6 +22,9 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
     <div className="project-card" role="article" aria-label={`Project: ${project.name}`}>
       <div className="project-card-content">
         <h4 className="project-card-name">{project.name}</h4>
+        {project.description && (
+          <p className="project-card-description">{project.description}</p>
+        )}
         <p className="project-card-date">
           Created {new Date(project.created_at).toLocaleDateString()}
         </p>

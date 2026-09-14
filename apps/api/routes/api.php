@@ -33,9 +33,9 @@ Route::prefix('v1')->group(function () {
 
         // Project management routes
         Route::get('/projects', [ProjectController::class, 'index']);
-        Route::post('/projects', [ProjectController::class, 'store']);
+        Route::post('/projects', [ProjectController::class, 'store'])
+            ->middleware('throttle:project-create');
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
-        Route::put('/projects/{project}', [ProjectController::class, 'update']);
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
     });
 });

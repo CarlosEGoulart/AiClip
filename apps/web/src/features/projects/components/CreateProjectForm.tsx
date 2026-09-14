@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { ValidationErrors } from '../types';
 
 interface CreateProjectFormProps {
-  onSubmit: (name: string) => Promise<boolean>;
+  onSubmit: (name: string, description?: string) => Promise<boolean>;
   validationErrors: ValidationErrors;
   error: string | null;
   disabled?: boolean;
@@ -10,6 +10,7 @@ interface CreateProjectFormProps {
 
 export function CreateProjectForm({ onSubmit, validationErrors, error, disabled }: CreateProjectFormProps) {
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const firstInvalidRef = useRef<HTMLInputElement>(null);
 
@@ -28,9 +29,10 @@ export function CreateProjectForm({ onSubmit, validationErrors, error, disabled 
     if (isSubmitting || disabled) return;
 
     setIsSubmitting(true);
-    const success = await onSubmit(name);
+    const success = await onSubmit(name, description || undefined);
     if (success) {
       setName('');
+      setDescription('');
     }
     setIsSubmitting(false);
   };
@@ -74,6 +76,25 @@ export function CreateProjectForm({ onSubmit, validationErrors, error, disabled 
         {nameInvalid && (
           <span id="project-name-error" className="field-error" role="alert">
             {validationErrors.name?.[0]}
+          </span>
+        )}
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="project-description">Description (optional)</label>
+        <textarea
+          id="project-description"
+          name="description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          disabled={isDisabled}
+          rows={3}
+          aria-describedby={validationErrors.description ? 'project-description-error' : undefined}
+          placeholder="Enter project description"
+        />
+        {validationErrors.description && (
+          <span id="project-description-error" className="field-error" role="alert">
+            {validationErrors.description[0]}
           </span>
         )}
       </div>

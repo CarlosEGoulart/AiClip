@@ -110,7 +110,7 @@ export async function getProjects(): Promise<ProjectsResponse> {
   return request<ProjectsResponse>('/api/v1/projects');
 }
 
-export async function createProject(data: { name: string }): Promise<ProjectResponse> {
+export async function createProject(data: { name: string; description?: string }): Promise<ProjectResponse> {
   return request<ProjectResponse>('/api/v1/projects', {
     method: 'POST',
     body: JSON.stringify(data),

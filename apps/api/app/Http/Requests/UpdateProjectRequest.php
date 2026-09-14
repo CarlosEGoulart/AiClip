@@ -2,19 +2,6 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class UpdateProjectRequest extends FormRequest
-{
-    public function authorize(): bool
-    {
-        return true;
-    }
-
-    public function rules(): array
-    {
-        return [
-            'name' => ['required', 'string', 'max:255'],
-        ];
-    }
-}
+// This file intentionally left empty.
+// Update endpoint is out of scope per Issue #30 specification.
+// See specs/030-project-management/spec.md
