@@ -106,7 +106,7 @@ it('allows authenticated user to create a project', function () {
         'data' => [
             'id',
             'name',
-            'user_id',
+            'description',
             'created_at',
             'updated_at',
         ],
@@ -258,6 +258,10 @@ it('ignores user_id in create request payload', function () {
     ]);
 
     $response->assertCreated();
+
+    // Verify user_id is not exposed in the API response
+    $response->assertJsonMissing(['user_id' => $other->id]);
+    $response->assertJsonMissingPath('data.user_id');
 
     $project = \App\Models\Project::where('name', 'Injected Project')->first();
     expect($project->user_id)->not->toBe($other->id);
