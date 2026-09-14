@@ -48,7 +48,7 @@ export function useProjects(): UseProjectsReturn {
     setError(null);
     try {
       const response = await projectApi.getProjects();
-      setProjects(response.data);
+      setProjects(Array.isArray(response?.data) ? response.data : []);
     } catch (err: unknown) {
       const classified = classifyError(err);
       setError(classified.message);

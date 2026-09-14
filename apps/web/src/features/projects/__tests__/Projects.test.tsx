@@ -252,7 +252,7 @@ describe('CreateProjectForm', () => {
     fireEvent.submit(screen.getByRole('button', { name: 'Create Project' }));
 
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith('My Project');
+      expect(onSubmit).toHaveBeenCalledWith('My Project', undefined);
     });
   });
 

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '../hooks';
 import { CreateProjectForm, ProjectList, useProjects } from '../../projects';
 
@@ -17,8 +17,11 @@ export function AuthenticatedShell() {
   const isLoggingOut = state === 'logging-out';
   const logoutFailed = state === 'authenticated' && errorMessage;
 
+  const hasFetchedRef = useRef(false);
+
   useEffect(() => {
-    if (state === 'authenticated') {
+    if (state === 'authenticated' && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
       fetchProjects();
     }
   }, [state, fetchProjects]);

@@ -7,7 +7,7 @@ interface ProjectListProps {
   loading: boolean;
 }
 
-export function ProjectList({ projects, onDelete, loading }: ProjectListProps) {
+export function ProjectList({ projects = [], onDelete, loading }: ProjectListProps) {
   if (loading) {
     return (
       <div className="project-list-loading" role="status">
