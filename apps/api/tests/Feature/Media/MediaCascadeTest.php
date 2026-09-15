@@ -47,6 +47,8 @@ beforeEach(function () {
 */
 
 it('deleting project removes all associated media from database', function () {
+    Storage::fake('media');
+
     $cookies = $this->cookies;
     $user = User::where('email', 'test@example.com')->first();
 
@@ -63,6 +65,8 @@ it('deleting project removes all associated media from database', function () {
 });
 
 it('deleting project with no media succeeds without errors', function () {
+    Storage::fake('media');
+
     $cookies = $this->cookies;
     $user = User::where('email', 'test@example.com')->first();
 
