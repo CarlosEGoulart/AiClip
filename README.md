@@ -7,10 +7,10 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 | Milestone | Status |
 |-----------|--------|
 | M0 — Engineering Governance | Completed |
-| M1 — Application Foundation | In progress |
-| M2–M14 — Product Features | Planned |
+| M1 — Application Foundation | Completed |
+| M2 — Media Storage | Completed |
 
-M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization. Next M1 slice: authentication and user management.
+M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization, Sanctum SPA authentication, and authenticated project management. M2 delivered: project-scoped video upload with S3-compatible storage (MinIO for development, AWS S3 in production).
 
 ## Architecture
 
@@ -19,7 +19,7 @@ React 19 (apps/web)          Laravel 13 API (apps/api)
 ├── TypeScript                ├── PHP 8.3
 ├── Vite 8                   ├── PostgreSQL 16
 ├── Vitest 5                 ├── Pest
-├── React Testing Library    ├── Laravel Sanctum (planned)
+├── React Testing Library    ├── Laravel Sanctum SPA
 └── Playwright E2E           └── Laravel Queues (planned)
 
 Python Media Worker (planned)
