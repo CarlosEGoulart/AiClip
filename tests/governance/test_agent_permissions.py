@@ -222,7 +222,7 @@ class TestTesterPermissions(unittest.TestCase):
 
 
 class TestOrchestratorPermissions(unittest.TestCase):
-    """Verify Orchestrator owns lifecycle commands via parsed rules."""
+    """Verify Orchestrator lifecycle is constrained by the merge gate."""
 
     def setUp(self):
         fm = load_frontmatter(AGENTS_DIR / "orchestrator.md")
@@ -233,43 +233,289 @@ class TestOrchestratorPermissions(unittest.TestCase):
         self.task_rules = self.perm.get("task", {})
 
     def test_orchestrator_allows_git_lifecycle(self):
-        self.assertEqual(decide(self.bash_rules, "git commit -m test"), "allow")
-        self.assertEqual(decide(self.bash_rules, "git push origin main"), "allow")
-        self.assertEqual(decide(self.bash_rules, "git add ."), "allow")
-        self.assertEqual(decide(self.bash_rules, "git branch feature/test"), "allow")
+        self.assertEqual(
+            decide(self.bash_rules, "git commit -m test"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git add ."),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "git branch @carlosegoulart/41/fix/hard-merge-gate",
+            ),
+            "allow",
+        )
 
-    def test_orchestrator_allows_github_lifecycle(self):
-        self.assertEqual(decide(self.bash_rules, "gh pr create --title test"), "allow")
-        self.assertEqual(decide(self.bash_rules, "gh pr merge 1 --merge"), "allow")
-        self.assertEqual(decide(self.bash_rules, "gh issue create --title test"), "allow")
-        self.assertEqual(decide(self.bash_rules, "gh issue close 1"), "allow")
+    def test_orchestrator_allows_explicit_issue_branch_push(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "git push origin @carlosegoulart/41/fix/hard-merge-gate",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "git push -u origin @carlosegoulart/41/fix/hard-merge-gate",
+            ),
+            "allow",
+        )
+
+    def test_orchestrator_denies_direct_default_branch_push(self):
+        self.assertEqual(
+            decide(self.bash_rules, "git push origin master"),
+            "deny",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git push origin main"),
+            "deny",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git push"),
+            "deny",
+        )
+
+    def test_orchestrator_denies_push_refspec_bypass(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                (
+                    "git push origin "
+                    "@carlosegoulart/41/fix/hard-merge-gate:master"
+                ),
+            ),
+            "deny",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                (
+                    "git push origin "
+                    "@carlosegoulart/41/fix/hard-merge-gate:"
+                    "refs/heads/master"
+                ),
+            ),
+            "deny",
+        )
+
+    def test_orchestrator_denies_force_push(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                (
+                    "git push origin "
+                    "@carlosegoulart/41/fix/hard-merge-gate --force"
+                ),
+            ),
+            "deny",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                (
+                    "git push origin "
+                    "@carlosegoulart/41/fix/hard-merge-gate "
+                    "--force-with-lease"
+                ),
+            ),
+            "deny",
+        )
+
+    def test_orchestrator_allows_github_lifecycle_without_merge(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh pr create --title test",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh issue create --title test",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh issue close 41",
+            ),
+            "allow",
+        )
+
+    def test_orchestrator_denies_direct_github_merge(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh pr merge 42 --merge",
+            ),
+            "deny",
+        )
+
+    def test_orchestrator_allows_merge_gate(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "python scripts/merge_gate.py 42",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "python scripts/merge_gate.py 42 --check",
+            ),
+            "allow",
+        )
+
+    def test_orchestrator_does_not_allow_fake_gate_prefix(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "python scripts/merge_gate.py-malicious 42",
+            ),
+            "deny",
+        )
 
     def test_orchestrator_delegates_to_known_agents(self):
-        self.assertEqual(decide(self.task_rules, "planner"), "allow")
-        self.assertEqual(decide(self.task_rules, "builder"), "allow")
-        self.assertEqual(decide(self.task_rules, "tester"), "allow")
+        self.assertEqual(
+            decide(self.task_rules, "planner"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(self.task_rules, "builder"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(self.task_rules, "tester"),
+            "allow",
+        )
 
     def test_orchestrator_denies_unknown_agents(self):
-        self.assertEqual(decide(self.task_rules, "explorer"), "deny")
-        self.assertEqual(decide(self.task_rules, "unknown-agent"), "deny")
+        self.assertEqual(
+            decide(self.task_rules, "explorer"),
+            "deny",
+        )
+        self.assertEqual(
+            decide(self.task_rules, "unknown-agent"),
+            "deny",
+        )
 
     def test_orchestrator_cannot_edit_production_code(self):
-        self.assertEqual(decide(self.edit_rules, "apps/api/app/Models/User.php"), "deny")
-        self.assertEqual(decide(self.edit_rules, "apps/web/src/App.tsx"), "deny")
+        self.assertEqual(
+            decide(
+                self.edit_rules,
+                "apps/api/app/Models/User.php",
+            ),
+            "deny",
+        )
+        self.assertEqual(
+            decide(
+                self.edit_rules,
+                "apps/web/src/App.tsx",
+            ),
+            "deny",
+        )
+
+    def test_orchestrator_cannot_edit_merge_gate(self):
+        self.assertEqual(
+            decide(
+                self.edit_rules,
+                "scripts/merge_gate.py",
+            ),
+            "deny",
+        )
+
+    def test_orchestrator_cannot_edit_governance_tests(self):
+        self.assertEqual(
+            decide(
+                self.edit_rules,
+                "tests/governance/test_merge_gate.py",
+            ),
+            "deny",
+        )
 
     def test_orchestrator_allows_project_state(self):
-        self.assertEqual(decide(self.edit_rules, "docs/project-state.md"), "allow")
+        self.assertEqual(
+            decide(
+                self.edit_rules,
+                "docs/project-state.md",
+            ),
+            "allow",
+        )
 
     def test_orchestrator_denies_env_secrets(self):
-        self.assertEqual(decide(self.read_rules, ".env"), "deny")
-        self.assertEqual(decide(self.read_rules, "apps/api/.env"), "deny")
-        self.assertEqual(decide(self.read_rules, ".env.production"), "deny")
+        self.assertEqual(
+            decide(self.read_rules, ".env"),
+            "deny",
+        )
+        self.assertEqual(
+            decide(self.read_rules, "apps/api/.env"),
+            "deny",
+        )
+        self.assertEqual(
+            decide(self.read_rules, ".env.production"),
+            "deny",
+        )
 
     def test_orchestrator_allows_env_example(self):
-        self.assertEqual(decide(self.read_rules, ".env.example"), "allow")
-        self.assertEqual(decide(self.read_rules, "apps/api/.env.example"), "allow")
+        self.assertEqual(
+            decide(self.read_rules, ".env.example"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.read_rules,
+                "apps/api/.env.example",
+            ),
+            "allow",
+        )
 
 
+class TestMergeGateImmutability(unittest.TestCase):
+    """The trusted merge gate cannot be edited by any runtime agent."""
+
+    def test_all_agents_deny_merge_gate_edits(self):
+        for name in [
+            "orchestrator.md",
+            "planner.md",
+            "builder.md",
+            "tester.md",
+        ]:
+            with self.subTest(agent=name):
+                fm = load_frontmatter(AGENTS_DIR / name)
+                rules = fm.get("permission", {}).get("edit", {})
+
+                self.assertEqual(
+                    decide(rules, "scripts/merge_gate.py"),
+                    "deny",
+                    f"{name} must not edit merge_gate.py",
+                )
+
+    def test_all_agents_deny_governance_test_edits(self):
+        for name in [
+            "orchestrator.md",
+            "planner.md",
+            "builder.md",
+            "tester.md",
+        ]:
+            with self.subTest(agent=name):
+                fm = load_frontmatter(AGENTS_DIR / name)
+                rules = fm.get("permission", {}).get("edit", {})
+
+                self.assertEqual(
+                    decide(
+                        rules,
+                        "tests/governance/test_merge_gate.py",
+                    ),
+                    "deny",
+                    f"{name} must not edit governance tests",
+                )
 class TestEnvProtection(unittest.TestCase):
     """Verify all agents protect .env secrets with generic wildcard patterns."""
 
