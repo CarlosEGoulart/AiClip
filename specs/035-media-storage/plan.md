@@ -1,554 +1,125 @@
-# Implementation Plan: Media Storage (Issue #33)
+# Implementation Plan: Media Storage — Issue #35
 
-## Overview
+## Active Scope and Working-Tree Baseline
 
-This plan implements project-scoped video upload and S3-compatible storage following
-TDD (RED → GREEN → REFACTOR) for every feature task. Each task is ordered to minimize
-integration risk and enable incremental testing.
+Issue: [Issue #35](https://github.com/CarlosEGoulart/AiClip/issues/35). Continue existing branch `@carlosegoulart/35/feat/media-storage`; do not reset, restart, discard untracked implementation, or create another issue/branch. `spec.md` is the behavior contract; `test-plan.md` defines required verification. All steps are storage-only and preserve Laravel/React/Sanctum/PostgreSQL architecture.
 
-## Phase 1: Infrastructure & Database (Backend)
+Planning inspected the active issue, architecture, PRD, roadmap, project state, ADR-0002, the current bundle, API routes/bootstrap/config/models/controllers, SPA test support, existing media tests, frontend media code/tests, package scripts, Playwright config, Compose, and E2E workflow. No real `.env` secrets were read. Roadmap/project-state entries are historical and need Orchestrator reconciliation, not Planner/Builder lifecycle edits.
 
-### Task 1.1 — Add MinIO to docker-compose.yml
+Observed current gaps, not an exhaustive implementation verdict:
 
-**Files:** `docker-compose.yml`
+- Composer has no S3 adapter requirement; Compose has only PostgreSQL; the filesystem has no private `media` disk and API routes have no media registration. Existing untracked media files are useful work, not proof of a wired feature.
+- Upload FormRequest authorizes everything before controller ownership and relies on KiB validation. Upload controller uses a project-only key, a `bin` fallback, an unchecked write result, unsanitized display name, and raw exception logging. Correct these incrementally against the revised contract.
+- Individual deletion has some row-preservation corrections but still needs exact false/exception/absent-object and database-failure coverage. Project deletion still directly deletes the model; implement the explicit cleanup boundary and shared project lock rather than a swallowing observer.
+- `MinIOIntegrationTest.php` exists under `tests/Feature/Media` but skips when its bucket is missing. It needs explicit discovery/grouping, asserted write/delete results, fail-closed prerequisites, and API/database lifecycle coverage.
+- Public frontend fields already omit disk/key, but the status union still includes `failed`. `MediaListItem.test.tsx` already queries the pending confirmation button by `Confirm delete ...`; `MediaList.test.tsx` has no unused `fireEvent`; `ProjectMediaSection.tsx` no longer destructures unused `clearErrors`. Verify these, do not undo/reapply them blindly. Hook tests legitimately use `fireEvent`/`clearErrors`.
+- Some ownership fixtures already use distinct emails and upload assertions already query model keys. Inspect each remaining helper/fixture: current media upload calls still send decrypted `csrfToken(...)` as `X-XSRF-TOKEN`, unlike the existing SPA wire-cookie convention. Do not assume all prior fixes survived.
 
-Add the MinIO service definition alongside the existing `postgres` service.
-Create a named volume `miniodata`. Add a health check. No application code changes.
+Historical bundle/evidence was reported reverted to `e83ef98`; previous RED/GREEN claims are unverified. Preserve existing correct behavior and evidence honesty. This plan does not assert that tests were run before the existing implementation.
 
-**TDD:** No tests needed. Verified by `docker compose up` and MinIO console at
-`http://localhost:9001`.
+## Step 0 — First Operational Prerequisite: Human Composer Gate
 
----
+After Orchestrator confirms valid planning and the governance gate, Builder's first operational action is the now-authorized mandatory `ls` preflight in working directory `apps/api`. Then invoke, in the same directory:
 
-### Task 1.2 — Configure S3-compatible filesystem disk
-
-**Files:** `apps/api/config/filesystems.php`, `apps/api/.env.example`
-
-Add the `media` disk configuration to `filesystems.php` using the `s3` driver with
-env vars: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`,
-`AWS_BUCKET`, `AWS_ENDPOINT`, `AWS_USE_PATH_STYLE_ENDPOINT`.
-
-Update `.env.example` to include:
-```
-MEDIA_DISK=media
-MEDIA_MAX_UPLOAD_SIZE=104857600
-AWS_ACCESS_KEY_ID=minioadmin
-AWS_SECRET_ACCESS_KEY=minioadmin
-AWS_DEFAULT_REGION=us-east-1
-AWS_BUCKET=aiclip-media
-AWS_ENDPOINT=http://localhost:9000
-AWS_USE_PATH_STYLE_ENDPOINT=true
+```text
+composer require league/flysystem-aws-s3-v3:^3.0
 ```
 
-**TDD:**
-- RED: Write a test that `config('filesystems.disks.media')` exists and has driver `s3`.
-- GREEN: Add the disk config.
-- REFACTOR: No refactoring needed.
+The existing Composer ASK remains pending HUMAN. Invoke the operation and WAIT for explicit human approval. Do not start dependent implementation/environment/test work on inferred approval or a prior-session report. After approval, require an actual successful Composer result. Composer, owned by Builder, must generate both dependency and lock changes normally; Orchestrator must not run this instead, and no agent may hand-edit the lockfile, bypass platform requirements, or switch installation mechanisms to evade the gate.
 
----
+If the actual needed operation is denied, stop and return the exact attempted command and raw permission error to Orchestrator. A static permission rule is not an invocation or proof of a blocker. Repository paths remain relative. A typo/path or external metadata-fetch error is not an agent permission denial; correct the request rather than claim authorization or weaken a requirement. Planner runs no shell commands.
 
-### Task 1.3 — Create MediaAsset model and migration
+## Step 1 — Bootstrap Real Dependencies and Repair Test Setup
 
-**Files:**
-- `apps/api/database/migrations/XXXX_create_media_assets_table.php`
-- `apps/api/app/Models/MediaAsset.php`
-- `apps/api/database/factories/MediaAssetFactory.php`
-- `apps/api/app/Models/Project.php` (add `mediaAssets` relationship)
+1. After approved Composer success, verify the installed Laravel/Pest runtime, required PHP extensions (especially PDO PostgreSQL and Fileinfo), Composer autoloading and dev dependencies including Faker. Preserve the existing framework; satisfy its actual locked platform requirements rather than migrating it.
+2. Prepare issue-required runtime settings, safe `.env.example` guidance, Compose server/init services, and PHP upload-limit documentation/configuration. `MEDIA_MAX_UPLOAD_SIZE` is bytes, default 104857600; PHP file limit accommodates it and post limit has multipart headroom (128M at the default). Never inspect real `.env` secrets. Use isolated disposable test data, not production accounts or buckets. Defer application `config/media.php` and private filesystem disk corrections to Step 2's assertion-based TDD; infrastructure preparation is not a claim of application GREEN.
+3. Use the exact MinIO pins and health/init requirements below. From repository root invoke only the authorized combined startup:
 
-Migration creates `media_assets` table with columns:
-`id`, `project_id` (FK CASCADE), `original_name`, `storage_disk`, `storage_key`
-(unique), `mime_type`, `size_bytes`, `status` (default `stored`), `created_at`,
-`updated_at`.
+   `docker compose up -d postgres minio minio-init`
 
-Model: `App\Models\MediaAsset` with `$fillable`, `casts`, and `project()` relationship.
+   No standalone PostgreSQL startup, alternate runtime, destructive volume reset, or guessed permission workaround. Require actual image resolution/pull/start evidence for both pins. If cached, record resolved image identity and matching tag; do not infer a successful pull from documentation. Any additional necessary pull/inspection command follows runtime permissions and human approval where required.
+4. Verify database health/connectivity, actual MinIO healthcheck success, and `minio-init` exit code zero with private bucket ready before tests. A detached Compose success message alone is insufficient. Prepare migrations/test runtime on a dedicated disposable database. Retain existing data volumes; do not reset them to repair failures.
+5. Run a backend baseline with `php artisan test` in `apps/api` once runtime/infrastructure prerequisites are ready. Missing issue behavior/configuration can still fail at this point; do not require or claim a GREEN baseline. Classify PDO/connection errors, missing facades/container bindings, missing Faker, syntax/fixture failures, and empty discovery as setup failures, not behavioral RED. Repair minimal application-test setup before evaluating missing behavior. A skipped/unconfigured existing integration test is not successful integration; its mandatory acceptance run follows the disk/discovery corrections.
+6. Use Laravel-bound `Tests\TestCase` for facade/model/config tests and the existing enforced-CSRF `SpaTestCase` for SPA feature tests. Adapt multipart requests to send real wire cookies and the URL-decoded cookie value in `X-XSRF-TOKEN`, not a decrypted token under that header. Preserve CSRF enforcement; do not remove middleware to make fixtures pass. Avoid duplicate registration/factory users for the same email. Assert storage using backend `MediaAsset.storage_key`, not public asset ID. Confirm existing corrections before changing them.
 
-Factory: `MediaAssetFactory` with realistic defaults, accepts `project_id` override.
+## Official MinIO Pin and Command Basis
 
-Project model: add `mediaAssets(): HasMany` returning `MediaAsset::class`.
+Selected images, unchanged between local Compose and CI:
 
-**TDD:**
-- RED: Write Pest test asserting `MediaAsset::factory()->create()` succeeds and the
-  database record exists with all expected columns.
-- GREEN: Create migration, model, factory.
-- REFACTOR: Verify factory is minimal and correct.
+| Service | Pin |
+| --- | --- |
+| `minio` | `quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z` |
+| `minio-init` | `quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z` |
 
----
+Official sources fetched during this planning pass:
 
-### Task 1.4 — Add MediaAsset relationship to User (transitive)
+- [Server release](https://github.com/minio/minio/releases/tag/RELEASE.2025-04-22T22-12-26Z) and [client release](https://github.com/minio/mc/releases/tag/RELEASE.2025-04-16T18-13-26Z): published, signed release tags exist.
+- [Server release Dockerfile](https://raw.githubusercontent.com/minio/minio/RELEASE.2025-04-22T22-12-26Z/Dockerfile.release): final image copies `minio`, `mc`, and static `curl` into `/usr/bin`, declares `/data`, and uses the server entrypoint. Therefore an exec-form healthcheck invoking `/usr/bin/curl -f --silent --show-error http://127.0.0.1:9000/minio/health/ready` has a source basis; verify it in the pulled image.
+- [Healthcheck documentation at the server tag](https://raw.githubusercontent.com/minio/minio/RELEASE.2025-04-22T22-12-26Z/docs/metrics/healthcheck/README.md): documents `/minio/health/ready`. This is not proof of bucket creation or S3 credentials.
+- [Server quickstart at the tag](https://raw.githubusercontent.com/minio/minio/RELEASE.2025-04-22T22-12-26Z/README.md): documents the official Quay repository, `server /data --console-address ":9001"`, persistent volume mapping, and standalone development/evaluation limits.
+- [Client release Dockerfile](https://raw.githubusercontent.com/minio/mc/RELEASE.2025-04-16T18-13-26Z/Dockerfile.release): adds `/usr/bin/mc`, makes it executable, and sets `ENTRYPOINT ["mc"]`. Do not assume client-image `curl` or an implicit shell command will work under this entrypoint.
+- Client-tag command sources: [`mb --ignore-existing`](https://raw.githubusercontent.com/minio/mc/RELEASE.2025-04-16T18-13-26Z/cmd/mb-main.go) and [`anonymous set private`](https://raw.githubusercontent.com/minio/mc/RELEASE.2025-04-16T18-13-26Z/cmd/anonymous-main.go). These establish idempotent creation and the explicit private policy operation.
 
-**Files:** `apps/api/app/Models/User.php`
+Registry metadata requests did not validate image availability: Quay tag API requests returned HTTP 400; Docker Hub tag API requests returned HTTP 404 for these release names. Those are external HTTP lookup results, not Docker pull results or local operation permission errors. Official release/source evidence does **not** prove a published container can currently resolve/pull/start on this host. That verification remains mandatory for Builder and CI. Do not replace pins with floating tags or silently choose another release on failure; report actual resolution/pull errors to Orchestrator for targeted clarification. Official repositories are archived; these pins are for local/CI verification, not a claim of ongoing upstream support or production hardening.
 
-No direct `mediaAssets` relationship on User is needed. Media access is always
-through Project. Document this design decision in the model comment. No code change
-required beyond Task 1.3.
+Compose must mount a persistent named volume at the server data directory, expose host ports only on loopback, and use the server command documented above. Use finite healthcheck timeout/retries. `minio-init` waits for server health, configures a private alias from injected non-production credentials, executes `mc mb --ignore-existing` and `mc anonymous set private` for the configured bucket, and exits nonzero on any failure. Do not mask errors with unconditional success. If using a Compose shell entrypoint for multiple client commands, verify that shell in the resolved client image; only `mc` availability is established here. Re-running initialization must not erase data or make the bucket public. Avoid credential echoing/debug output. Runtime verification must include repeat init/private policy and persistence, not just a console screenshot.
 
-**TDD:** Covered by ownership tests in Phase 2.
+## Step 2 — Fresh Correction TDD: Metadata, Validation, and API
 
----
+For each remaining behavioral defect, first add/strengthen an assertion-based test, execute it in the bootstrapped environment, and verify the precise missing behavior is RED. Then minimally correct implementation, rerun to GREEN, and refactor with another run. Tests already passing on existing implementation are regression evidence, not newly invented historical RED; mutation checks can demonstrate assertion sensitivity but cannot rewrite history.
 
-## Phase 2: Backend API (Controller, Validation, Routes)
+- Complete/reuse existing migration, model, factory, and Project relationship. Cover actual duplicate-key constraint violations, integer size, ownership relationships, and the `stored`-only contract.
+- Add private disk and routes under existing Sanctum SPA handling; use existing AppServiceProvider limiter pattern, keyed per user at 10/minute. Ownership must precede ordinary FormRequest field validation, with recheck under the mutation lock. Preserve 404/401/419/429 semantics and regress existing auth/project/health behavior.
+- Test then implement exact-byte size validation and server MIME mapping, sanitized metadata names, and UUID `{user_id}/{project_id}` keys. No extension-only rejection for valid bytes and no `bin` fallback. Cover app oversize, PHP INI/FORM size error codes, and actual Laravel `PostTooLargeException` rendering to the identical JSON 413 body. Ensure global early-body rejection remains resource-independent.
+- Reuse explicit API Resources with the public allowlist. Keep internal fields out of browser types and serialized responses. Do not add production key access for E2E.
 
-### Task 2.1 — Create StoreMediaUploadRequest form request
+## Step 3 — Fresh Correction TDD: Storage Consistency and Project Deletion
 
-**Files:** `apps/api/app/Http/Requests/StoreMediaUploadRequest.php`
+Implement a small application/service boundary callable from the existing controllers, with injected/testable storage and database failure points as appropriate. Share project-row locking/recheck across upload, media delete, and existing project delete. No background infrastructure or generic framework rewrite.
 
-Validation rules:
-- `file` → required, file, mimetypes:video/mp4,video/quicktime,video/webm,
-  max:{MEDIA_MAX_UPLOAD_SIZE in KB}
-- `authorize()` → returns true (ownership check is in the controller, not the
-  request, because we need the project from the route parameter)
+- Upload: assert write false/throw handling before successful metadata; store first, insert/commit metadata second. On metadata failure, attempt object deletion; assert false/throw compensation leaves an honest orphan candidate and controlled 500. Emit only safe correlated operational context.
+- Media delete: false or thrown object deletion preserves metadata and returns 500. Successful absent-object S3 delete is idempotent; generic exceptions are never classified by message text as success. Database failure after object deletion retains the row for retry without claiming the object exists. Success requires both stages, returning 204.
+- Project delete: owned project is locked/rechecked; refresh asset list; clean objects in ID order; stop on first false/exception before any database deletion. Preserve project and all rows on failure. After all cleanup succeeds, remove metadata/project in the transaction and return 204 only after commit. Test failure after partial cleanup and after all objects but before DB commit; retry must finish despite absent objects. Remove any swallowing observer introduced by earlier work instead of duplicating cleanup in both places.
+- Verify conflicting upload/media/project deletion with controlled PostgreSQL interleavings using the same project lock. Waiters recheck existence and never write to a committed-deleted project. Avoid implicit transaction auto-retry around external writes that could duplicate objects; keep UUID/compensation behavior explicit. Bound storage calls so locks are not held indefinitely.
 
-**TDD:**
-- RED: Write test that `POST /api/v1/projects/{id}/media/upload` with no file
-  returns 422 with `file` validation error.
-- GREEN: Create the form request.
-- REFACTOR: Extract max size to a config value if needed.
+## Step 4 — Real Integration Must Be Discovered and Run
 
----
+Keep the existing standalone `apps/api/tests/Feature/Media/MinIOIntegrationTest.php`, give all its tests the separate `minio-integration` group, and ensure the existing Feature discovery actually includes it. No `Storage::fake`, mocked S3 client, local fallback, environment-based skip, or conditional return in this group. Missing infrastructure/configuration is a failed prerequisite, not a pass.
 
-### Task 2.2 — Create MediaAssetController
+Exercise the real Laravel filesystem through Flysystem/S3 adapter to MinIO: assert successful write, exists, byte-for-byte read, successful delete, absence, and repeated absent-object deletion. Also exercise the real cookie/CSRF upload/list/media-delete/project-delete API with PostgreSQL and actual tiny supported video bytes. Query backend models for keys before deleting rows, then assert object absence. Isolate test keys/data and clean up in test teardown without hiding failures.
 
-**Files:** `apps/api/app/Http/Controllers/Api/V1/MediaAssetController.php`
+The mandatory non-skipping command and execution-count requirements are in `test-plan.md`. Fast fake-backed tests may explicitly exclude this group for developer feedback, but cannot replace the standalone integration gate, full backend execution, or real-storage browser E2E.
 
-Methods:
+## Step 5 — Complete Existing Frontend, Not a Rewrite
 
-#### `upload(Request $request, Project $project)`
-1. `$this->authorizeOwnership($request, $project)` — reuse the same pattern as
-   `ProjectController`.
-2. Validate via `StoreMediaUploadRequest`.
-3. Get the uploaded file: `$file = $request->file('file')`.
-4. Determine MIME type via `finfo_file($file->getPathname())`.
-5. Generate storage key: `{$project->id}/` . (string) Str::uuid() . `.` .
-   `$file->getClientOriginalExtension()`.
-6. Store file: `$file->storeAs('/', $key, config('media.disk'))`.
-7. Create `MediaAsset` record.
-8. Return 201 with `MediaAssetResource`.
+Use existing `features/media` client/types/hooks/components and authenticated project selection. Preserve the current accessible-name/import corrections described above; run tests/lint/build before touching alleged prior defects. Change only remaining failures or missing specified behavior.
 
-#### `index(Request $request, Project $project)`
-1. `$this->authorizeOwnership($request, $project)`.
-2. Return `MediaAssetResource::collection($project->mediaAssets()->orderByDesc('created_at')->get())`.
+- Restrict status types/display to `stored`; show pending HTTP state separately. Ensure list fetch/reload/reselection, file input, disabled/pending upload, clear safe errors, and success reset work. Upload FormData must let the browser set its multipart boundary while sending cookies and CSRF header.
+- Preserve explicit delete/cancel confirmation, prevent duplicate submissions, keep row/project on server failure, and communicate partial project cleanup honestly. Do not automatically retry an uncertain upload/500 as if it were idempotent. Existing bounded CSRF refresh/retry may remain.
+- Guard stale async results across project/session changes and unmount. Keep labels, keyboard/focus behavior, announcements, and responsive design consistent with existing UI; apply applicable design guidance without introducing unrelated dependencies or a new framework.
+- Run actual `npm test`, `npm run lint`, and `npm run build` in `apps/web`; TS6133/accessible-name failures must be reproduced or verified already absent, not assumed. Do not weaken assertions or remove legitimately used hooks/imports merely because prior reports mentioned them.
 
-#### `destroy(Request $request, MediaAsset $media)`
-1. Load the parent project via `$media->project`.
-2. `$this->authorizeOwnership($request, $project)`.
-3. Attempt `Storage::disk($media->storage_disk)->delete($media->storage_key)`.
-4. `$media->delete()`.
-5. Return 204.
+## Step 6 — CI and Playwright Startup
 
-**TDD:**
-- RED: Write Pest tests for each endpoint covering success, ownership, validation,
-  and error cases (see test-plan.md for full list).
-- GREEN: Implement controller.
-- REFACTOR: Extract ownership helper if duplication remains.
+Update `.github/workflows/e2e.yml` with explicit Compose steps, replacing conflicting PostgreSQL Actions service startup as needed so only one database owns port 5432. Keep `command`, `depends_on`, and `entrypoint` in Compose, not Actions `services`. Validate real Actions schema, not only generic YAML parsing. Add no `continue-on-error`, skip-on-unavailable logic, or success-masking commands.
 
----
+Order: checkout/runtime/dependency installation from Composer lock and npm lock; safe ephemeral environment and PHP limits; combined Compose startup with matching pins; bounded DB/MinIO readiness and successful private bucket init; migrations; mandatory real MinIO integration; managed browser E2E. Propagate consistent S3/DB settings to both PHP test process and Playwright's Laravel child process. Host-run Laravel uses the mapped host endpoint, while init uses Compose DNS. Require both real-integration and browser success in CI; retain safe failure diagnostics/artifacts without secrets.
 
-### Task 2.3 — Create MediaAssetResource
+The defined frontend script is `npm run test:e2e`, not a guessed command. `apps/web/playwright.config.ts` manages Laravel on 127.0.0.1:8000 (readiness at `/api/v1/health`, which checks the database) and Vite on 127.0.0.1:5173, with `reuseExistingServer: false` and all three required viewport projects.
 
-**Files:** `apps/api/app/Http/Resources/MediaAssetResource.php`
+Investigate any actual startup timeout from child-process logs, Composer/node/browser dependencies, PHP extensions, migrations/database connectivity, environment/CSRF host settings, occupied ports, and health responses. Fix the root cause. Do not merely increase timeout unless measurements show a healthy but legitimately slow startup, with those measurements recorded. No framework migration or unrelated startup redesign.
 
-JSON structure matching the API contract in spec.md. No `user_id` exposed.
+## Step 7 — Verification and Independent Handoff
 
-**TDD:** Covered by controller tests that assert JSON structure.
-
----
+Builder executes targeted RED/GREEN/refactor and all authorized mandatory commands in `test-plan.md`, reporting actual command, working directory, exit status, counts, and failure classification. Governance execution belongs to authorized Orchestrator/Tester; Builder runs it only if runtime permission allows. Never edit governance tests/agents to obtain a pass.
 
-### Task 2.4 — Register routes
-
-**Files:** `apps/api/routes/api.php`
-
-Add inside the `auth:sanctum` middleware group:
-
-```php
-Route::post('/projects/{project}/media/upload', [MediaAssetController::class, 'upload'])
-    ->middleware('throttle:media-upload');
-Route::get('/projects/{project}/media', [MediaAssetController::class, 'index']);
-Route::delete('/media/{media}', [MediaAssetController::class, 'destroy']);
-```
+Independent Tester repeats all applicable backend, real integration, frontend test/lint/build, configured Playwright, and governance checks. Tester must operate the running app, inspect screenshots at 390x844, 768x1024, 1440x900, and check console/network/API, focus/keyboard/labels/live status, ownership, CSRF, traversal, secret exposure, and storage/database failures. Approval cannot rest on written tests or a fake-only suite. Defects return through Orchestrator to Builder on this same issue.
 
-Register the rate limiter in `AppServiceProvider`:
+Orchestrator alone owns evidence/lifecycle coordination, commits, CI/PR/merge/closure and the authorized post-merge documentation reconciliation. Suggested concise documentation changes after verified merge: add private S3/MinIO storage and owned upload/list/delete/project cleanup as completed capabilities; record the 100 MiB configurable limit, no resumability/processing, and partial-delete/orphan manual-recovery limits; reconcile stale completed foundation entries and this storage slice without starting another milestone. Keep the next architectural goal subject to separate human authorization.
 
-```php
-RateLimiter::for('media-upload', function (Request $request) {
-    return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
-});
-```
+## Remaining Gates (Not Claimed Complete)
 
-**TDD:**
-- RED: Write test that `DELETE /api/v1/media/{id}` returns 401 for guests.
-- GREEN: Register routes and rate limiter.
-- REFACTOR: No refactoring needed.
-
----
-
-### Task 2.5 — Update Project model for cascade cleanup
-
-**Files:** `apps/api/app/Models/Project.php`
-
-Add a `booted()` method with a `deleting` observer that iterates
-`$this->mediaAssets` and deletes each from storage before the project
-record is removed.
-
-```php
-protected static function booted(): void
-{
-    static::deleting(function (Project $project) {
-        foreach ($project->mediaAssets as $media) {
-            try {
-                Storage::disk($media->storage_disk)->delete($media->storage_key);
-            } catch (\Exception $e) {
-                \Log::warning("Failed to delete media object: {$media->storage_key}", [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-    });
-}
-```
-
-**TDD:**
-- RED: Write test that deleting a project with media removes both the DB records
-  and the storage objects.
-- GREEN: Add the observer.
-- REFACTOR: No refactoring needed.
-
----
-
-## Phase 3: Frontend
-
-### Task 3.1 — Define TypeScript types for MediaAsset
-
-**Files:** `apps/web/src/features/media/types/index.ts`
-
-```typescript
-export interface MediaAsset {
-  id: number;
-  project_id: number;
-  original_name: string;
-  storage_disk: string;
-  storage_key: string;
-  mime_type: string;
-  size_bytes: number;
-  status: 'stored' | 'failed';
-  created_at: string;
-  updated_at: string;
-}
-
-export interface MediaAssetsResponse {
-  data: MediaAsset[];
-}
-
-export interface MediaAssetResponse {
-  data: MediaAsset;
-}
-
-export type MediaErrorType =
-  | 'validation'
-  | 'unauthorized'
-  | 'throttle'
-  | 'csrf'
-  | 'network'
-  | 'server'
-  | 'file-too-large';
-
-export interface MediaError {
-  type: MediaErrorType;
-  errors?: Record<string, string[]>;
-  message?: string;
-}
-```
-
-**TDD:** Type definitions — no runtime tests needed.
-
----
-
-### Task 3.2 — Create media API client
-
-**Files:** `apps/web/src/features/media/api/index.ts`
-
-Functions:
-- `getMediaAssets(projectId: number): Promise<MediaAssetsResponse>`
-- `uploadMediaAsset(projectId: number, file: File): Promise<MediaAssetResponse>`
-- `deleteMediaAsset(mediaId: number): Promise<void>`
-
-The upload function must:
-- Initialize CSRF cookie first.
-- Use `FormData` with `Content-Type: multipart/form-data` (do NOT set the header
-  manually — let the browser set the boundary).
-- NOT set `X-XSRF-TOKEN` header for multipart uploads (the CSRF token is sent via
-  cookie for SPA mode). Actually, per the existing pattern, CSRF is sent via the
-  `X-XSRF-TOKEN` header. For file uploads, the CSRF token should still be sent
-  in the header. The `Content-Type` is set by the browser with the correct boundary.
-
-**TDD:**
-- RED: Write Vitest tests mocking `fetch` for success, validation error, file-too-large,
-  and network error cases.
-- GREEN: Implement the API client.
-- REFACTOR: Extract shared CSRF logic if not already shared with projects API.
-
----
-
-### Task 3.3 — Create useMediaAssets hook
-
-**Files:** `apps/web/src/features/media/hooks/index.ts`
-
-```typescript
-export function useMediaAssets(projectId: number | null): UseMediaAssetsReturn
-```
-
-State: `mediaAssets`, `loading`, `error`, `uploading`.
-Methods: `fetchMedia`, `uploadFile`, `deleteMedia`, `clearErrors`.
-
-Follow the same pattern as `useProjects` hook.
-
-**TDD:**
-- RED: Write Vitest tests for the hook using `renderHook` from RTL:
-  - fetchMedia populates mediaAssets
-  - uploadFile adds to list
-  - deleteMedia removes from list
-  - error states are handled
-- GREEN: Implement the hook.
-- REFACTOR: No refactoring needed.
-
----
-
-### Task 3.4 — Create MediaUploadForm component
-
-**Files:** `apps/web/src/features/media/components/MediaUploadForm.tsx`
-
-A file input with:
-- `accept="video/mp4,video/quicktime,video/webm"`
-- Upload button
-- Loading state while uploading
-- Error display for validation/file-size/server errors
-- Success feedback (file appears in the list)
-
-Accessibility: label associated with input, aria-live for status messages.
-
-**TDD:**
-- RED: Write Vitest tests:
-  - renders file input with correct accept attribute
-  - shows uploading state
-  - shows error message on failure
-  - calls onSubmit with the selected file
-- GREEN: Implement the component.
-- REFACTOR: Ensure consistent styling with existing project components.
-
----
-
-### Task 3.5 — Create MediaList component
-
-**Files:** `apps/web/src/features/media/components/MediaList.tsx`
-
-Displays a list of `MediaAsset` items with:
-- Original filename
-- File size (formatted)
-- Upload date
-- Status badge
-- Delete button with confirmation
-
-States: loading, empty, list.
-
-**TDD:**
-- RED: Write Vitest tests:
-  - renders loading state
-  - renders empty state
-  - renders list of media items
-  - delete button triggers callback
-- GREEN: Implement the component.
-- REFACTOR: No refactoring needed.
-
----
-
-### Task 3.6 — Create MediaListItem component
-
-**Files:** `apps/web/src/features/media/components/MediaListItem.tsx`
-
-Individual media item display with:
-- File name
-- Human-readable size (KB/MB/GB)
-- Relative or absolute date
-- Status indicator
-- Delete with confirmation (same pattern as ProjectCard)
-
-**TDD:**
-- RED: Write Vitest tests for rendering and delete confirmation flow.
-- GREEN: Implement the component.
-- REFACTOR: No refactoring needed.
-
----
-
-### Task 3.7 — Create media feature barrel export
-
-**Files:** `apps/web/src/features/media/index.ts`
-
-Re-export all public types, hooks, and components.
-
-**TDD:** No runtime tests needed.
-
----
-
-### Task 3.8 — Integrate media into AuthenticatedShell
-
-**Files:** `apps/web/src/features/auth/components/AuthenticatedShell.tsx`
-
-For the first iteration, the media upload UI is shown per-project. Since we don't
-have a project detail page yet, add a collapsible media section below each
-`ProjectCard` when the user expands it. Alternatively, create a simple
-`ProjectDetailView` that is shown when a project is selected.
-
-**Decision:** Create a lightweight `ProjectMediaSection` component that is rendered
-inside `AuthenticatedShell` when a project is selected. This avoids the need for
-routing (which is out of scope).
-
-Flow:
-1. User clicks a project card → project is "selected" (state in AuthenticatedShell).
-2. `ProjectMediaSection` renders below the project list with:
-   - Upload form
-   - Media list for the selected project
-   - Back button to deselect
-3. User can upload, view, and delete media for that project.
-
-**TDD:**
-- RED: Write Vitest tests:
-  - selecting a project shows the media section
-  - deselecting hides it
-  - upload and delete work end-to-end through the hook
-- GREEN: Implement the integration.
-- REFACTOR: Ensure no prop drilling exceeds 2 levels.
-
----
-
-## Phase 4: E2E Tests
-
-### Task 4.1 — Playwright E2E: upload → list → delete flow
-
-**Files:** `apps/web/e2e/media.spec.ts`
-
-Test scenario:
-1. Register a user (or reuse existing auth helper).
-2. Create a project.
-3. Upload a valid video file (use a small fixture, e.g. a 1-second MP4).
-4. Assert the media list shows the uploaded file with correct name and size.
-5. Delete the media asset.
-6. Assert the media list is empty.
-7. Delete the project.
-8. Assert the project is gone.
-
-Additional scenarios:
-- Upload rejection for wrong MIME type (upload a .txt renamed to .mp4).
-- Upload rejection for file exceeding size limit.
-- Non-owner cannot see or delete another user's media.
-
-**TDD:**
-- RED: Write the Playwright spec.
-- GREEN: The E2E test should pass once all previous tasks are complete.
-- REFACTOR: Extract shared auth/project helpers if duplicated.
-
----
-
-### Task 4.2 — MinIO integration verification
-
-**Files:** Included in the E2E test above.
-
-Verify that:
-- The uploaded file exists in MinIO at the expected key.
-- After deletion, the file no longer exists in MinIO.
-
-This can be done via the MinIO `mc` CLI in a test helper or by checking the
-`GET /api/v1/projects/{id}/media` response before and after deletion.
-
----
-
-## Phase 5: Regression & Documentation
-
-### Task 5.1 — Verify existing tests pass
-
-Run the full backend test suite:
-```sh
-cd apps/api && php artisan test --compact
-```
-
-Run the full frontend test suite:
-```sh
-cd apps/web && npx vitest run
-```
-
-Run the full E2E suite:
-```sh
-cd apps/web && npx playwright test
-```
-
-All existing tests for auth, projects, and health must continue to pass.
-Any regressions are blocking.
-
----
-
-### Task 5.2 — Update project-state.md
-
-**Files:** `docs/project-state.md`
-
-Update the following sections:
-- **Current Architecture:** Add MinIO to the service list.
-- **Completed Capabilities:** Add M2 media storage entry.
-- **Known Limitations:** Add 100 MB upload limit, no resumable uploads.
-- **Current Milestone:** Update to reflect M2 progress.
-- **Next Architectural Goal:** Point to M2 processing pipeline (transcoding, etc.).
-
----
-
-### Task 5.3 — Run Pint and type checks
-
-```sh
-cd apps/api && vendor/bin/pint --dirty --format agent
-```
-
-Ensure no PHP code style violations in modified files.
-
----
-
-## Task Dependency Graph
-
-```
-Phase 1: Infrastructure
-  1.1 (MinIO docker)
-  1.2 (filesystem config) — depends on 1.1 for local testing
-  1.3 (model + migration) — depends on 1.2 for disk config
-  1.4 (User relationship) — covered by 1.3
-
-Phase 2: Backend API
-  2.1 (Form request) — depends on 1.3
-  2.2 (Controller) — depends on 2.1, 1.3
-  2.3 (Resource) — depends on 1.3
-  2.4 (Routes) — depends on 2.2, 2.3
-  2.5 (Cascade cleanup) — depends on 1.3
-
-Phase 3: Frontend
-  3.1 (Types) — independent
-  3.2 (API client) — depends on 3.1
-  3.3 (Hook) — depends on 3.2
-  3.4 (Upload form) — depends on 3.3
-  3.5 (Media list) — depends on 3.3
-  3.6 (Media list item) — depends on 3.5
-  3.7 (Barrel export) — depends on 3.4, 3.5, 3.6
-  3.8 (Shell integration) — depends on 3.7
-
-Phase 4: E2E
-  4.1 (Playwright spec) — depends on Phase 2 + Phase 3
-  4.2 (MinIO verification) — part of 4.1
-
-Phase 5: Regression
-  5.1 (Full test run) — depends on all phases
-  5.2 (Documentation) — after 5.1
-  5.3 (Code style) — after 5.1
-```
-
-## Estimated Scope
-
-- Backend: ~6 files (migration, model, factory, controller, request, resource)
-- Frontend: ~8 files (types, api, hook, 3 components, barrel, shell update)
-- Tests: ~6 test files (2 Pest, 3 Vitest, 1 Playwright)
-- Config: 3 files (filesystems.php, docker-compose.yml, .env.example)
-- Documentation: 1 file (project-state.md)
-
-Total: ~24 files modified or created.
+- HUMAN Composer ASK, actual approved dependency resolution, and any subsequently encountered operation permissions.
+- Actual Docker image resolution/pull/start, chosen-image command verification, PostgreSQL/PDO/test setup, private bucket readiness, and persistence/re-init checks.
+- Fresh meaningful correction RED/GREEN/refactor; actual backend/frontend/real integration/E2E/governance runs and valid required CI.
+- Independent browser/screenshot/security/failure review and Tester approval. No runtime results or historical evidence are supplied by this planning revision.
