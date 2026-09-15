@@ -10,10 +10,19 @@ test.describe('Media Upload and Management', () => {
   test('upload video → appears in list → delete removes it', async ({ page }) => {
     // 1. Register and login
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible({ timeout: 15000 });
+    // Wait for auth to be ready (either Sign In or Create Account)
+    await expect(
+      page.getByRole('heading', { name: 'Sign In' }).or(page.getByRole('heading', { name: 'Create Account' })),
+    ).toBeVisible({ timeout: 15000 });
 
-    // Register a new user
+    // If Sign In is shown, switch to Create Account
+    const createHeading = page.getByRole('heading', { name: 'Create Account' });
+    if (!(await createHeading.isVisible().catch(() => false))) {
+      await page.getByRole('button', { name: 'Create one' }).click();
+      await expect(createHeading).toBeVisible();
+    }
+
+    // Now fill the registration form
     const email = `test-${Date.now()}@example.com`;
     await page.getByLabel('Name').fill('Test User');
     await page.getByLabel('Email').fill(email);
@@ -68,9 +77,19 @@ test.describe('Media Upload and Management', () => {
   test('rejects non-video file upload', async ({ page }) => {
     // Register and login
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible({ timeout: 15000 });
+    // Wait for auth to be ready (either Sign In or Create Account)
+    await expect(
+      page.getByRole('heading', { name: 'Sign In' }).or(page.getByRole('heading', { name: 'Create Account' })),
+    ).toBeVisible({ timeout: 15000 });
 
+    // If Sign In is shown, switch to Create Account
+    const createHeading = page.getByRole('heading', { name: 'Create Account' });
+    if (!(await createHeading.isVisible().catch(() => false))) {
+      await page.getByRole('button', { name: 'Create one' }).click();
+      await expect(createHeading).toBeVisible();
+    }
+
+    // Now fill the registration form
     const email = `test-${Date.now()}@example.com`;
     await page.getByLabel('Name').fill('Test User');
     await page.getByLabel('Email').fill(email);
