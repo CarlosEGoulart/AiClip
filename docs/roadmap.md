@@ -11,22 +11,29 @@ Completed slices:
 - Governance enforcement automation (Issues #7, #9, #11, #13, #15)
 - Repository baseline normalization (Issues #22, #24)
 
-## M1 — Application Foundation (in progress)
+## M1 — Application Foundation (completed)
 
 Completed slices:
 
 - Application foundation: Laravel API, React frontend, PostgreSQL, health endpoint (Issue #17)
 - Foundation stabilization: Vitest, Playwright lifecycle, mutation-proven tests (Issue #19)
+- Sanctum SPA authentication (Issue #28, PR #29)
+- Authenticated project management (Issue #30, PR #31)
+
+## M2 — Media Storage (in progress)
+
+Completed slices:
+
+- Project-scoped video upload and S3-compatible storage (Issue #35, PR #36)
 
 Next slice:
 
-- Authentication and user management (Sanctum SPA, registration, login)
+- Async media processing pipeline (transcoding, scene detection, transcription)
 
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
-| M2 | Media Storage |
 | M3 | Asynchronous Media Processing |
 | M4 | Video Understanding |
 | M5 | AI Clip Recommendation |
@@ -40,4 +47,4 @@ Next slice:
 | M13 | Unified One-Click Publishing |
 | M14 | Production Hardening |
 
-No milestone beyond M1 is started. Only one implementation issue is active at a time.
+No milestone beyond M2 is started. Only one implementation issue is active at a time.
