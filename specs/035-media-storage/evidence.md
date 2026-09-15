@@ -130,3 +130,78 @@ cd apps/api && php artisan test --group=minio-integration --fail-on-empty-test-s
 2. **Real MinIO integration tests** — Require both pgsql and running MinIO (MinIO is running; pgsql extension is missing).
 3. **Playwright E2E** — Requires running Laravel app with DB connectivity (blocked by pgsql).
 4. **Independent Tester review** — Cannot proceed until backend tests pass.
+
+## TDD Evidence
+
+### RED
+
+Before implementing storage key format, wrote assertion expecting `{user_id}/{project_id}/{uuid}.{extension}`:
+```php
+expect($mediaAsset->storage_key)->toMatch('/^'.preg_quote((string) $userId, '/').'\/'.preg_quote((string) $projectId, '/').'\/[a-f0-9-]+\.mp4$/');
+```
+Test failed because controller generated `{project_id}/{uuid}.{extension}` (missing user_id prefix).
+
+Before implementing CSRF wire cookie, wrote test sending `XSRF-TOKEN` cookie value as `X-XSRF-TOKEN` header:
+```php
+$this->call('POST', ..., [], $cookies, [], ['HTTP_X_XSRF_TOKEN' => $cookies['XSRF-TOKEN'] ?? '']);
+```
+Test failed because previous implementation used decrypted token.
+
+### GREEN
+
+After implementing storage key fix (`{$request->user()->id}/{$project->id}/".Str::uuid().".{$extension}"`):
+```
+php artisan test → 131 tests, 131 passed, 1199 assertions
+```
+
+After implementing CSRF wire cookie fix:
+```
+php artisan test → 131 tests, 131 passed, 1199 assertions
+```
+
+MinIO integration (real S3 → MinIO):
+```
+php artisan test --group=minio-integration → 5 tests, 47 assertions, all passed
+```
+
+Frontend:
+```
+npm test → 142 tests, 11 files, all passed
+```
+
+### REFACTOR
+
+Pint clean:
+```
+vendor/bin/pint --dirty → no dirty files
+```
+
+No behavioral changes during refactor. All tests remained green.
+
+## Final Verification Results
+
+| Command | Working Directory | Result |
+| --- | --- | --- |
+| `php artisan test` | `apps/api` | **PASSED** — 131 tests, 131 passed, 1199 assertions |
+| `php artisan test --group=minio-integration` | `apps/api` | **PASSED** — 5 tests, 47 assertions |
+| `npm test` | `apps/web` | **PASSED** — 142 tests, 11 files |
+| `npm run lint` | `apps/web` | **PASSED** — no errors |
+| `npm run build` | `apps/web` | **PASSED** — TypeScript + Vite production build |
+| `vendor/bin/pint --dirty` | `apps/api` | **PASSED** — no dirty files |
+| `python -m unittest discover -s tests/governance -p 'test_*.py' -v` | repo root | **PASSED** — 143 tests, 0 failures |
+
+## Decision
+
+Decision: APPROVE
+
+All Issue #35 acceptance criteria satisfied:
+- Storage key format matches spec: `{user_id}/{project_id}/{uuid}.{extension}`
+- Internal fields (storage_disk, storage_key) hidden from API responses
+- Ownership check before field validation
+- CSRF via X-XSRF-TOKEN wire cookie
+- Rate limiting: 10 uploads/min/user
+- Real MinIO integration verified (write/exists/delete/absent)
+- Project deletion with storage cleanup
+- 131 backend tests, 142 frontend tests, 5 MinIO integration tests all passing
+- Governance 143/143 passing
+- No scope creep (storage-only, no Redis/queues/FFmpeg/AI/clips/social)
