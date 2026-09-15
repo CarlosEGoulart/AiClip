@@ -2,7 +2,8 @@
 
 Laravel 13 API, React 19 + Vite 8 frontend, and PostgreSQL 16, verified by a
 health endpoint (`GET /api/v1/health`) with a real database check. Authentication
-via Laravel Sanctum SPA session/cookie mode with CSRF protection.
+via Laravel Sanctum SPA session/cookie mode with CSRF protection. Media storage
+via S3-compatible backend (MinIO in development, AWS S3 in production).
 
 # Completed Capabilities
 
@@ -16,7 +17,12 @@ styled per Taste Skill and Vercel Web Design Guidelines. Health check route at
 (Issue #30): session-owned projects with name and optional description;
 list/create/show/delete API, non-owner 404 responses, rate-limited creation,
 and frontend list/create/delete with confirmation. Final verification is in
-`specs/030-project-management/evidence.md`.
+`specs/030-project-management/evidence.md`. M2 media storage foundation
+(Issue #35): project-scoped video upload and S3-compatible storage with
+user_id/project_id/uuid key structure, MediaAsset model, upload/list/delete
+API with rate limiting, frontend media upload and list with delete confirmation,
+MinIO integration tests, and full E2E coverage with mocked storage. Final
+verification is in `specs/035-media-storage/evidence.md`.
 
 # Important Decisions
 
@@ -29,19 +35,18 @@ auth hooks with generation-based race-condition protection.
 # Known Limitations
 
 E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
-5173/8000. No media, AI, or social features exist yet. Email verification
-not implemented. No project update/edit endpoint yet (out of scope for #30).
+5173/8000. Email verification not implemented. No project update/edit endpoint
+yet (out of scope for #30). No transcoding, scene detection, transcription,
+clip analysis, AI ranking, rendering, or social features exist yet.
 
 # Current Milestone
 
-M1 Application Foundation:
-- Sanctum SPA authentication complete (Issue #28, PR #29 merged).
-- Authenticated Project ownership/management complete.
-- Issue #30 complete; PR #31 merged.
+M2 Media Storage:
+- Project-scoped video upload and S3-compatible storage complete.
+- Issue #35 complete; PR #36 merged.
 
 # Next Architectural Goal
 
-M2 Media Storage: establish project-scoped media upload and storage before
-transcoding, scene detection, clip analysis, AI ranking, rendering, or social
-publishing. Starting M2 requires separate explicit authorization; this
-maintenance cycle does not authorize implementation.
+M2 continued: async media processing pipeline — transcoding, scene detection,
+transcription, and clip analysis via Python worker. Starting async processing
+requires separate explicit authorization.
