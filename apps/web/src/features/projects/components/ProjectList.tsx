@@ -4,10 +4,11 @@ import { ProjectCard } from './ProjectCard';
 interface ProjectListProps {
   projects: Project[];
   onDelete: (id: number) => Promise<boolean>;
+  onSelect?: (id: number) => void;
   loading: boolean;
 }
 
-export function ProjectList({ projects = [], onDelete, loading }: ProjectListProps) {
+export function ProjectList({ projects = [], onDelete, onSelect, loading }: ProjectListProps) {
   if (loading) {
     return (
       <div className="project-list-loading" role="status">
@@ -31,6 +32,7 @@ export function ProjectList({ projects = [], onDelete, loading }: ProjectListPro
           key={project.id}
           project={project}
           onDelete={onDelete}
+          onSelect={onSelect}
         />
       ))}
     </div>

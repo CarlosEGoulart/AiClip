@@ -6,39 +6,49 @@ const MINIMAL_MP4 = Buffer.from([
   0x69, 0x73, 0x6F, 0x6D, 0x69, 0x73, 0x6F, 0x32, 0x6D, 0x70, 0x34, 0x31,
 ]);
 
+function uniqueEmail() {
+  return `e2e-media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`;
+}
+
+async function waitForAuthReady(page: import('@playwright/test').Page) {
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', { name: 'Sign In' }).or(page.getByRole('heading', { name: 'Create Account' })),
+  ).toBeVisible({ timeout: 15000 });
+}
+
+async function switchToRegister(page: import('@playwright/test').Page) {
+  await waitForAuthReady(page);
+  const registerHeading = page.getByRole('heading', { name: 'Create Account' });
+  if (await registerHeading.isVisible().catch(() => false)) return;
+  await page.getByRole('button', { name: 'Create one' }).click();
+  await expect(registerHeading).toBeVisible();
+}
+
+async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
+  await switchToRegister(page);
+  await page.getByLabel('Name').fill(name);
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill('password123');
+  await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
+  await page.getByRole('button', { name: 'Create Account' }).click();
+  await expect(page.getByText('Signed in as')).toBeVisible({ timeout: 15000 });
+}
+
 test.describe('Media Upload and Management', () => {
   test('upload video → appears in list → delete removes it', async ({ page }) => {
     // 1. Register and login
-    await page.goto('/');
-    // Wait for auth to be ready (either Sign In or Create Account)
-    await expect(
-      page.getByRole('heading', { name: 'Sign In' }).or(page.getByRole('heading', { name: 'Create Account' })),
-    ).toBeVisible({ timeout: 15000 });
-
-    // If Sign In is shown, switch to Create Account
-    const createHeading = page.getByRole('heading', { name: 'Create Account' });
-    if (!(await createHeading.isVisible().catch(() => false))) {
-      await page.getByRole('button', { name: 'Create one' }).click();
-      await expect(createHeading).toBeVisible();
-    }
-
-    // Now fill the registration form
-    const email = `test-${Date.now()}@example.com`;
-    await page.getByLabel('Name').fill('Test User');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill('password123');
-    await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
-    await page.getByRole('button', { name: 'Create Account' }).click();
-    await page.waitForURL('**/');
+    const email = uniqueEmail();
+    await registerUser(page, 'Test User', email);
 
     // 2. Create a project
-    await page.fill('input[aria-label="Project Name"]', 'Media Test Project');
-    await page.click('button[aria-label="Create Project"]');
-    await page.waitForSelector('text=Media Test Project');
+    await page.getByLabel('Project Name').fill('Media Test Project');
+    await page.getByRole('button', { name: 'Create Project' }).click();
+    await expect(page.getByText('Media Test Project')).toBeVisible();
 
-    // 3. Navigate to project (select it)
-    await page.click('button[aria-label="Open Media Test Project"]');
-    await page.waitForSelector('text=Media Test Project');
+    // 3. Open the project media section
+    await page.getByRole('button', { name: 'Open Media Test Project' }).click();
+    await expect(page.getByRole('button', { name: 'Back to projects' })).toBeVisible();
 
     // 4. Upload a valid MP4 file
     const fileInput = page.locator('input[type="file"]');
@@ -47,80 +57,57 @@ test.describe('Media Upload and Management', () => {
       mimeType: 'video/mp4',
       buffer: MINIMAL_MP4,
     });
-    await page.click('button:text("Upload")');
+    await page.getByRole('button', { name: 'Upload' }).click();
 
     // 5. Assert the media list shows the uploaded file
-    await page.waitForSelector('text=test-video.mp4');
-    await expect(page.locator('text=test-video.mp4')).toBeVisible();
+    await expect(page.getByText('test-video.mp4')).toBeVisible({ timeout: 15000 });
 
     // 6. Delete the media asset
-    await page.click('button[aria-label="Delete test-video.mp4"]');
-    await page.click('button[aria-label="Confirm delete test-video.mp4"]');
+    await page.getByRole('button', { name: 'Delete test-video.mp4' }).click();
+    await page.getByRole('button', { name: 'Confirm delete test-video.mp4' }).click();
 
-    // 7. Assert the media list is empty
-    await page.waitForSelector('text=No media assets yet');
-    await expect(page.locator('text=No media assets yet')).toBeVisible();
+    // 7. Assert empty state
+    await expect(page.getByText('No media assets yet')).toBeVisible({ timeout: 10000 });
 
     // 8. Go back to projects
-    await page.click('button[aria-label="Back to Projects"]');
-    await page.waitForSelector('text=Media Test Project');
+    await page.getByRole('button', { name: 'Back to projects' }).click();
+    await expect(page.getByText('Media Test Project')).toBeVisible();
 
     // 9. Delete the project
-    await page.click('button[aria-label="Delete Media Test Project"]');
-    await page.click('button[aria-label="Confirm delete Media Test Project"]');
+    await page.getByRole('button', { name: 'Delete Media Test Project' }).click();
+    await page.getByRole('button', { name: 'Confirm delete Media Test Project' }).click();
 
     // 10. Assert the project is gone
-    await page.waitForSelector('text=No projects yet');
-    await expect(page.locator('text=No projects yet')).toBeVisible();
+    await expect(page.getByText(/No projects yet/)).toBeVisible({ timeout: 10000 });
   });
 
   test('rejects non-video file upload', async ({ page }) => {
-    // Register and login
-    await page.goto('/');
-    // Wait for auth to be ready (either Sign In or Create Account)
-    await expect(
-      page.getByRole('heading', { name: 'Sign In' }).or(page.getByRole('heading', { name: 'Create Account' })),
-    ).toBeVisible({ timeout: 15000 });
+    // 1. Register and login
+    const email = uniqueEmail();
+    await registerUser(page, 'Test User', email);
 
-    // If Sign In is shown, switch to Create Account
-    const createHeading = page.getByRole('heading', { name: 'Create Account' });
-    if (!(await createHeading.isVisible().catch(() => false))) {
-      await page.getByRole('button', { name: 'Create one' }).click();
-      await expect(createHeading).toBeVisible();
-    }
+    // 2. Create a project
+    await page.getByLabel('Project Name').fill('Test Project');
+    await page.getByRole('button', { name: 'Create Project' }).click();
+    await expect(page.getByText('Test Project')).toBeVisible();
 
-    // Now fill the registration form
-    const email = `test-${Date.now()}@example.com`;
-    await page.getByLabel('Name').fill('Test User');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill('password123');
-    await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
-    await page.getByRole('button', { name: 'Create Account' }).click();
-    await page.waitForURL('**/');
+    // 3. Open the project media section
+    await page.getByRole('button', { name: 'Open Test Project' }).click();
+    await expect(page.getByRole('button', { name: 'Back to projects' })).toBeVisible();
 
-    // Create a project
-    await page.fill('input[aria-label="Project Name"]', 'Test Project');
-    await page.click('button[aria-label="Create Project"]');
-    await page.waitForSelector('text=Test Project');
-
-    // Navigate to project
-    await page.click('button[aria-label="Open Test Project"]');
-    await page.waitForSelector('text=Test Project');
-
-    // Try to upload a text file
+    // 4. Try to upload a text file
     const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles({
       name: 'test.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('This is not a video'),
     });
-    await page.click('button:text("Upload")');
+    await page.getByRole('button', { name: 'Upload' }).click();
 
-    // Assert error message is displayed
-    await page.waitForSelector('[role="alert"]');
-    await expect(page.locator('[role="alert"]')).toBeVisible();
+    // 5. Assert error message is displayed
+    await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 10000 });
 
-    // Assert no media item appears in the list
-    await expect(page.locator('text=test.txt')).not.toBeVisible();
+    // 6. Assert no media item appears in the list
+    await expect(page.getByText('test.txt')).not.toBeVisible();
   });
 });
