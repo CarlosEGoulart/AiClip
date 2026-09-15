@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\MediaAssetController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -37,5 +38,11 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:project-create');
         Route::get('/projects/{project}', [ProjectController::class, 'show']);
         Route::delete('/projects/{project}', [ProjectController::class, 'destroy']);
+
+        // Media routes
+        Route::post('/projects/{project}/media/upload', [MediaAssetController::class, 'upload'])
+            ->middleware('throttle:media-upload');
+        Route::get('/projects/{project}/media', [MediaAssetController::class, 'index']);
+        Route::delete('/media/{media}', [MediaAssetController::class, 'destroy']);
     });
 });

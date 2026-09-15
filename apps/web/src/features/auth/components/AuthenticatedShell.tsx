@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../hooks';
 import { CreateProjectForm, ProjectList, useProjects } from '../../projects';
+import { ProjectMediaSection } from '../../media';
 
 export function AuthenticatedShell() {
   const { user, logout, state, errorMessage } = useAuth();
@@ -18,6 +19,9 @@ export function AuthenticatedShell() {
   const logoutFailed = state === 'authenticated' && errorMessage;
 
   const hasFetchedRef = useRef(false);
+
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [selectedProjectName, setSelectedProjectName] = useState<string>('');
 
   useEffect(() => {
     if (state === 'authenticated' && !hasFetchedRef.current) {
@@ -45,19 +49,34 @@ export function AuthenticatedShell() {
           </div>
         )}
 
-        <div className="projects-section">
-          <CreateProjectForm
-            onSubmit={createProject}
-            validationErrors={validationErrors}
-            error={projectError}
+        {selectedProjectId ? (
+          <ProjectMediaSection
+            projectId={selectedProjectId}
+            projectName={selectedProjectName}
+            onBack={() => { setSelectedProjectId(null); setSelectedProjectName(''); }}
           />
+        ) : (
+          <div className="projects-section">
+            <CreateProjectForm
+              onSubmit={createProject}
+              validationErrors={validationErrors}
+              error={projectError}
+            />
 
-          <ProjectList
-            projects={projects}
-            onDelete={deleteProject}
-            loading={loading}
-          />
-        </div>
+            <ProjectList
+              projects={projects}
+              onDelete={deleteProject}
+              onSelect={(id) => {
+                const project = projects.find((p) => p.id === id);
+                if (project) {
+                  setSelectedProjectId(project.id);
+                  setSelectedProjectName(project.name);
+                }
+              }}
+              loading={loading}
+            />
+          </div>
+        )}
 
         <button onClick={logout} disabled={isLoggingOut} className="logout-button">
           {isLoggingOut ? 'Logging out...' : 'Log out'}

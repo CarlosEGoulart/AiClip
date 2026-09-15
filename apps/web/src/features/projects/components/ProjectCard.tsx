@@ -4,9 +4,10 @@ import type { Project } from '../types';
 interface ProjectCardProps {
   project: Project;
   onDelete: (id: number) => Promise<boolean>;
+  onSelect?: (id: number) => void;
 }
 
-export function ProjectCard({ project, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, onDelete, onSelect }: ProjectCardProps) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -30,6 +31,15 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
         </p>
       </div>
       <div className="project-card-actions">
+        {onSelect && (
+          <button
+            onClick={() => onSelect(project.id)}
+            className="open-button"
+            aria-label={`Open ${project.name}`}
+          >
+            Open
+          </button>
+        )}
         {confirming ? (
           <>
             <span className="confirm-text">Delete this project?</span>
