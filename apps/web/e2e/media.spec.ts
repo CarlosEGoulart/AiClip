@@ -57,7 +57,7 @@ test.describe('Media Upload and Management', () => {
       mimeType: 'video/mp4',
       buffer: MINIMAL_MP4,
     });
-    await page.getByRole('button', { name: 'Upload' }).click();
+    await page.getByRole('button', { name: 'Upload', exact: true }).click();
 
     // 5. Assert the media list shows the uploaded file
     await expect(page.getByText('test-video.mp4')).toBeVisible({ timeout: 15000 });
@@ -102,7 +102,7 @@ test.describe('Media Upload and Management', () => {
       mimeType: 'text/plain',
       buffer: Buffer.from('This is not a video'),
     });
-    await page.getByRole('button', { name: 'Upload' }).click();
+    await page.getByRole('button', { name: 'Upload', exact: true }).click();
 
     // 5. Assert error message is displayed
     await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 10000 });
