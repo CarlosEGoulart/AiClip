@@ -11,14 +11,15 @@ test.describe('Media Upload and Management', () => {
     // 1. Register and login
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible({ timeout: 15000 });
 
     // Register a new user
     const email = `test-${Date.now()}@example.com`;
-    await page.fill('input[name="name"]', 'Test User');
-    await page.fill('input[name="email"]', email);
-    await page.fill('input[name="password"]', 'password123');
-    await page.fill('input[name="password_confirmation"]', 'password123');
-    await page.click('button[type="submit"]');
+    await page.getByLabel('Name').fill('Test User');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password', { exact: true }).fill('password123');
+    await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
+    await page.getByRole('button', { name: 'Create Account' }).click();
     await page.waitForURL('**/');
 
     // 2. Create a project
@@ -68,13 +69,14 @@ test.describe('Media Upload and Management', () => {
     // Register and login
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible({ timeout: 15000 });
 
     const email = `test-${Date.now()}@example.com`;
-    await page.fill('input[name="name"]', 'Test User');
-    await page.fill('input[name="email"]', email);
-    await page.fill('input[name="password"]', 'password123');
-    await page.fill('input[name="password_confirmation"]', 'password123');
-    await page.click('button[type="submit"]');
+    await page.getByLabel('Name').fill('Test User');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password', { exact: true }).fill('password123');
+    await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
+    await page.getByRole('button', { name: 'Create Account' }).click();
     await page.waitForURL('**/');
 
     // Create a project
