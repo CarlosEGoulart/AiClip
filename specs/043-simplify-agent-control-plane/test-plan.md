@@ -6,21 +6,31 @@
 
 ## Test Strategy
 
-This issue is a governance-only change. All tests are governance regression tests that validate security/role invariants. There is no application behavior to test, no UI to validate, and no API endpoints to exercise. Application unit, API, E2E, Playwright, visual, and accessibility interaction checks are **N/A** with explicit reason: governance control-plane migration.
+Issue #43 / PR #44 continues on `@carlosegoulart/43/refactor/simplify-agent-control-plane` from published baseline `e583495a90b96350f8d92e7e732c2829a4bc5a1e`. Preserve the original governance regression contract and additionally verify only the human-authorized Media stale-fetch correction/pre-navigation E2E setup.
+
+The original human-authored control-plane implementation/tests predate SDD; no test-first bootstrap RED is claimed. Its historical 170-test governance PASS, 24-test merge-gate PASS, and original approval are not renewed verification. The new Media behavior requires a genuine deterministic assertion-based RED against the unchanged hook **before** production edits, GREEN, refactor reruns, and independent Tester interaction with the running app. Application/browser checks are no longer globally N/A.
+
+Builder's only application edit paths are `apps/web/src/features/media/hooks/index.test.tsx`, `apps/web/src/features/media/hooks/index.ts`, and `apps/web/e2e/media.spec.ts`. Planner edits only this bundle's `spec.md`, `plan.md`, and `test-plan.md`; evidence is separate and Tester owns the final independent decision. All `.opencode/**`, `tests/governance/**`, and `scripts/merge_gate.py` remain immutable to every runtime agent. No changes to governance validators/tests, CI, permission rules, dependency manifests/lockfiles, or timeout/retry configuration are authorized.
 
 ## Test Environment
 
 - Python 3 with PyYAML (`tests/governance/requirements.txt`)
-- `unittest` test runner
-- No application server required
-- No database required
-- No browser required
+- `unittest` for governance; merge-gate unit tests mock GitHub operations and require no live merge or authenticated `gh`
+- Existing frontend dependencies and Node.js compatible with the checked-in stack (Node 24 in CI); Vitest/jsdom/React Testing Library and existing `src/test/setup.ts`
+- E2E/browser review: PHP 8.3/extensions and Composer dependencies, disposable PostgreSQL with migrations, Laravel app key/session environment, Chromium/system dependencies, browser tooling/artifact access, and free ports 5173/8000
+- `playwright.config.ts` manages Laravel/Vite servers with `reuseExistingServer: false`; leave its mobile (390x844), tablet (768x1024), desktop (1440x900), timeouts, and `retries: 0` unchanged
+- Real auth/projects and invalid-file validation require the API/database. Successful Media storage requests remain intercepted; no worker, FFmpeg/FFprobe, new storage infrastructure, or model downloads
 
-## Test Execution
+Builder/Tester use only commands permitted for their role. Tester executes Python governance commands and OpenCode permission inspection; Planner executes none. Missing installations, service access, network permissions, browser access, or a prepared Laravel environment require authorized provisioning/human help through Orchestrator. Do not inspect real `.env`, change permissions, or route a denied operation through another tool. Setup failure is neither RED nor PASS, and blocked mandatory verification prevents approval.
+
+## Test Execution — Existing Governance (Tester, Repository Root)
 
 ```bash
 python -m unittest discover -s tests/governance -p 'test_*.py' -v
+python -m unittest tests/governance/test_merge_gate.py -v
 ```
+
+Reinspect role boundaries using the existing permitted `opencode debug agent planner`, `opencode debug agent builder`, `opencode debug agent tester`, and `opencode debug agent orchestrator` commands when available. Never test dangerous commands by actually pushing, merging, reading secrets, or editing protected files. Use the existing invariant tests and parsed permissions. Any failed or unavailable mandatory boundary verification is escalated, not repaired by a runtime agent.
 
 ## Test Suites
 
@@ -133,24 +143,102 @@ python -m unittest discover -s tests/governance -p 'test_*.py' -v
 
 ## Application Checks
 
-N/A — This is a governance-only change. No application behavior is affected.
+### Required Media RED and Unit/Integration Regressions
 
-- **Unit tests:** N/A (no application code changes)
-- **Integration tests:** N/A (no application behavior changes)
-- **E2E tests:** N/A (no user-facing workflow changes)
-- **Playwright validation:** N/A (no UI changes)
-- **Visual review:** N/A (no UI changes)
-- **Accessibility review:** N/A (no UI changes)
+Extend the existing hook test file using API-module mocks (`getMediaAssets`, `uploadMediaAsset`, `deleteMediaAsset`), typed deferred promises, RTL render/renderHook/rerender, and `act`. Test the real hook. Existing auth hook tests provide a deferred-promise/StrictMode pattern; do not edit or refactor them. Preserve existing isolated-operation/error assertions.
+
+**M1 — Required assertion-based RED chronology:**
+
+1. Render for project A. Start `fetchMedia()` and prove the API call began with A while its promise remains unresolved; verify loading is active.
+2. Call `uploadFile(file)`, resolve its response with a valid A asset, and await the upload completion. Assert success and that the returned asset is present exactly once, with unchanged metadata.
+3. Resolve the **already-started** GET with `data: []` only after step 2's state assertion. Await the original fetch and React updates inside `act`.
+4. Assert that the uploaded asset is still present. Against the current unmodified hook this must fail because the GET replaces the array with `[]`. Run and record this failure before editing `index.ts`; tests merely written or failures caused by imports/dependencies/fixtures are not RED.
+5. Add/assert immediate display eligibility (`loading` no longer hides the uploaded list) while the superseded GET is still pending. Keep M1's stale-overwrite assertion independently runnable so an earlier loading failure cannot substitute for proof of the requested ordering regression.
+
+**Focused guard coverage, all within the same hook test file:**
+
+| ID | Deterministic ordering | Expected behavior |
+|---|---|---|
+| M2 | Repeat M1 with an older non-empty snapshot omitting the new asset | Uploaded asset/metadata remain; no blind stale-array replacement or merge |
+| M3 | Load A's assets, start another GET, complete deletion of one asset, then resolve the GET with the old list containing it | Deleted asset stays absent; unrelated assets survive; deletion failure instead retains the item and exposes the existing error |
+| M4 | Start A operations, rerender for B (also cover A -> null), then settle A fetch/upload/delete successes and failures | A data/errors/finalizers cannot affect B/null; prior-project state clears; B can fetch/upload normally; A's completion cannot clear B's pending flags |
+| M5 | Start two GETs, resolve the newer first, then the older; separately start a fresh GET after a successful mutation | Latest valid GET wins; a fresh authoritative empty response clears the list, proving the fix has not disabled fetching or made all lists append-only |
+| M6 | Complete upload then reject its invalidated earlier GET; separately settle an obsolete GET while a newer GET is pending | No stale error replaces success; obsolete finalization cannot end newer loading; all active pending flags eventually settle correctly |
+| M7 | Reject current upload/delete, and exercise current fetch error/clearErrors and null-project no-op | No fabricated insert/removal/success; existing safe messages and boolean contracts remain; no new project-scoped request for null |
+| M8 | Exercise mount cleanup/unmount and StrictMode effect replay with controlled pending responses | Obsolete work cannot affect a later active view; valid replay/current requests still apply; no stuck loading/uploading or unhandled rejection |
+
+Demonstrate RED for missing behavior before implementing its correction. GREEN requires M1–M8 and existing tests to pass without skips or weakened assertions. Keep the implementation small; these tests specify the same request-ordering/project-safety contract, not a general fetching-framework rewrite.
+
+### Frontend Execution (Builder, Then Independently Tester)
+
+Run from `apps/web`:
+
+```bash
+npm test -- src/features/media/hooks/index.test.tsx
+npm test -- src/features/media
+npm test
+npm run lint
+npm run build
+```
+
+The first command supplies targeted RED then GREEN; the Media and full suites retain API/component integration and unrelated frontend regression coverage. Record the actual selection/counts and exit statuses. Do not alter lint/build/test configuration or dependencies to hide a failure. After any scoped refactor, rerun the relevant commands; record no-refactor verification explicitly if no refactor was needed.
+
+### Deterministic Media Playwright Scenario
+
+In `apps/web/e2e/media.spec.ts`, keep real registration/project creation, then install all scenario Media intercepts **before** clicking the project's Open button. `ProjectMediaSection` issues its GET on mount; installing routes after the click is invalid even if a run happens to pass. Prepare the rejection scenario's list interception before its Open action as well; retain its real non-video 422 validation rather than turning the invalid upload into a fake success.
+
+For the upload/list/delete scenario:
+
+1. Register the GET/upload/delete handlers (and any scenario CSRF interception after real auth/project creation) before Media navigation. Use method/path-specific handling so unrelated requests continue normally.
+2. Enter Media and explicitly observe initial GET arrival, holding its stale empty response with deferred coordination. Account for all initial StrictMode requests without relying on an arbitrary sleep or assuming exactly one GET.
+3. Upload using the existing file-input workflow. Fulfill POST with 201 and a current-project asset in the real public shape (`size_bytes`, `status: 'stored'`, both timestamps, etc.), not `filename`/`size`/`disk` substitutes. The old GET must not already contain that asset.
+4. Observe the successful POST and assert a visible `Media: <original_name>` list item exactly once while the GET is still pending. A filename in the file chooser is not a list assertion.
+5. Release the older GET response(s), observe completion, and assert the item remains after processing. No reload, route reentry, follow-up refetch dependency, timeout increase, or retry may mask disappearance. The hook regression supplies the exact post-settlement state assertion; browser review also verifies actual continued display.
+6. Exercise delete confirmation (and cancellation during independent review), fulfill confirmed DELETE with 204, and assert removal plus the empty state **before** Back to projects. Preserve project cleanup/empty-project assertions.
+7. Retain invalid-file rejection: observe its expected 422 and understandable alert, with no item inserted. Do not blanket-ignore 4xx/5xx or accept unrelated request failures as validation.
+
+Use existing public endpoint/data contracts, not production mocks. Record that success-path media storage is mocked while auth/projects and rejection validation are real. Do not claim storage/backend coverage from intercepted requests.
+
+Run from `apps/web` with the prepared environment:
+
+```bash
+npm run test:e2e -- e2e/media.spec.ts
+npm run test:e2e
+```
+
+The targeted command runs Media at all three configured projects (including the previously blocking tablet scenario). Full E2E runs auth/projects/health/media at mobile/tablet/desktop and is required locally when practical. If the full local run is impractical, record the precise environment/resource limitation and unexecuted scope; do not call it PASS or drop CI coverage. Required Media/browser checks must still execute before Tester approval, and full new-HEAD E2E CI remains mandatory. Unexpected unrelated failures are reported to Orchestrator, not repaired in this exception or retried blindly.
+
+### Independent Running-App, Visual, API, and Accessibility Review
+
+Tester must review the final application through the browser in addition to automated results. Use the Media scenario's controlled network boundary at each required viewport and inspect actual screenshots, not just artifact existence. Capture safe screenshots/diagnostics through permitted browser/test tooling (existing `test-results/screenshots/`/Playwright artifacts are suitable); only evidence is a Tester-authored repository edit. If artifact/tool access is blocked, escalate without changing permissions.
+
+- Inspect pending list/upload, immediate uploaded item, stale-response completion, empty list, validation error, delete confirmation/cancellation/pending/removal, and Back navigation. Verify project isolation with the hook regressions and navigation between project views.
+- Check 390x844, 768x1024, and 1440x900 for overflow, spacing, legibility, coherent controls, and stable loading/success/error layout. No visual redesign is authorized.
+- Verify associated file-input label, accessible button/list-item names, keyboard navigation, visible focus, confirmation/cancellation usability, disabled pending controls, status/alert semantics, and usable focus after actions.
+- Review console errors, uncaught exceptions, failed resources, unexpected redirects, and actual request method/URL/status/payload ordering. Observe the pending GET before upload and its stale completion afterward. No secrets or private storage fields may leak.
+- Unexpected console errors or application 4xx/5xx fail review. Only explicitly exercised responses, such as guest-session 401 during registration bootstrap or non-video 422, may be documented as expected with their exact endpoint/reason; no blanket suppression.
+- Confirm no backend/API/security-policy changes: existing Media API tests pass, requests keep the cookie/CSRF client, public asset fields stay unchanged, and the hook does not show another project's results. No new backend tests/storage integration infrastructure are needed for this frontend-only correction; `Backend CI / tests` is still a mandatory gate, not N/A.
+
+Tester does not repair implementation/tests or Planner files. Missing required verification or a defect results in REJECT to Orchestrator -> Builder -> Tester.
+
+## Scope and CI Gate Review
+
+Compare follow-up changes with the published baseline. Only the three authorized Media files and this Issue #43 planning/evidence bundle may change. Original human-authored agent/merge-gate/governance artifacts remain untouched by runtime agents. Reject M3/worker/FFmpeg/FFprobe, unrelated UI/refactors/bugs, new configuration/dependencies, timeout inflation, sleeps, hidden retries, assertion weakening, or validator changes.
+
+Orchestrator must reconcile PR #44's bootstrap-only description/applicability claims and obtain new-HEAD SUCCESS for `Backend CI / tests`, `Frontend CI / test`, `E2E CI / e2e`, `governance / governance`, and `governance / pr-enforcement`. The historical evidence approval must not authorize readiness. Only after renewed review and all checks pass may Orchestrator invoke `python scripts/merge_gate.py 44 --check` and then the unchanged deterministic merge path. Tester/Planner perform no live merge; no new issue/branch is started.
 
 ## Expected Results
 
-All 50+ governance tests must pass. Any single failure blocks merge because the entire value of this issue is that governance invariants hold.
+All discovered governance tests must pass unchanged (historical total 170), including the separately executed 24 merge-gate tests. Record actual fresh counts, not unverified category arithmetic. The deterministic Media regression must show the requested pre-fix failure and post-fix pass, with frontend/lint/build/Media E2E and independent browser review green. Refactor verification must remain green. Any required failure, missing test, blocked mandatory review, or non-success required CI check blocks completion; historical approval and bootstrap TDD exemption do not apply to the new work.
 
 ## Evidence Requirements
 
 After test execution, record in `specs/043-simplify-agent-control-plane/evidence.md`:
 
-1. Full test output showing all tests pass
-2. Confirmation that no application code was modified
-3. Confirmation that no M3 product work exists in changeset
-4. Final decision: `Decision: APPROVE` (only if all tests pass)
+1. Preserve literal `### RED`, `### GREEN`, and `### REFACTOR` headings. Clearly separate the original human-authored bootstrap chronology (RED not applicable; no fabricated failure) from new Media TDD.
+2. Under RED, record the new failing hook command/working directory/exit status/assertion and the exact pending-GET -> upload-success -> stale-GET ordering before production edits. Include any actual E2E RED separately; do not invent execution or count setup failures.
+3. Under GREEN, record fresh frontend/Media/lint/build/governance/merge-gate/E2E commands, counts, statuses, viewport coverage, and actual outcomes. Label historical 170/24 results historical and list blocked/unexecuted checks with their prerequisites.
+4. Under REFACTOR, identify only scoped cleanup or explicitly no refactor, then record final reruns. No control-plane refactor is authorized in the continuation.
+5. Record running-app interaction, screenshot paths and visual findings at every viewport, keyboard/accessibility review, console/network/API findings, and the real versus mocked boundaries without secrets.
+6. Confirm only authorized Media changes beyond the baseline, unchanged trusted governance artifacts, no M3/unrelated work, and preserved validation/error/deletion/project behavior. Evidence format is repaired in evidence by an authorized owner, never via validators.
+7. Record a renewed independent `Decision: APPROVE` only after required verification succeeds; otherwise `Decision: REJECT`. Label original approval historical/pending renewed review until then. Orchestrator separately records new-HEAD CI/lifecycle status; Planner neither edits evidence nor claims test execution.
