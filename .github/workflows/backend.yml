@@ -57,10 +57,8 @@ jobs:
 
       - name: Initialize MinIO bucket
         run: |
-          # Run mc commands via MinIO Docker image (avoids downloading binary)
-          docker run --rm --network host \
-            quay.io/minio/mc:latest \
-            sh -c "
+          docker run --rm --network host --entrypoint sh \
+            quay.io/minio/mc:latest -c "
               mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
               mc mb --ignore-existing aiclip/aiclip-media &&
               mc anonymous set private aiclip/aiclip-media &&
