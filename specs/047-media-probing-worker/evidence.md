@@ -84,7 +84,7 @@ All Python worker code was reviewed in detail:
 | `services/worker/tests/test_cli.py` | ✅ | 11 test methods across 4 classes. Covers valid/invalid contracts, exit codes, output format. |
 | `services/worker/tests/test_error_handling.py` | ✅ | 7 test methods across 4 classes. Covers stderr capture, timeout enforcement, shell safety, invalid JSON output. |
 
-**Test Count**: 29 tests across 3 test files. All tests are structurally correct with proper assertions.
+**Test Count**: 28 tests collected, 26 passed, 2 skipped across 3 test files. Skipped tests are audio-only and video-only media type tests (fixture creation limitation, not code defect). All executable tests pass with proper assertions.
 
 ---
 
