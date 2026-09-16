@@ -20,15 +20,21 @@ Completed slices:
 - Sanctum SPA authentication (Issue #28, PR #29)
 - Authenticated project management (Issue #30, PR #31)
 
-## M2 — Media Storage (in progress)
+## M2 — Media Storage (completed)
 
 Completed slices:
 
 - Project-scoped video upload and S3-compatible storage (Issue #35, PR #36)
 
+## M3 — Asynchronous Media Processing (in progress)
+
+Completed slices:
+
+- Async processing job boundary (Issue #45)
+
 Next slice:
 
-- Async media processing pipeline (transcoding, scene detection, transcription)
+- Real worker implementation (FFmpeg, scene detection, transcription)
 
 ## Planned Milestones
 

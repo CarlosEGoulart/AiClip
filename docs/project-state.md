@@ -43,12 +43,15 @@ clip analysis, AI ranking, rendering, or social features exist yet.
 
 # Current Milestone
 
-M2 Media Storage:
-- Project-scoped video upload and S3-compatible storage complete.
-- Issue #35 complete; PR #36 merged.
+M3 Asynchronous Media Processing (in progress):
+- First slice: async processing job boundary (Issue #45).
+- Laravel remains authoritative for PostgreSQL state.
+- Python worker does not write PostgreSQL directly.
+- Versioned worker contract established.
+- Deterministic processing lifecycle states defined.
 
 # Next Architectural Goal
 
-M2 continued: async media processing pipeline — transcoding, scene detection,
-transcription, and clip analysis via Python worker. Starting async processing
-requires separate explicit authorization.
+M3 continued: real worker implementation — FFmpeg transcoding, scene detection,
+transcription, and clip analysis via Python worker. Replace deterministic
+boundary fake with actual processing logic.

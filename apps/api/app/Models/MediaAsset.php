@@ -12,6 +12,43 @@ class MediaAsset extends Model
     /** @use HasFactory<MediaAssetFactory> */
     use HasFactory;
 
+    /*
+    |--------------------------------------------------------------------------
+    | Processing State Constants
+    |--------------------------------------------------------------------------
+    */
+
+    const PROCESSING_STORED = 'stored';
+
+    const PROCESSING_QUEUED = 'queued';
+
+    const PROCESSING_RUNNING = 'processing';
+
+    const PROCESSING_COMPLETED = 'completed';
+
+    const PROCESSING_FAILED = 'failed';
+
+    const VALID_PROCESSING_STATES = [
+        self::PROCESSING_STORED,
+        self::PROCESSING_QUEUED,
+        self::PROCESSING_RUNNING,
+        self::PROCESSING_COMPLETED,
+        self::PROCESSING_FAILED,
+    ];
+
+    /**
+     * Valid processing state transitions.
+     *
+     * @var array<string, list<string>>
+     */
+    private const VALID_TRANSITIONS = [
+        self::PROCESSING_STORED => [self::PROCESSING_QUEUED, self::PROCESSING_FAILED],
+        self::PROCESSING_QUEUED => [self::PROCESSING_RUNNING, self::PROCESSING_FAILED],
+        self::PROCESSING_RUNNING => [self::PROCESSING_COMPLETED, self::PROCESSING_FAILED],
+        self::PROCESSING_COMPLETED => [],
+        self::PROCESSING_FAILED => [],
+    ];
+
     protected $fillable = [
         'project_id',
         'original_name',
@@ -20,13 +57,94 @@ class MediaAsset extends Model
         'mime_type',
         'size_bytes',
         'status',
+        'processing_status',
+        'idempotency_key',
+        'processing_started_at',
+        'processing_completed_at',
+        'processing_error',
     ];
 
     protected function casts(): array
     {
         return [
             'size_bytes' => 'integer',
+            'processing_started_at' => 'datetime',
+            'processing_completed_at' => 'datetime',
         ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Processing State Transitions
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Validate whether a state transition is allowed.
+     */
+    public static function isValidTransition(string $from, string $to): bool
+    {
+        return in_array($to, self::VALID_TRANSITIONS[$from] ?? [], true);
+    }
+
+    /**
+     * Transition to the queued state.
+     */
+    public function markQueued(string $idempotencyKey): void
+    {
+        if (! self::isValidTransition($this->processing_status, self::PROCESSING_QUEUED)) {
+            return;
+        }
+
+        $this->update([
+            'processing_status' => self::PROCESSING_QUEUED,
+            'idempotency_key' => $idempotencyKey,
+        ]);
+    }
+
+    /**
+     * Transition to the processing state.
+     */
+    public function markProcessing(): void
+    {
+        if (! self::isValidTransition($this->processing_status, self::PROCESSING_RUNNING)) {
+            return;
+        }
+
+        $this->update([
+            'processing_status' => self::PROCESSING_RUNNING,
+            'processing_started_at' => now(),
+        ]);
+    }
+
+    /**
+     * Transition to the completed state.
+     */
+    public function markCompleted(): void
+    {
+        if (! self::isValidTransition($this->processing_status, self::PROCESSING_COMPLETED)) {
+            return;
+        }
+
+        $this->update([
+            'processing_status' => self::PROCESSING_COMPLETED,
+            'processing_completed_at' => now(),
+        ]);
+    }
+
+    /**
+     * Transition to the failed state.
+     */
+    public function markFailed(string $error): void
+    {
+        if (! self::isValidTransition($this->processing_status, self::PROCESSING_FAILED)) {
+            return;
+        }
+
+        $this->update([
+            'processing_status' => self::PROCESSING_FAILED,
+            'processing_error' => $error,
+        ]);
     }
 
     /**

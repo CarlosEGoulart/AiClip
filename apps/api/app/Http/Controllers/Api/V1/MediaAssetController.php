@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMediaUploadRequest;
 use App\Http\Resources\MediaAssetResource;
+use App\Jobs\ProcessMediaAsset;
 use App\Models\MediaAsset;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
@@ -101,6 +102,9 @@ class MediaAssetController extends Controller
                 'request_id' => Str::uuid(),
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+
+        // Dispatch processing job asynchronously
+        ProcessMediaAsset::dispatch($mediaAsset, (string) Str::uuid());
 
         return response()->json([
             'data' => new MediaAssetResource($mediaAsset),
