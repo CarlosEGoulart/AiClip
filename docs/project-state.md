@@ -45,13 +45,17 @@ clip analysis, AI ranking, rendering, or social features exist yet.
 
 M3 Asynchronous Media Processing (in progress):
 - First slice: async processing job boundary (Issue #45).
+- Second slice: deterministic FFprobe media probing worker (Issue #47).
 - Laravel remains authoritative for PostgreSQL state.
 - Python worker does not write PostgreSQL directly.
 - Versioned worker contract established.
 - Deterministic processing lifecycle states defined.
+- Worker subprocess invocation via Symfony Process.
+- Probe result and duration columns on MediaAsset.
 
 # Next Architectural Goal
 
-M3 continued: real worker implementation — FFmpeg transcoding, scene detection,
-transcription, and clip analysis via Python worker. Replace deterministic
-boundary fake with actual processing logic.
+M3 continued: deterministic audio extraction worker stage — FFmpeg audio
+extraction to normalized mono 16 kHz PCM WAV derivative, private object
+storage, Laravel-controlled metadata/state. This derivative becomes the input
+for future transcription (not yet implemented).
