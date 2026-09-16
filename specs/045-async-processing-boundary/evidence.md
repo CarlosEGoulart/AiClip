@@ -1,8 +1,10 @@
 # Evidence: Asynchronous Processing Job Boundary
 
-## RED
+## TDD Evidence
 
-### Test Files Created
+### RED
+
+#### Test Files Created
 
 | File | Tests | Purpose |
 |------|-------|---------|
@@ -13,7 +15,7 @@
 | `tests/Feature/Media/MediaProcessingDispatchTest.php` | 6 | Upload dispatches job, authorization, status tracking |
 | `services/worker/contracts/media_processing_v1.json` | - | Worker contract JSON schema |
 
-### Pure Unit Tests (No DB Required)
+#### Pure Unit Tests (No DB Required)
 
 **Command:**
 ```bash
@@ -52,7 +54,7 @@ Class "App\Jobs\ProcessMediaAsset" not found
 Class "App\Contracts\MediaProcessingContract" not found
 ```
 
-### Feature Tests — PostgreSQL-Backed RED
+#### Feature Tests — PostgreSQL-Backed RED
 
 **Command:**
 ```bash
@@ -114,7 +116,7 @@ The spec (AC 5) says: *"Upload endpoint returns immediately with status `'stored
 - The spec's intent (upload produces `stored`, job dispatch is async)
 - The approved test-plan.md (which uses `Queue::fake()` in upload tests)
 
-### RED Validation Summary
+#### RED Validation Summary
 
 | Category | Count | Failure Type | Valid RED? |
 |----------|-------|--------------|------------|
@@ -127,9 +129,9 @@ The spec (AC 5) says: *"Upload endpoint returns immediately with status `'stored
 | Feature: sync job inline | 2 | Test missing Queue::fake() | ✅ Yes |
 | **Total** | **41** | | **41 valid RED** |
 
-## GREEN
+### GREEN
 
-### Fix Applied
+#### Fix Applied
 
 Added `Queue::fake();` as the first line inside the two failing test closures in `MediaProcessingDispatchTest.php`:
 
@@ -138,7 +140,7 @@ Added `Queue::fake();` as the first line inside the two failing test closures in
 
 This prevents the sync queue driver from executing the job inline during tests, preserving the `stored` state for assertion.
 
-### Feature Tests — Post-Fix
+#### Feature Tests — Post-Fix
 
 **Command:**
 ```bash
@@ -147,7 +149,7 @@ cd apps/api && vendor/bin/pest tests/Feature/Media/MediaProcessingDispatchTest.p
 
 **Result:** 6 tests, 6 passed, 48 assertions, 0 failures
 
-### Unit Tests — Post-Fix
+#### Unit Tests — Post-Fix
 
 **Command:**
 ```bash
@@ -156,7 +158,7 @@ cd apps/api && vendor/bin/pest tests/Unit/MediaAssetProcessingTest.php tests/Uni
 
 **Result:** 39 tests, 39 passed, 113 assertions, 0 failures
 
-### Regression Check
+#### Regression Check
 
 **Command:**
 ```bash
@@ -165,9 +167,9 @@ cd apps/api && vendor/bin/pest tests/Unit/ --compact
 
 **Result:** 51 tests, 44 passed, 7 errors (all pre-existing `MediaAssetTest` failures from missing `pdo_pgsql` driver — NOT caused by this implementation)
 
-## REFACTOR
+### REFACTOR
 
-### Pint Code Style
+#### Pint Code Style
 
 **Command:**
 ```bash
@@ -176,7 +178,7 @@ cd apps/api && vendor/bin/pint --dirty --test
 
 **Result:** Passed (no dirty files with style issues)
 
-### Post-Refactor Verification
+#### Post-Refactor Verification
 
 **Command:**
 ```bash
@@ -184,3 +186,9 @@ cd apps/api && vendor/bin/pest tests/Feature/Media/MediaProcessingDispatchTest.p
 ```
 
 **Result:** 45 tests, 45 passed, 161 assertions, 0 failures — GREEN maintained after refactor.
+
+## Independent Tester Review
+
+Reviewer: Tester
+
+Decision: APPROVE
