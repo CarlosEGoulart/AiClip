@@ -28,6 +28,8 @@ return [
 
     'probe_timeout_seconds' => (int) env('MEDIA_PROBE_TIMEOUT_SECONDS', 30),
 
+    'extract_audio_timeout_seconds' => (int) env('MEDIA_EXTRACT_AUDIO_TIMEOUT_SECONDS', 120),
+
     'worker_command' => env('MEDIA_WORKER_COMMAND', 'python -m aiclip_worker.cli'),
 
 ];

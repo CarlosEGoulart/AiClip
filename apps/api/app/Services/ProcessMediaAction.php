@@ -73,6 +73,69 @@ class ProcessMediaAction
     }
 
     /**
+     * Extract and normalize audio using the Python worker CLI.
+     *
+     * @return array{status: string, extraction: array<string, mixed>}
+     *
+     * @throws ProcessMediaException
+     */
+    public function extractAudio(MediaProcessingContract $contract): array
+    {
+        $timeout = config('media.extract_audio_timeout_seconds', 120);
+        $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
+
+        $contractJson = json_encode($contract->toArray(), JSON_THROW_ON_ERROR);
+
+        Log::info('ProcessMediaAction: invoking worker extract-audio', [
+            'media_asset_id' => $contract->mediaAssetId,
+            'timeout' => $timeout,
+        ]);
+
+        $process = $this->createProcess([
+            ...explode(' ', $workerCommand),
+            'extract-audio',
+            '--contract-json',
+            $contractJson,
+        ]);
+
+        $process->setTimeout($timeout);
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            $output = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+
+            if (! is_array($output) || ($output['status'] ?? '') !== 'success') {
+                throw ProcessMediaException::fromWorkerOutput(
+                    $output ?? ['error' => 'Invalid worker output'],
+                    $process->getExitCode(),
+                );
+            }
+
+            Log::info('ProcessMediaAction: extract-audio succeeded', [
+                'media_asset_id' => $contract->mediaAssetId,
+            ]);
+
+            return $output;
+        }
+
+        // Process failed
+        $stderr = $process->getErrorOutput();
+        $exitCode = $process->getExitCode();
+
+        // Try to parse error output as JSON
+        $errorOutput = json_decode($process->getOutput(), true);
+        if (is_array($errorOutput) && isset($errorOutput['error'])) {
+            throw ProcessMediaException::fromWorkerOutput($errorOutput, $exitCode);
+        }
+
+        throw new ProcessMediaException(
+            "Worker process failed with exit code {$exitCode}",
+            $exitCode,
+            $stderr,
+        );
+    }
+
+    /**
      * Create a process instance. Overridable for testing.
      *
      * @param  list<string>  $command

@@ -6,6 +6,7 @@ use Database\Factories\MediaAssetFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MediaAsset extends Model
 {
@@ -177,5 +178,13 @@ class MediaAsset extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    /**
+     * Get the derived assets for this media asset.
+     */
+    public function derivedAssets(): HasMany
+    {
+        return $this->hasMany(DerivedAsset::class);
     }
 }

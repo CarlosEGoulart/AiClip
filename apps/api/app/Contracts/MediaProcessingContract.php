@@ -19,10 +19,15 @@ class MediaProcessingContract
 
     public string $createdAt;
 
+    public string $action = 'probe';
+
+    /** @var array{disk: string, key: string, mime_type: string}|null */
+    public ?array $outputStorage = null;
+
     /**
      * Create a contract from a MediaAsset model.
      */
-    public static function fromMediaAsset(MediaAsset $asset, string $idempotencyKey): self
+    public static function fromMediaAsset(MediaAsset $asset, string $idempotencyKey, string $action = 'probe'): self
     {
         $contract = new self;
         $contract->mediaAssetId = $asset->id;
@@ -34,6 +39,7 @@ class MediaProcessingContract
         ];
         $contract->idempotencyKey = $idempotencyKey;
         $contract->createdAt = now()->toIso8601String();
+        $contract->action = $action;
 
         return $contract;
     }
@@ -52,6 +58,8 @@ class MediaProcessingContract
         $contract->storage = $data['storage'];
         $contract->idempotencyKey = $data['idempotency_key'];
         $contract->createdAt = $data['created_at'];
+        $contract->action = $data['action'] ?? 'probe';
+        $contract->outputStorage = $data['output_storage'] ?? null;
 
         return $contract;
     }
@@ -63,14 +71,21 @@ class MediaProcessingContract
      */
     public function toArray(): array
     {
-        return [
+        $data = [
             'version' => $this->version,
             'media_asset_id' => $this->mediaAssetId,
             'project_id' => $this->projectId,
             'storage' => $this->storage,
             'idempotency_key' => $this->idempotencyKey,
             'created_at' => $this->createdAt,
+            'action' => $this->action,
         ];
+
+        if ($this->outputStorage !== null) {
+            $data['output_storage'] = $this->outputStorage;
+        }
+
+        return $data;
     }
 
     /**
@@ -101,6 +116,18 @@ class MediaProcessingContract
         // Validate created_at is present
         if (! isset($this->createdAt) || empty($this->createdAt)) {
             return false;
+        }
+
+        // Validate action is valid
+        if (! in_array($this->action, ['probe', 'extract_audio'], true)) {
+            return false;
+        }
+
+        // If action is extract_audio, output_storage must be present
+        if ($this->action === 'extract_audio') {
+            if (empty($this->outputStorage) || empty($this->outputStorage['disk']) || empty($this->outputStorage['key']) || empty($this->outputStorage['mime_type'])) {
+                return false;
+            }
         }
 
         return true;
