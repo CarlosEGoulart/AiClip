@@ -328,3 +328,52 @@ The following results are from the actual CI execution on the final PR HEAD.
 ### Decision
 
 Decision: APPROVE
+
+## Tester Independent Verification
+
+### Audio-Only Fixture Determinism
+
+- FFmpeg lavfi sine source (`sine=frequency=440:duration=1`) generates identical binary output given the same parameters. This is a deterministic built-in filter, not model-dependent.
+- Fallback: minimal 16-byte MP3 frame header (MPEG1, Layer III). Reasonable to prevent hard crashes if FFmpeg is unavailable. Not a valid audio file but the test has its own skip guard.
+- No binary fixture committed to git (verified: `git diff --stat` for media extensions returns empty).
+
+### Previously Skipped Test Now Executes
+
+- `test_probe_with_audio_only_media` (test_probe.py:69-92) checks for fixture existence; session-scoped conftest creates the file before test collection. In CI (FFmpeg present), the file exists and the test executes.
+- Assertions are correct: `video_codec` should be `None` for audio-only; `audio_codec` should be non-null.
+- Assertions are guarded by `if result["status"] == "success"` — defensive against FFprobe parse failure.
+
+### No Binary Bloat
+
+- `git diff --stat 8b87fd8..e092f60` shows 4 files, all text (.py, .md). Zero binary files in the diff.
+
+### FFmpeg Subprocess Safety
+
+- All `subprocess.run` calls use list arguments (`["ffmpeg", "-y", "-f", "lavfi", ...]`). No `shell=True` anywhere in conftest.py. No shell interpolation.
+
+### Original Media Immutability
+
+- Fixture writes only to a new file (`audio_only.mp3`) in the test fixtures directory. The `if not audio_only_path.exists()` guard ensures single creation. No modification to any existing production media.
+
+### No PostgreSQL Access from Worker
+
+- Grep for `database|DB::|postgres|psycopg|sqlite` in `services/worker/` returns zero matches. Worker code has no database write paths.
+
+### Scope Not Expanded
+
+- The 3 commits touch exactly 4 files: conftest.py (fixture generation), evidence.md (CI verification + FFmpeg claim correction), project-state.md (M3 completion), roadmap.md (M3 completion). No new features, no new application tests, no new worker capabilities.
+
+### Documentation Accuracy
+
+- `docs/project-state.md`: Exactly 6 headings (Current Architecture, Completed Capabilities, Important Decisions, Known Limitations, Current Milestone, Next Architectural Goal).
+- `docs/roadmap.md`: M3 marked "(completed)" with Issue #49 in completed slices.
+- `docs/project-state.md` Known Limitations correctly states: "No transcoding, scene detection, transcription, clip analysis, AI ranking, rendering, or social features exist yet." — no false claims.
+- Next Architectural Goal correctly identifies M4 as future transcription work.
+
+### Evidence Structure
+
+- Historical context preserved (lines 117-131: "Tests could not be executed due to permission restrictions").
+- Final CI Verification section (lines 301-330) with actual CI numbers: 55 worker tests passed, 224 Laravel tests (0 failures), 187 frontend tests, full E2E suite.
+- Line 28 corrected from "FFmpeg deterministically pinned" to "FFmpeg explicitly installed and version recorded" — accurate.
+
+Decision: APPROVE
