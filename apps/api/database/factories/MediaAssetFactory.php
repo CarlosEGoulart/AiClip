@@ -35,6 +35,7 @@ class MediaAssetFactory extends Factory
             'mime_type' => $mime,
             'size_bytes' => fake()->numberBetween(1024, 104857600),
             'status' => 'stored',
+            'processing_status' => 'stored',
         ];
     }
 }
