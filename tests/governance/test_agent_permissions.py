@@ -1,11 +1,9 @@
-"""Permission regression tests using parsed frontmatter and rule decisions.
+"""Role-invariant regression tests for OpenCode agent permissions."""
 
-These tests load agent frontmatter, parse the YAML permission mappings,
-and evaluate rules with the same last-match glob logic used by OpenCode.
-Substring checks are replaced by actual permission-decision assertions.
-"""
+from __future__ import annotations
 
 import fnmatch
+import re
 import unittest
 from pathlib import Path
 
@@ -13,63 +11,109 @@ import yaml
 from yaml.constructor import ConstructorError
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+AGENTS_DIR = REPO_ROOT / ".opencode" / "agents"
+
+FRONTMATTER_RE = re.compile(
+    r"^---\s*\n(.*?)\n---\s*\n",
+    re.DOTALL,
+)
+
+
 class _UniqueKeyLoader(yaml.SafeLoader):
     pass
 
 
-def _unique_construct_mapping(self, node, deep=False):
+def _unique_construct_mapping(
+    self,
+    node,
+    deep=False,
+):
     seen = set()
-    for k_node, _ in node.value:
-        key = self.construct_object(k_node, deep=True)
+
+    for key_node, _ in node.value:
+        key = self.construct_object(
+            key_node,
+            deep=True,
+        )
+
         if key in seen:
             raise ConstructorError(
-                "while constructing a mapping", node.start_mark,
-                f"found duplicate key: {key}", k_node.start_mark)
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate key: {key}",
+                key_node.start_mark,
+            )
+
         seen.add(key)
-    return yaml.SafeLoader.construct_mapping(self, node, deep=deep)
+
+    return yaml.SafeLoader.construct_mapping(
+        self,
+        node,
+        deep=deep,
+    )
 
 
 _UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_construct_mapping)
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-AGENTS_DIR = REPO_ROOT / ".opencode" / "agents"
-
-FRONTMATTER_RE = __import__("re").compile(r"^---\s*\n(.*?)\n---\s*\n", __import__("re").DOTALL)
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _unique_construct_mapping,
+)
 
 
-def load_frontmatter(path):
-    p = Path(path)
-    text = p.read_text()
-    m = FRONTMATTER_RE.match(text)
-    if not m:
-        raise AssertionError(f"No YAML frontmatter in {p}")
+def load_frontmatter(path: Path) -> dict:
+    text = path.read_text(
+        encoding="utf-8"
+    )
+
+    match = FRONTMATTER_RE.match(text)
+
+    if not match:
+        raise AssertionError(
+            f"No YAML frontmatter in {path}"
+        )
+
     try:
-        data = yaml.load(m.group(1), Loader=_UniqueKeyLoader)
-    except ConstructorError as e:
-        raise AssertionError(f"Duplicate YAML key in {p}: {e}")
-    except yaml.YAMLError as e:
-        raise AssertionError(f"Malformed YAML in {p}: {e}")
+        data = yaml.load(
+            match.group(1),
+            Loader=_UniqueKeyLoader,
+        )
+    except ConstructorError as exc:
+        raise AssertionError(
+            f"Duplicate YAML key in {path}: {exc}"
+        ) from exc
+    except yaml.YAMLError as exc:
+        raise AssertionError(
+            f"Malformed YAML in {path}: {exc}"
+        ) from exc
+
     if not isinstance(data, dict):
-        raise AssertionError(f"Frontmatter in {p} must be a mapping")
+        raise AssertionError(
+            f"Frontmatter in {path} must be a mapping"
+        )
+
     return data
 
 
 def decide(rules, key):
-    """Last-match glob decision; flat string applies to every key."""
+    """Evaluate last-match glob permission."""
+
     if rules is None:
         return None
+
     if isinstance(rules, str):
         return rules
+
     result = None
+
     for pattern, action in rules.items():
         if fnmatch.fnmatch(key, pattern):
             result = action
+
     return result
 
 
-class TestBuilderPermissions(unittest.TestCase):
-    """Verify Builder has correct permission boundaries via parsed rules."""
+class AgentTestCase(unittest.TestCase):
+    agent_name = ""
 
     def setUp(self):
         fm = load_frontmatter(AGENTS_DIR / "builder.md")
@@ -232,17 +276,132 @@ class TestOrchestratorPermissions(unittest.TestCase):
         self.bash_rules = self.perm.get("bash", {})
         self.task_rules = self.perm.get("task", {})
 
-    def test_orchestrator_allows_git_lifecycle(self):
-        self.assertEqual(decide(self.bash_rules, "git commit -m test"), "allow")
-        self.assertEqual(decide(self.bash_rules, "git push origin main"), "allow")
-        self.assertEqual(decide(self.bash_rules, "git add ."), "allow")
-        self.assertEqual(decide(self.bash_rules, "git branch feature/test"), "allow")
+    def test_orchestrator_allows_normal_git_lifecycle(self):
+        self.assertEqual(
+            decide(self.bash_rules, "git commit -m test"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git add ."),
+            "allow",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git branch feature/test"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git fetch origin"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git rebase master"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git cherry-pick abc123"),
+            "allow",
+        )
 
-    def test_orchestrator_allows_github_lifecycle(self):
-        self.assertEqual(decide(self.bash_rules, "gh pr create --title test"), "allow")
-        self.assertEqual(decide(self.bash_rules, "gh pr merge 1 --merge"), "allow")
-        self.assertEqual(decide(self.bash_rules, "gh issue create --title test"), "allow")
-        self.assertEqual(decide(self.bash_rules, "gh issue close 1"), "allow")
+
+    def test_orchestrator_blocks_dangerous_git_lifecycle(self):
+        self.assertEqual(
+            decide(self.bash_rules, "git push origin main"),
+            "deny",
+        )
+        self.assertEqual(
+            decide(self.bash_rules, "git push origin master"),
+            "deny",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "git push origin "
+                "@carlosegoulart/43/refactor/"
+                "simplify-agent-control-plane --force",
+            ),
+            "deny",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "git push origin "
+                "@carlosegoulart/43/refactor/"
+                "simplify-agent-control-plane --force-with-lease",
+            ),
+            "deny",
+        )
+
+
+    def test_orchestrator_allows_github_lifecycle_metadata(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh pr create --title test",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh pr edit 44 --body test",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh pr checks 44",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh issue create --title test",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh issue close 43",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh issue reopen 43",
+            ),
+            "allow",
+        )
+
+
+    def test_orchestrator_direct_merge_is_denied(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "gh pr merge 44 --merge",
+            ),
+            "deny",
+        )
+
+
+    def test_orchestrator_merge_gate_is_allowed(self):
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "python scripts/merge_gate.py 44",
+            ),
+            "allow",
+        )
+        self.assertEqual(
+            decide(
+                self.bash_rules,
+                "python scripts/merge_gate.py 44 --check",
+            ),
+            "allow",
+        )
 
     def test_orchestrator_delegates_to_known_agents(self):
         self.assertEqual(decide(self.task_rules, "planner"), "allow")

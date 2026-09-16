@@ -161,7 +161,7 @@ class TestGovernanceContract(unittest.TestCase):
         ev = "specs/001-init-opencode-agent-architecture/evidence.md"
         self.assertEqual(decide(orch, "docs/project-state.md"), "allow")
         self.assertEqual(decide(orch, ev), "allow")
-        self.assertEqual(decide(orch, "README.md"), "deny")
+        self.assertEqual(decide(orch, "README.md"), "allow")
         self.assertEqual(decide(orch, spec), "deny")
         self.assertEqual(decide(orch, ".opencode/agents/builder.md"), "deny")
         self.assertEqual(decide(plan, spec), "allow")
@@ -180,29 +180,354 @@ class TestGovernanceContract(unittest.TestCase):
         self.assertEqual(decide(test, "AGENTS.md"), "deny")
 
     def test_g4_representative_task_shell_decisions(self):
-        orch_t = load_frontmatter(AGENTS_DIR / "orchestrator.md")["permission"].get("task", {})
-        self.assertEqual(decide(orch_t, "planner"), "allow")
-        self.assertEqual(decide(orch_t, "builder"), "allow")
-        self.assertEqual(decide(orch_t, "tester"), "allow")
-        self.assertEqual(decide(orch_t, "general"), "deny")
-        for name in ("planner.md", "builder.md", "tester.md"):
+        orch_t = load_frontmatter(
+            AGENTS_DIR / "orchestrator.md"
+        )["permission"].get("task", {})
+
+        self.assertEqual(
+            decide(orch_t, "planner"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(orch_t, "builder"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(orch_t, "tester"),
+            "allow",
+        )
+        self.assertEqual(
+            decide(orch_t, "general"),
+            "deny",
+        )
+
+        for name in (
+            "planner.md",
+            "builder.md",
+            "tester.md",
+        ):
             with self.subTest(agent=name):
-                t = load_frontmatter(AGENTS_DIR / name)["permission"].get("task", {})
-                self.assertEqual(decide(t, "planner"), "deny")
-                self.assertEqual(decide(t, "builder"), "deny")
-        orch_b = load_frontmatter(AGENTS_DIR / "orchestrator.md")["permission"].get("bash", {})
-        build_b = load_frontmatter(AGENTS_DIR / "builder.md")["permission"].get("bash", {})
-        test_b = load_frontmatter(AGENTS_DIR / "tester.md")["permission"].get("bash", {})
-        plan_b = load_frontmatter(AGENTS_DIR / "planner.md")["permission"].get("bash", {})
-        self.assertEqual(decide(orch_b, "git commit -m x"), "allow")
-        self.assertEqual(decide(orch_b, "gh pr create --title x"), "allow")
-        self.assertEqual(decide(orch_b, "rm -rf /tmp/x"), "deny")
-        self.assertEqual(decide(build_b, TEST_CMD), "deny")
-        self.assertEqual(decide(build_b, "git commit -m x"), "deny")
-        self.assertEqual(decide(test_b, TEST_CMD), "allow")
-        self.assertEqual(decide(test_b, "git commit -m x"), "deny")
-        self.assertEqual(decide(plan_b, "git commit -m x"), "deny")
-        self.assertEqual(decide(plan_b, TEST_CMD), "deny")
+                task_rules = load_frontmatter(
+                    AGENTS_DIR / name
+                )["permission"].get("task", {})
+
+                self.assertEqual(
+                    decide(task_rules, "planner"),
+                    "deny",
+                )
+                self.assertEqual(
+                    decide(task_rules, "builder"),
+                    "deny",
+                )
+                self.assertEqual(
+                    decide(task_rules, "tester"),
+                    "deny",
+                )
+
+        orch_b = load_frontmatter(
+            AGENTS_DIR / "orchestrator.md"
+        )["permission"].get("bash", {})
+
+        build_b = load_frontmatter(
+            AGENTS_DIR / "builder.md"
+        )["permission"].get("bash", {})
+
+        test_b = load_frontmatter(
+            AGENTS_DIR / "tester.md"
+        )["permission"].get("bash", {})
+
+        plan_b = load_frontmatter(
+            AGENTS_DIR / "planner.md"
+        )["permission"].get("bash", {})
+
+        # Orchestrator: normal lifecycle operations are allowed.
+        self.assertEqual(
+            decide(
+                orch_b,
+                "git commit -m x",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                orch_b,
+                "gh pr create --title x",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                orch_b,
+                "gh pr edit 44 --body test",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                orch_b,
+                "gh issue reopen 43",
+            ),
+            "allow",
+        )
+
+        # Direct merge is forbidden.
+        self.assertEqual(
+            decide(
+                orch_b,
+                "gh pr merge 44 --merge",
+            ),
+            "deny",
+        )
+
+        # Deterministic merge gate is the only merge path.
+        self.assertEqual(
+            decide(
+                orch_b,
+                "python scripts/merge_gate.py 44",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                orch_b,
+                "python scripts/merge_gate.py 44 --check",
+            ),
+            "allow",
+        )
+
+        # Default branch pushes remain blocked.
+        self.assertEqual(
+            decide(
+                orch_b,
+                "git push origin master",
+            ),
+            "deny",
+        )
+
+        self.assertEqual(
+            decide(
+                orch_b,
+                "git push origin main",
+            ),
+            "deny",
+        )
+
+        # Explicit issue branch push is allowed.
+        self.assertEqual(
+            decide(
+                orch_b,
+                (
+                    "git push origin "
+                    "@carlosegoulart/43/refactor/"
+                    "simplify-agent-control-plane"
+                ),
+            ),
+            "allow",
+        )
+
+        # Force pushes remain blocked.
+        self.assertEqual(
+            decide(
+                orch_b,
+                (
+                    "git push origin "
+                    "@carlosegoulart/43/refactor/"
+                    "simplify-agent-control-plane "
+                    "--force"
+                ),
+            ),
+            "deny",
+        )
+
+        # Arbitrary destructive shell commands remain blocked.
+        self.assertEqual(
+            decide(
+                orch_b,
+                "rm -rf /tmp/x",
+            ),
+            "deny",
+        )
+
+        # Builder: normal development tools are broadly available.
+        self.assertEqual(
+            decide(
+                build_b,
+                "php artisan test",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "composer install",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "composer require example/package",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "vendor/bin/pest",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "npm test",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "npm run build",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "npx playwright test",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "docker compose up -d",
+            ),
+            "allow",
+        )
+
+        # Builder does not own governance or Git lifecycle.
+        self.assertEqual(
+            decide(
+                build_b,
+                TEST_CMD,
+            ),
+            "deny",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "git commit -m x",
+            ),
+            "deny",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "git push origin feature/test",
+            ),
+            "deny",
+        )
+
+        self.assertEqual(
+            decide(
+                build_b,
+                "gh pr create --title x",
+            ),
+            "deny",
+        )
+
+        # Tester: broad verification, no lifecycle mutation.
+        self.assertEqual(
+            decide(
+                test_b,
+                TEST_CMD,
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                test_b,
+                "php artisan test",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                test_b,
+                "npm test",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                test_b,
+                "npx playwright test",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                test_b,
+                "docker compose up -d",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                test_b,
+                "git status",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                test_b,
+                "git diff",
+            ),
+            "allow",
+        )
+
+        self.assertEqual(
+            decide(
+                test_b,
+                "git commit -m x",
+            ),
+            "deny",
+        )
+
+        self.assertEqual(
+            decide(
+                test_b,
+                "git push",
+            ),
+            "deny",
+        )
+
+        # Planner has no shell access.
+        self.assertEqual(
+            plan_b,
+            "deny",
+        )
 
     def test_g5_six_skills_parse(self):
         names = ["issue-linearity", "tdd-enforcer", "token-efficient-context",
