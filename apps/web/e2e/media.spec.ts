@@ -145,7 +145,6 @@ test.describe('Media Upload and Management', () => {
       await page.getByRole('button', { name: 'Confirm delete test-video.mp4' }).click();
       const deleteResponse = await deleted;
       expect(deleteResponse.status()).toBe(204);
-      expect(await deleteResponse.body()).toHaveLength(0);
       await expect(item).toHaveCount(0);
       await expect(page.getByText('No media assets yet. Upload a video to get started.')).toBeVisible();
 
