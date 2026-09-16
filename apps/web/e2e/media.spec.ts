@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import type { Request } from '@playwright/test';
+import type { MediaAsset } from '../src/features/media/types';
 
 // Generate a minimal valid MP4 file (1-second black video)
 const MINIMAL_MP4 = Buffer.from([
@@ -8,6 +10,12 @@ const MINIMAL_MP4 = Buffer.from([
 
 function uniqueEmail() {
   return `e2e-media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`;
+}
+
+function signal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
 }
 
 async function waitForAuthReady(page: import('@playwright/test').Page) {
@@ -41,102 +49,116 @@ test.describe('Media Upload and Management', () => {
     const email = uniqueEmail();
     await registerUser(page, 'Test User', email);
 
-    // 2. Create a project
+    // Create the real project before intercepting only its Media requests.
     await page.getByLabel('Project Name').fill('Media Test Project');
+    const created = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/v1/projects' && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Create Project' }).click();
+    const projectResponse = await created;
+    expect(projectResponse.status()).toBe(201);
+    const { data: project } = await projectResponse.json();
     await expect(page.getByText('Media Test Project')).toBeVisible();
 
-    // 3. Open the project media section
-    await page.getByRole('button', { name: 'Open Media Test Project' }).click();
-    await expect(page.getByRole('button', { name: 'Back to projects' })).toBeVisible();
+    const listPath = `/api/v1/projects/${project.id}/media`;
+    const uploadPath = `${listPath}/upload`;
+    const asset: MediaAsset = {
+      id: 1,
+      project_id: project.id,
+      original_name: 'test-video.mp4',
+      mime_type: 'video/mp4',
+      size_bytes: MINIMAL_MP4.length,
+      status: 'stored',
+      created_at: '2026-09-16T12:00:00.000000Z',
+      updated_at: '2026-09-16T12:00:00.000000Z',
+    };
+    const deletePath = `/api/v1/media/${asset.id}`;
+    const initialGet = signal();
+    const releaseGets = signal();
+    const heldGets: Request[] = [];
 
-    // 4. Mock CSRF cookie endpoint (called before state-changing requests)
+    // Every route is ready before Open can mount the Media effect.
     await page.route('**/sanctum/csrf-cookie', async (route) => {
-      await route.fulfill({ status: 204 });
+      if (route.request().method() === 'GET') await route.fulfill({ status: 204 });
+      else await route.continue();
     });
-
-    // 5. Mock media upload endpoint: POST /api/v1/projects/{id}/media/upload
-    await page.route('**/api/v1/projects/*/media/upload', async (route) => {
-      await route.fulfill({
-        status: 201,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: {
-            id: 1,
-            filename: 'test-video.mp4',
-            original_name: 'test-video.mp4',
-            mime_type: 'video/mp4',
-            size: 28,
-            disk: 'media',
-            created_at: new Date().toISOString(),
-          },
-        }),
-      });
+    await page.route(`**${uploadPath}`, async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({ status: 201, json: { data: asset } });
+      } else await route.continue();
     });
-
-    // 6. Mock media list endpoint: GET /api/v1/projects/{id}/media
-    await page.route('**/api/v1/projects/*/media', async (route) => {
-      const method = route.request().method();
-      if (method === 'GET') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            data: [{
-              id: 1,
-              filename: 'test-video.mp4',
-              original_name: 'test-video.mp4',
-              mime_type: 'video/mp4',
-              size: 28,
-              disk: 'media',
-              created_at: new Date().toISOString(),
-            }],
-          }),
-        });
-      } else {
-        await route.continue();
-      }
+    await page.route(`**${listPath}`, async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      // All initial requests, including StrictMode replays, share this barrier.
+      heldGets.push(route.request());
+      initialGet.resolve();
+      await releaseGets.promise;
+      await route.fulfill({ status: 200, json: { data: [] } });
     });
-
-    // 7. Mock media delete endpoint: DELETE /api/v1/media/{id}
-    await page.route('**/api/v1/media/*', async (route) => {
+    await page.route(`**${deletePath}`, async (route) => {
       if (route.request().method() === 'DELETE') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ message: 'Media asset deleted successfully.' }),
-        });
-      } else {
-        await route.continue();
+        await route.fulfill({ status: 204 });
+      } else await route.continue();
+    });
+
+    try {
+      await page.getByRole('button', { name: 'Open Media Test Project' }).click();
+      await expect(page.getByRole('button', { name: 'Back to projects' })).toBeVisible();
+      await initialGet.promise;
+      await expect(page.getByRole('status')).toHaveText('Loading media assets...');
+
+      await page.getByLabel('Upload Video').setInputFiles({
+        name: asset.original_name,
+        mimeType: asset.mime_type,
+        buffer: MINIMAL_MP4,
+      });
+      const uploaded = page.waitForResponse(response =>
+        new URL(response.url()).pathname === uploadPath && response.request().method() === 'POST');
+      await page.getByRole('button', { name: 'Upload', exact: true }).click();
+      const uploadResponse = await uploaded;
+      expect(uploadResponse.status()).toBe(201);
+      expect(await uploadResponse.json()).toEqual({ data: asset });
+
+      // A chooser filename is not proof that the real list rendered the upload.
+      const item = page.getByRole('listitem', { name: `Media: ${asset.original_name}`, exact: true });
+      await expect(item).toBeVisible();
+      await expect(item).toHaveCount(1);
+      await expect(item).toContainText('stored');
+      expect(heldGets.length).toBeGreaterThan(0);
+
+      releaseGets.resolve();
+      for (const request of heldGets) {
+        const response = await request.response();
+        expect(response).not.toBeNull();
+        expect(response!.status()).toBe(200);
+        expect(await response!.finished()).toBeNull();
+        expect(await response!.json()).toEqual({ data: [] });
       }
-    });
+      await expect(item).toBeVisible();
+      await expect(item).toHaveCount(1);
 
-    // 8. Upload a valid MP4 file
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles({
-      name: 'test-video.mp4',
-      mimeType: 'video/mp4',
-      buffer: MINIMAL_MP4,
-    });
-    await page.getByRole('button', { name: 'Upload', exact: true }).click();
+      await page.getByRole('button', { name: 'Delete test-video.mp4' }).click();
+      await page.getByRole('button', { name: 'Cancel delete test-video.mp4' }).click();
+      await expect(item).toBeVisible();
+      await page.getByRole('button', { name: 'Delete test-video.mp4' }).click();
+      const deleted = page.waitForResponse(response =>
+        new URL(response.url()).pathname === deletePath && response.request().method() === 'DELETE');
+      await page.getByRole('button', { name: 'Confirm delete test-video.mp4' }).click();
+      const deleteResponse = await deleted;
+      expect(deleteResponse.status()).toBe(204);
+      await expect(item).toHaveCount(0);
+      await expect(page.getByText('No media assets yet. Upload a video to get started.')).toBeVisible();
 
-    // 9. Assert the media list shows the uploaded file
-    await expect(page.getByText('test-video.mp4')).toBeVisible({ timeout: 15000 });
-
-    // 10. Delete the media asset
-    await page.getByRole('button', { name: 'Delete test-video.mp4' }).click();
-    await page.getByRole('button', { name: 'Confirm delete test-video.mp4' }).click();
-
-    // 11. Go back to projects
-    await page.getByRole('button', { name: 'Back to projects' }).click();
-    await expect(page.getByText('Media Test Project')).toBeVisible();
-
-    // 12. Delete the project
-    await page.getByRole('button', { name: 'Delete Media Test Project' }).click();
-    await page.getByRole('button', { name: 'Confirm delete Media Test Project' }).click();
-
-    // 13. Assert the project is gone
-    await expect(page.getByText(/No projects yet/)).toBeVisible({ timeout: 10000 });
+      // Confirm Media removal before leaving, then preserve real project cleanup.
+      await page.getByRole('button', { name: 'Back to projects' }).click();
+      await expect(page.getByText('Media Test Project')).toBeVisible();
+      await page.getByRole('button', { name: 'Delete Media Test Project' }).click();
+      await page.getByRole('button', { name: 'Confirm delete Media Test Project' }).click();
+      await expect(page.getByText(/No projects yet/)).toBeVisible({ timeout: 10000 });
+    } finally {
+      // Drain held route handlers even when a pre-release assertion fails in RED.
+      releaseGets.resolve();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
   });
 
   test('rejects non-video file upload', async ({ page }) => {
@@ -146,8 +168,20 @@ test.describe('Media Upload and Management', () => {
 
     // 2. Create a project
     await page.getByLabel('Project Name').fill('Test Project');
+    const created = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/v1/projects' && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Create Project' }).click();
+    const projectResponse = await created;
+    expect(projectResponse.status()).toBe(201);
+    const { data: project } = await projectResponse.json();
     await expect(page.getByText('Test Project')).toBeVisible();
+
+    // Prepare the list before entry; upload/CSRF/422 validation remain real.
+    const listPath = `/api/v1/projects/${project.id}/media`;
+    await page.route(`**${listPath}`, async route => {
+      if (route.request().method() === 'GET') await route.fulfill({ status: 200, json: { data: [] } });
+      else await route.continue();
+    });
 
     // 3. Open the project media section
     await page.getByRole('button', { name: 'Open Test Project' }).click();
@@ -160,12 +194,20 @@ test.describe('Media Upload and Management', () => {
       mimeType: 'text/plain',
       buffer: Buffer.from('This is not a video'),
     });
+    const rejected = page.waitForResponse(response =>
+      new URL(response.url()).pathname === `${listPath}/upload` && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Upload', exact: true }).click();
+    const rejection = await rejected;
+    expect(rejection.status()).toBe(422);
+    expect((await rejection.json()).errors.file).toBeDefined();
 
     // 5. Assert error message is displayed
     await expect(page.locator('[role="alert"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('alert')).toHaveText('Validation failed. Please check the file type and size.');
 
     // 6. Assert no media item appears in the list
     await expect(page.getByText('test.txt')).not.toBeVisible();
+    await expect(page.getByRole('listitem', { name: /^Media:/ })).toHaveCount(0);
+    await expect(page.getByText('No media assets yet. Upload a video to get started.')).toBeVisible();
   });
 });

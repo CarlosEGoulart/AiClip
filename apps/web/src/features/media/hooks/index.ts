@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useLayoutEffect, useRef } from 'react';
 import type { MediaAsset, MediaError } from '../types';
 import * as mediaApi from '../api';
 
@@ -11,6 +11,13 @@ export interface UseMediaAssetsReturn {
   uploadFile: (file: File) => Promise<boolean>;
   deleteMedia: (id: number) => Promise<boolean>;
   clearErrors: () => void;
+}
+
+interface MediaScope {
+  projectId: number | null;
+  active: boolean;
+  listVersion: number;
+  pendingUploads: number;
 }
 
 function classifyError(error: unknown): { message: string } {
@@ -40,59 +47,96 @@ function classifyError(error: unknown): { message: string } {
 }
 
 export function useMediaAssets(projectId: number | null): UseMediaAssetsReturn {
+  const [viewProjectId, setViewProjectId] = useState(projectId);
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scopeRef = useRef<MediaScope | null>(null);
+
+  // Reset during render so children never receive another project's state.
+  if (viewProjectId !== projectId) {
+    setViewProjectId(projectId);
+    setMediaAssets([]);
+    setError(null);
+    setLoading(false);
+    setUploading(false);
+  }
+
+  useLayoutEffect(() => {
+    const scope: MediaScope = { projectId, active: true, listVersion: 0, pendingUploads: 0 };
+    scopeRef.current = scope;
+    return () => {
+      scope.active = false;
+      // Cancel pending indicators as well as results during StrictMode cleanup.
+      setLoading(false);
+      setUploading(false);
+    };
+  }, [projectId]);
 
   const fetchMedia = useCallback(async () => {
-    if (projectId === null) return;
+    const scope = scopeRef.current;
+    if (projectId === null || !scope?.active || scope.projectId !== projectId) return;
+    const version = ++scope.listVersion;
+    const isCurrent = () => scope.active && scope.listVersion === version;
     setLoading(true);
     setError(null);
     try {
       const response = await mediaApi.getMediaAssets(projectId);
-      setMediaAssets(Array.isArray(response?.data) ? response.data : []);
+      if (isCurrent()) setMediaAssets(Array.isArray(response?.data) ? response.data : []);
     } catch (err: unknown) {
-      const classified = classifyError(err);
-      setError(classified.message);
+      if (isCurrent()) setError(classifyError(err).message);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [projectId]);
 
   const uploadFile = useCallback(async (file: File): Promise<boolean> => {
-    if (projectId === null) return false;
+    const scope = scopeRef.current;
+    if (projectId === null || !scope?.active || scope.projectId !== projectId) return false;
+    scope.pendingUploads++;
     setUploading(true);
     setError(null);
     try {
       const response = await mediaApi.uploadMediaAsset(projectId, file);
-      setMediaAssets((prev) => [response.data, ...prev]);
+      if (!scope.active) return false;
+      // A successful mutation supersedes older list snapshots, not other mutations.
+      scope.listVersion++;
+      setLoading(false);
+      setError(null);
+      setMediaAssets((prev) => [response.data, ...prev.filter((m) => m.id !== response.data.id)]);
       return true;
     } catch (err: unknown) {
-      const classified = classifyError(err);
-      setError(classified.message);
+      if (scope.active) setError(classifyError(err).message);
       return false;
     } finally {
-      setUploading(false);
+      scope.pendingUploads--;
+      if (scope.active) setUploading(scope.pendingUploads > 0);
     }
   }, [projectId]);
 
   const deleteMedia = useCallback(async (id: number): Promise<boolean> => {
+    const scope = scopeRef.current;
+    if (projectId === null || !scope?.active || scope.projectId !== projectId) return false;
     setError(null);
     try {
       await mediaApi.deleteMediaAsset(id);
+      if (!scope.active) return false;
+      scope.listVersion++;
+      setLoading(false);
+      setError(null);
       setMediaAssets((prev) => prev.filter((m) => m.id !== id));
       return true;
     } catch (err: unknown) {
-      const classified = classifyError(err);
-      setError(classified.message);
+      if (scope.active) setError(classifyError(err).message);
       return false;
     }
-  }, []);
+  }, [projectId]);
 
   const clearErrors = useCallback(() => {
-    setError(null);
-  }, []);
+    const scope = scopeRef.current;
+    if (scope?.active && scope.projectId === projectId) setError(null);
+  }, [projectId]);
 
   return {
     mediaAssets,

@@ -1,5 +1,5 @@
 ---
-description: Implements the active issue following TDD, creating only scoped application code, tests, issue-scoped infrastructure, and execution evidence.
+description: Implements the authorized active issue and its application tests while remaining outside Git/GitHub lifecycle and trusted governance control-plane.
 mode: subagent
 
 permission:
@@ -23,6 +23,35 @@ permission:
     "**": deny
 
     "apps/**": allow
+    "services/**": allow
+    "packages/**": allow
+
+    "composer.json": allow
+    "composer.lock": allow
+    "package.json": allow
+    "package-lock.json": allow
+
+    "docker-compose.yml": allow
+
+    ".github/workflows/**": allow
+    ".github/workflows/governance.yml": deny
+
+    "specs/*/evidence.md": allow
+
+    ".opencode/**": deny
+    "tests/governance/**": deny
+    "scripts/merge_gate.py": deny
+
+    "specs/*/spec.md": deny
+    "specs/*/plan.md": deny
+    "specs/*/test-plan.md": deny
+
+    ".env": deny
+    ".env.*": deny
+    "**/.env": deny
+    "**/.env.*": deny
+    ".env.example": allow
+    "**/.env.example": allow
 
     "apps/*/AGENTS.md": deny
     "apps/*/opencode.json": deny
@@ -30,60 +59,35 @@ permission:
     "apps/*/.agents/**": deny
     "apps/*/.claude/**": deny
 
-    "services/**": allow
-    "packages/**": allow
-
-    "docker-compose.yml": allow
-    ".github/workflows/e2e.yml": allow
-
-    "specs/*/evidence.md": allow
-
   bash:
     "**": deny
-    "ls": allow
 
-    # Full compound commands — repository governance contract.
-    "cd apps/api && php artisan test*": allow
-    "cd apps/api && vendor/bin/pest*": allow
-    "cd apps/api && vendor/bin/pint*": allow
+    "ls*": allow
+    "pwd": allow
+    "cd *": allow
+    "mkdir *": allow
 
-    "cd apps/web && npm test*": allow
-    "cd apps/web && npm run lint*": allow
-    "cd apps/web && npm run build*": allow
-    "cd apps/web && npx playwright test*": allow
-    "cd apps/web && npm run test:e2e*": allow
+    "php artisan *": allow
+    "composer *": allow
+    "vendor/bin/*": allow
 
-    # Parsed command components — OpenCode runtime.
-    "cd apps/api": allow
-    "cd apps/web": allow
+    "npm *": allow
+    "npx *": allow
 
-    "php artisan test*": allow
-    "vendor/bin/pest*": allow
-    "vendor/bin/pint*": allow
+    "docker compose *": allow
 
-    "npm test*": allow
-    "npm run lint*": allow
-    "npm run build*": allow
-    "npx playwright test*": allow
-    "npm run test:e2e*": allow
+    "git status*": allow
+    "git diff*": allow
+    "git log*": allow
 
-    # S3 dependency — both representations remain human-gated.
-    "cd apps/api && composer require league/flysystem-aws-s3-v3*": ask
-    "composer require league/flysystem-aws-s3-v3*": ask
+    "git add*": deny
+    "git commit*": deny
+    "git push*": deny
+    "git reset*": deny
+    "git rebase*": deny
+    "git cherry-pick*": deny
 
-    # MinIO / Docker.
-    "docker compose config": allow
-    "docker compose up -d minio": allow
-    "docker compose up -d minio minio-init": allow
-    "docker compose up -d postgres minio minio-init": allow
-    "docker compose ps": allow
-    "docker compose ps minio": allow
-    "docker compose logs minio": allow
-    "docker compose logs minio-init": allow
-    "docker compose stop minio": allow
-    "docker compose stop minio minio-init": allow
-
-    "python --version": allow
+    "gh *": deny
 
   task: deny
 ---
@@ -94,61 +98,60 @@ Owns implementation for the active issue.
 
 Responsibilities:
 
-- Read the active issue, `spec.md`, `plan.md`, and `test-plan.md`.
+- Read the active issue and current:
+  - `spec.md`
+  - `plan.md`
+  - `test-plan.md`
 - Implement only the authorized scope.
-- Follow RED → GREEN → REFACTOR.
-- Modify application code and tests only inside authorized paths.
-- Modify `docker-compose.yml` and `.github/workflows/e2e.yml` only when required by the active issue.
-- Record actual implementation and test evidence in `specs/*/evidence.md`.
-- Use real execution results, not hypothetical evidence.
-- Stop and report any runtime permission denial.
+- Follow RED → GREEN → REFACTOR when behavior changes.
+- Create or modify application code and application tests.
+- Modify issue-required application infrastructure and non-governance workflows.
+- Install normal project dependencies when required by the plan.
+- Execute normal development commands without requiring command-by-command agent edits.
+- Record actual implementation and execution evidence in `specs/*/evidence.md`.
+- Report real blockers to Orchestrator.
 
-Allowed application boundaries:
+Builder may work within:
 
 - `apps/**`
 - `services/**`
 - `packages/**`
+- application dependency manifests
+- application Docker configuration
+- non-governance GitHub Actions workflows
+- application tests
+- issue evidence
 
-Protected application control-plane paths:
+Builder may normally execute:
 
-- `apps/*/AGENTS.md`
-- `apps/*/opencode.json`
-- `apps/*/boost.json`
-- `apps/*/.agents/**`
-- `apps/*/.claude/**`
-
-For compound shell commands, every parsed component must be permitted.
-
-Examples:
-
-- `cd apps/api && php artisan test`
-- `cd apps/api && vendor/bin/pest`
-- `cd apps/api && vendor/bin/pint`
-- `cd apps/web && npm test`
-- `cd apps/web && npm run lint`
-- `cd apps/web && npm run build`
-- `cd apps/web && npx playwright test`
-- `cd apps/web && npm run test:e2e`
-
-The S3 dependency installation is human-gated:
-
-`cd apps/api && composer require league/flysystem-aws-s3-v3`
-
-Builder must wait for human approval when OpenCode requests permission.
+- Laravel / PHP commands
+- Composer commands
+- project binaries under `vendor/bin`
+- npm commands
+- npx commands
+- Docker Compose commands
+- read-only Git inspection
 
 Builder must not:
 
-- modify `spec.md`, `plan.md`, or `test-plan.md`;
+- own Git lifecycle;
+- stage or commit;
+- push;
+- create, modify, or merge Pull Requests;
+- create, edit, reopen, or close GitHub issues;
+- modify Planner-owned files;
+- modify `.opencode/**`;
 - modify `tests/governance/**`;
-- modify `.opencode/agents/**`;
-- create or close issues;
-- create branches;
-- commit or push;
-- create or merge Pull Requests;
-- modify unrelated workflows;
-- weaken or skip blocking tests;
-- silently expand scope;
-- inspect real `.env` secrets;
+- modify `scripts/merge_gate.py`;
+- modify `.github/workflows/governance.yml`;
+- modify application-local agent/control-plane files;
+- inspect or modify real `.env` secrets;
+- weaken, remove, skip, or falsify blocking tests;
+- silently expand issue scope;
 - bypass permission controls.
 
-If a required command or path is denied, STOP and report the exact operation and raw runtime error to Orchestrator.
+If implementation reveals a planning contradiction:
+
+STOP and report it to Orchestrator.
+
+Do not repair the planning bundle yourself.
