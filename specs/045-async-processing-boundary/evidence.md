@@ -54,7 +54,7 @@ Class "App\Jobs\ProcessMediaAsset" not found
 Class "App\Contracts\MediaProcessingContract" not found
 ```
 
-#### Feature Tests — PostgreSQL-Backed RED
+#### Feature Tests — PostgreSQL-Backed Integration Verification
 
 **Command:**
 ```bash
@@ -69,7 +69,7 @@ cd apps/api && vendor/bin/pest tests/Feature/Media/MediaProcessingDispatchTest.p
 - `preserves existing upload response structure` — PASS
 - `does not dispatch job for non-owner upload attempt` — PASS
 
-**Failing behaviors (valid RED — behavior not matching spec):**
+**Failing behaviors (NOT behavioral RED — test-harness / queue-execution issue):**
 
 #### Failure 1: `creates media asset with default processing_status stored`
 ```
@@ -87,7 +87,7 @@ Failed asserting that two strings are identical.
 ```
 Line 193: `expect($mediaAsset->processing_status)->toBe('stored')`
 
-### Root Cause Analysis
+#### Root Cause Analysis
 
 **Why does `processing_status = 'completed'` appear immediately after upload?**
 
@@ -126,8 +126,8 @@ The spec (AC 5) says: *"Upload endpoint returns immediately with status `'stored
 | Class not found (Contract) | 15 | Behavior missing | ✅ Yes |
 | Class not found (Job) | 11 | Behavior missing | ✅ Yes |
 | Class not found (Worker tests) | 8 | Behavior missing | ✅ Yes |
-| Feature: sync job inline | 2 | Test missing Queue::fake() | ✅ Yes |
-| **Total** | **41** | | **41 valid RED** |
+| Feature: sync job inline | 2 | Test-harness issue (Queue::fake) | ❌ Not behavioral RED |
+| **Total** | **41** | | **39 valid behavioral RED** |
 
 ### GREEN
 
@@ -158,14 +158,14 @@ cd apps/api && vendor/bin/pest tests/Unit/MediaAssetProcessingTest.php tests/Uni
 
 **Result:** 39 tests, 39 passed, 113 assertions, 0 failures
 
-#### Regression Check
+#### Full Backend Regression Check
 
 **Command:**
 ```bash
-cd apps/api && vendor/bin/pest tests/Unit/ --compact
+cd apps/api && vendor/bin/pest
 ```
 
-**Result:** 51 tests, 44 passed, 7 errors (all pre-existing `MediaAssetTest` failures from missing `pdo_pgsql` driver — NOT caused by this implementation)
+**Result:** 175 tests, 175 passed, 1358 assertions, 0 failures — full suite green.
 
 ### REFACTOR
 
@@ -177,6 +177,8 @@ cd apps/api && vendor/bin/pint --dirty --test
 ```
 
 **Result:** Passed (no dirty files with style issues)
+
+Note: `vendor/bin/pint --test` (full repo) reports a pre-existing style issue in `tests/Feature/Project/ProjectCrudTest.php` (ordered_imports, fully_qualified_strict_types) — not in scope for this issue.
 
 #### Post-Refactor Verification
 
@@ -190,5 +192,68 @@ cd apps/api && vendor/bin/pest tests/Feature/Media/MediaProcessingDispatchTest.p
 ## Independent Tester Review
 
 Reviewer: Tester
+
+### Commands Executed
+
+1. **Targeted test suite:**
+   ```bash
+   cd apps/api && vendor/bin/pest tests/Feature/Media/MediaProcessingDispatchTest.php tests/Unit/MediaAssetProcessingTest.php tests/Unit/MediaProcessingContractTest.php tests/Unit/ProcessMediaAssetJobTest.php tests/Unit/WorkerBoundaryTest.php
+   ```
+   **Result:** 45 tests, 45 passed, 161 assertions, 0 failures (2760 ms)
+
+2. **Full backend regression suite:**
+   ```bash
+   cd apps/api && vendor/bin/pest
+   ```
+   **Result:** 175 tests, 175 passed, 1358 assertions, 0 failures (20843 ms)
+
+3. **Pint code style check (dirty files only):**
+   ```bash
+   cd apps/api && vendor/bin/pint --dirty --test
+   ```
+   **Result:** Passed (no dirty files with style issues)
+
+4. **Diff inspection vs master:**
+   ```bash
+   git diff master --stat
+   git diff master -- apps/api/app/ apps/api/database/ apps/api/tests/ services/worker/ docs/
+   ```
+   **Result:** 19 files changed, 2456 insertions, 8 deletions. All changes are within expected scope.
+
+### Test Results
+
+| Test command | Tests | Passed | Failed | Assertions |
+|---|---|---|---|---|
+| Targeted suite | 45 | 45 | 0 | 161 |
+| Full suite | 175 | 175 | 0 | 1358 |
+| Pint dirty | — | — | — | — |
+
+### Worker Boundary Verification
+
+- `services/worker/contracts/media_processing_v1.json` exists and contains a valid JSON Schema (draft-07) with required fields: `version`, `media_asset_id`, `project_id`, `storage`, `idempotency_key`, `created_at`. Schema includes `additionalProperties: false` to prevent secret injection.
+- `services/worker/examples/sample_contract.json` exists and contains a valid example contract matching the schema.
+
+### Scope Verification
+
+The following out-of-scope items were **NOT** found in the diff:
+
+- FFmpeg/Whisper/scene detection implementation
+- Redis/RabbitMQ/Kafka additions
+- Direct Python PostgreSQL writes
+- External AI providers
+- Secrets in committed files (no hardcoded credentials, tokens, or keys in new code)
+- Governance file modifications (AGENTS.md, .opencode/**, tests/governance/**, scripts/merge_gate.py) — zero changes
+- Unrelated code changes — all changes are tightly scoped to async processing boundary
+
+### TDD Classification Review
+
+The evidence correctly classifies test failures during the RED phase:
+
+- **39 valid behavioral RED tests**: All failures were due to missing production classes, constants, methods, or fields (MediaProcessingContract not found, ProcessMediaAsset not found, undefined constants, missing fillable fields). This is correct RED — the required behavior did not exist.
+- **2 Feature test failures (`creates media asset with default processing_status stored` and `media asset has processing lifecycle columns after upload`) were NOT behavioral RED**: These failures occurred because the test environment uses `QUEUE_CONNECTION=sync`, causing the ProcessMediaAsset job to execute inline during the upload request, transitioning `processing_status` from `stored` to `completed` before the test assertion. Adding `Queue::fake()` prevents the sync driver from executing the job, preserving the `stored` state for assertion. This is a test-harness isolation fix, not a production behavior fix.
+
+The classification of **39 behavioral RED + 2 test-harness fixes = 41 total** is accurate.
+
+### Final Decision
 
 Decision: APPROVE
