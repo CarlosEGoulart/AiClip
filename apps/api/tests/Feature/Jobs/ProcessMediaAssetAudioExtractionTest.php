@@ -305,7 +305,12 @@ it('marks failed on probe error', function () {
     app()->instance(ProcessMediaAction::class, $actionMock);
 
     $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? '550e8400-e29b-41d4-a716-446655440000');
-    $job->handle();
+
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $job->failed($e);
+    }
 
     $asset->refresh();
     expect($asset->processing_status)->toBe('failed');

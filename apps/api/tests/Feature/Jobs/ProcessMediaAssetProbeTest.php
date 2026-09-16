@@ -32,7 +32,6 @@ it('invokes ProcessMediaAction on success', function () {
         'width' => 1920,
         'height' => 1080,
         'video_codec' => 'h264',
-        'audio_codec' => 'aac',
     ];
 
     $actionMock = Mockery::mock(ProcessMediaAction::class);
@@ -49,7 +48,7 @@ it('invokes ProcessMediaAction on success', function () {
     $job->handle();
 
     $asset->refresh();
-    expect($asset->processing_status)->toBe('probed');
+    expect($asset->processing_status)->toBe('completed');
 });
 
 it('stores probe result in database', function () {
@@ -118,7 +117,7 @@ it('stores duration in database', function () {
 |--------------------------------------------------------------------------
 */
 
-it('transitions through stored to probed correctly', function () {
+it('transitions through stored to completed when no audio stream', function () {
     $asset = MediaAsset::factory()->create([
         'processing_status' => 'stored',
     ]);
@@ -137,7 +136,7 @@ it('transitions through stored to probed correctly', function () {
     $job->handle();
 
     $asset->refresh();
-    expect($asset->processing_status)->toBe('probed');
+    expect($asset->processing_status)->toBe('completed');
     expect($asset->processing_started_at)->not->toBeNull();
 });
 
@@ -251,7 +250,7 @@ it('is idempotent with same idempotency key', function () {
     $job->handle();
 
     $asset->refresh();
-    expect($asset->processing_status)->toBe('probed');
+    expect($asset->processing_status)->toBe('completed');
     expect($asset->probe_result)->toBeArray();
     expect($asset->probe_result['duration_ms'])->toBe(1000);
 });
