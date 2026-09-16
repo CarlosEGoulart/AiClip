@@ -425,6 +425,71 @@ it('contract contains no database credentials', function () {
 
 ## Regression Tests
 
+### CI MinIO Integration Scenarios
+
+These scenarios define the CI behavior required by spec invariant #11 and acceptance criteria 14-18. They are validated by the CI workflow itself and by the `MinIOIntegrationTest` executing in CI.
+
+#### MinIO Service Readiness
+
+**Scenario**: MinIO container starts and passes health check before backend tests run.
+
+- **Given** the CI workflow starts a MinIO service container with `--health-cmd "curl -f --silent --show-error http://127.0.0.1:9000/minio/health/ready"`
+- **When** the health check passes
+- **Then** the "Initialize MinIO Bucket" step executes
+- **And** the "Run Tests" step executes
+
+**CI failure mode**: If MinIO health check fails, GitHub Actions keeps the job in pending until health retries are exhausted, then fails the job. No tests run.
+
+#### Bucket Initialization
+
+**Scenario**: The `aiclip-media` bucket exists with private access before tests run.
+
+- **Given** MinIO is healthy at `http://127.0.0.1:9000`
+- **When** the "Initialize MinIO Bucket" step runs `mc mb --ignore-existing aiclip/aiclip-media` and `mc anonymous set private aiclip/aiclip-media`
+- **Then** the bucket exists
+- **And** anonymous access is denied
+
+**CI failure mode**: If `mc mb` or `mc anonymous set` returns non-zero, the step fails and CI fails.
+
+#### Media Disk Environment Variables Present
+
+**Scenario**: The test environment has all required `media` disk env vars pointing to CI MinIO.
+
+- **Given** the CI workflow sets `AWS_ACCESS_KEY_ID=minioadmin`, `AWS_SECRET_ACCESS_KEY=minioadmin`, `AWS_DEFAULT_REGION=us-east-1`, `AWS_BUCKET=aiclip-media`, `AWS_ENDPOINT=http://127.0.0.1:9000`, `AWS_USE_PATH_STYLE_ENDPOINT=true`
+- **When** PHP reads `config('filesystems.disks.media')`
+- **Then** the disk driver is `s3`
+- **And** the endpoint is `http://127.0.0.1:9000`
+- **And** the bucket is `aiclip-media`
+- **And** `use_path_style_endpoint` is `true`
+
+**CI failure mode**: If env vars are missing, `MediaDiskConfigTest` unit tests may fail, and `MinIOIntegrationTest::beforeEach` will skip (marking it as a skipped test is a CI failure per invariant #11).
+
+#### MinIOIntegrationTest Executes (Not Skipped)
+
+**Scenario**: The 4 `MinIOIntegrationTest` tests run and pass in CI.
+
+- **Given** MinIO is healthy and bucket is initialized
+- **And** media disk env vars are set
+- **When** `php artisan test --group=minio-integration` runs
+- **Then** all 4 tests execute (none are skipped)
+- **And** all 4 tests pass
+
+**Test-level behavior**: The test's `beforeEach` performs a connectivity check (`Storage::disk('media')->put('__connectivity_test__', 'ping')`). If MinIO is unreachable, this throws an exception, causing the test to **fail** (not skip), which fails CI. This is the correct behavior per the test's own docblock: "Missing infrastructure is a failed prerequisite, not a skipped pass."
+
+**CI failure mode**: If any of the 4 tests fail or skip, the CI job fails.
+
+#### All Existing Backend Tests Remain Green
+
+**Scenario**: The MinIO CI changes do not break any existing tests.
+
+- **Given** the CI workflow now includes MinIO service, bucket init, and media disk env vars
+- **When** `php artisan test` runs the full suite
+- **Then** all previously passing tests still pass
+- **And** the 4 `MinIOIntegrationTest` tests now pass (instead of skipping)
+- **And** no new test failures are introduced
+
+**CI failure mode**: Any test regression fails CI.
+
 ### Existing Upload Tests
 
 ```php
@@ -531,6 +596,9 @@ it('preserves existing ownership checks', function () {
 - Queue fake for job dispatch testing
 - Factory for MediaAsset model
 - JSON schema validation library (optional, can use manual validation)
+- **MinIO service running at `http://127.0.0.1:9000`** (CI provides via GitHub Actions service container)
+- **`aiclip-media` bucket initialized in MinIO** (CI runs `mc mb` and `mc anonymous set` before tests)
+- **Media disk env vars set** (`AWS_ACCESS_KEY_ID=minioadmin`, `AWS_SECRET_ACCESS_KEY=minioadmin`, `AWS_DEFAULT_REGION=us-east-1`, `AWS_BUCKET=aiclip-media`, `AWS_ENDPOINT=http://127.0.0.1:9000`, `AWS_USE_PATH_STYLE_ENDPOINT=true`)
 
 ## Success Criteria
 
@@ -538,6 +606,9 @@ it('preserves existing ownership checks', function () {
 - All feature tests pass
 - All integration tests pass
 - All regression tests pass
+- **MinIOIntegrationTest passes in CI (0 skipped, 4 passed)**
+- **CI MinIO health check gates test execution**
+- **CI bucket initialization succeeds before tests**
 - No existing tests break
 - Test coverage meets minimum thresholds
 - No security tests fail

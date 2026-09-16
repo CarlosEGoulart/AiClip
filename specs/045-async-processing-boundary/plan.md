@@ -235,6 +235,75 @@ Create `services/worker/contracts/media_processing_v1.json`:
 2. **Existing list/delete tests pass**: Verify existing endpoints work
 3. **Existing authorization tests pass**: Verify security not weakened
 
+## Phase 8: CI MinIO Infrastructure
+
+### Objective
+
+Ensure Backend CI provides a real MinIO-compatible object-storage service so that `MinIOIntegrationTest` executes rather than skipping. This is a CI invariant per spec invariant #11.
+
+### Workflow changes (`.github/workflows/backend.yml`)
+
+1. **Add MinIO service container** alongside the existing PostgreSQL service:
+
+```yaml
+services:
+  postgres:
+    # ... existing config (unchanged) ...
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    ports:
+      - 9000:9000
+    env:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    options: >-
+      --health-cmd "curl -f --silent --show-error http://127.0.0.1:9000/minio/health/ready"
+      --health-interval 10s
+      --health-timeout 5s
+      --health-retries 5
+```
+
+2. **Add bucket initialization step** after "Prepare Environment" and before "Run Migrations":
+
+```yaml
+- name: Initialize MinIO Bucket
+  run: |
+    # Install mc client
+    curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+    chmod +x /usr/local/bin/mc
+    # Configure alias
+    mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin
+    # Create bucket (idempotent)
+    mc mb --ignore-existing aiclip/aiclip-media
+    # Set private access
+    mc anonymous set private aiclip/aiclip-media
+    echo "MinIO bucket initialized successfully"
+```
+
+3. **Add media disk environment variables** to both "Run Migrations" and "Run Tests" steps:
+
+```yaml
+env:
+  # ... existing DB vars ...
+  AWS_ACCESS_KEY_ID: minioadmin
+  AWS_SECRET_ACCESS_KEY: minioadmin
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_BUCKET: aiclip-media
+  AWS_ENDPOINT: http://127.0.0.1:9000
+  AWS_USE_PATH_STYLE_ENDPOINT: "true"
+```
+
+### Why not use docker-compose.yml MinIO service directly
+
+GitHub Actions `services` containers are the native mechanism for service dependencies in CI. They support health checks, automatic readiness gating, and port mapping. The `docker-compose.yml` MinIO configuration (with `minio-init` bucket setup) is preserved for local development. CI uses its own health-check-gated MinIO service and a shell-based `mc` bucket init step, which is simpler and does not depend on docker-compose.
+
+### Failure behavior
+
+- If MinIO container fails health check, the step will not proceed (GitHub Actions service health gating).
+- If `mc mb` or `mc anonymous set` fails, the step exits non-zero and CI fails.
+- If MinIO is unreachable during the test, `MinIOIntegrationTest::beforeEach` will throw, causing a test failure rather than a skip (per the test's own design: "Missing infrastructure is a failed prerequisite, not a skipped pass").
+
 ## Implementation Order
 
 1. Create migration and run it
@@ -243,12 +312,13 @@ Create `services/worker/contracts/media_processing_v1.json`:
 4. Create ProcessMediaAsset job
 5. Update MediaAssetController to dispatch job
 6. Create worker contract schema
-7. Write unit tests
-8. Write feature tests
-9. Write integration tests
-10. Verify all existing tests pass
-11. Run Pint for code style
-12. Update documentation
+7. **Update `.github/workflows/backend.yml` with MinIO service, bucket init, and media disk env vars (Phase 8)**
+8. Write unit tests
+9. Write feature tests
+10. Write integration tests
+11. Verify all existing tests pass including MinIOIntegrationTest (no skips)
+12. Run Pint for code style
+13. Update documentation
 
 ## Dependencies
 
@@ -267,6 +337,8 @@ Create `services/worker/contracts/media_processing_v1.json`:
 3. **Contract versioning**: Future contract changes may require worker updates. Version negotiation will be important.
 
 4. **State consistency**: If job dispatch fails after DB insert, asset remains in `stored` state. This is acceptable - manual retry or re-upload is possible.
+
+5. **MinIO image version pinning**: CI MinIO image is pinned to a specific release. Upgrades should be deliberate to avoid test flakiness from API changes.
 
 ## Success Criteria
 

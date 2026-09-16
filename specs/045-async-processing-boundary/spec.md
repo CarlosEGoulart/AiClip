@@ -146,6 +146,7 @@ These will be introduced in subsequent M3 slices.
 8. CI must use deterministic fakes/fixtures
 9. No external AI provider or model download is allowed
 10. Secrets remain outside committed files
+11. **Backend CI must provide a real MinIO-compatible object-storage service and must not report success merely because MinIO integration tests were skipped.**
 
 ## Acceptance Criteria
 
@@ -162,6 +163,11 @@ These will be introduced in subsequent M3 slices.
 11. Existing upload, list, delete endpoints continue to work unchanged
 12. Existing tests pass without modification
 13. New tests cover state transitions, job dispatch, idempotency, and failure handling
+14. Backend CI workflow starts a MinIO service container with health check before running tests
+15. CI provides `media` disk env vars (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_BUCKET`, `AWS_ENDPOINT`, `AWS_USE_PATH_STYLE_ENDPOINT`) pointing to the CI MinIO instance
+16. CI initializes the `aiclip-media` bucket via `mc` CLI before running tests
+17. MinIO health/readiness failure causes the CI job to fail immediately
+18. `MinIOIntegrationTest` executes (not skipped) when MinIO is available in CI
 
 ## Out of Scope
 
@@ -179,6 +185,7 @@ These will be introduced in subsequent M3 slices.
 - Worker callback/polling endpoints
 - Status polling API
 - Real worker execution in CI
+- MinIO in CI is explicitly IN SCOPE (see acceptance criteria 14-18 and invariant 11)
 
 ## Test Scenarios
 

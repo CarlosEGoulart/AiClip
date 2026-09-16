@@ -25,6 +25,20 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      minio:
+        image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports:
+          - 9000:9000
+        command: server /data --console-address :9001
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +55,24 @@ jobs:
         working-directory: apps/api
         run: composer install --no-interaction --prefer-dist --no-progress
 
+      - name: Initialize MinIO bucket
+        run: |
+          # Download MinIO Client
+          curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+          chmod +x /usr/local/bin/mc
+          # Configure alias
+          mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin
+          # Create bucket (ignore if exists)
+          mc mb --ignore-existing aiclip/aiclip-media
+          # Set bucket policy to private (default)
+          mc anonymous set private aiclip/aiclip-media
+          echo "MinIO bucket initialized successfully"
+
+      - name: Verify MinIO health
+        run: |
+          curl -f http://127.0.0.1:9000/minio/health/live || exit 1
+          echo "MinIO is healthy"
+
       - name: Prepare Environment
         working-directory: apps/api
         run: |
@@ -56,6 +88,13 @@ jobs:
           DB_DATABASE: aiclip_test
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
+          MEDIA_DISK: media
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_BUCKET: aiclip-media
+          AWS_ENDPOINT: http://127.0.0.1:9000
+          AWS_USE_PATH_STYLE_ENDPOINT: true
         run: php artisan migrate --force
 
       - name: Run Tests
@@ -67,4 +106,11 @@ jobs:
           DB_DATABASE: aiclip_test
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
+          MEDIA_DISK: media
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_BUCKET: aiclip-media
+          AWS_ENDPOINT: http://127.0.0.1:9000
+          AWS_USE_PATH_STYLE_ENDPOINT: true
         run: php artisan test
