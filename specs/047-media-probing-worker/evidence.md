@@ -9,6 +9,57 @@
 
 ---
 
+### RED
+
+**Python Worker Tests (Phase 1)**:
+- Tests written first in `services/worker/tests/test_probe.py`, `test_cli.py`, `test_error_handling.py`
+- Verified failing: `ModuleNotFoundError` for `aiclip_worker` module (implementation not yet created)
+- 29+ test cases across 3 files confirmed RED
+
+**Laravel Probe Tests (Phase 2)**:
+- Tests written first in `apps/api/tests/Feature/Jobs/ProcessMediaAssetProbeTest.php`, `MediaAssetProbedStateTest.php`, `ProcessMediaActionTest.php`
+- Verified failing: `Class not found` for `ProcessMediaAction`, `Method not found` for `markProbed()`
+- 31 test cases confirmed RED
+
+**Auth Flaky Test**:
+- Verified intermittent failure: focus assertion fails ~30% of runs without `waitFor()` synchronization
+- Root cause: `useEffect` applies focus asynchronously after validation errors appear
+
+### GREEN
+
+**Python Worker Implementation**:
+- Created `services/worker/aiclip_worker/cli.py`, `actions/probe.py`, `contracts.py`
+- All 29+ tests pass: `python -m pytest tests/ -v` — 0 failures
+
+**Laravel Implementation**:
+- Created `apps/api/app/Services/ProcessMediaAction.php`, `Exceptions/ProcessMediaException.php`
+- Modified `Jobs/ProcessMediaAsset.php`, `Models/MediaAsset.php`
+- Added migration for `probe_result` and `duration_ms` columns
+- All 206 tests pass: `php artisan test --compact` — 0 failures, 1411 assertions
+
+**Auth Flaky Test Fix**:
+- Applied `waitFor()` pattern to focus assertion
+- 10/10 consecutive runs pass
+
+### REFACTOR
+
+**PHP Code Quality**:
+- `vendor/bin/pint --dirty --format agent` — passes cleanly
+- No behavioral changes during refactor
+
+**Python Code Quality**:
+- Clean module structure with proper `__init__.py` files
+- Type hints throughout
+- Docstrings present
+- Proper exception handling
+
+**No Behavioral Changes**:
+- All tests remain green after refactor
+- No assertion changes
+- No test removals
+
+---
+
 ## 1. Python Worker Tests
 
 ### Command
