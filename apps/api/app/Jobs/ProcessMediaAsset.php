@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
+use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Services\ProcessMediaAction;
 use Illuminate\Bus\Queueable;
@@ -64,23 +65,116 @@ class ProcessMediaAsset implements ShouldQueue
         // Build the worker contract
         $contract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey);
 
-        // Mark as processing
-        $asset->markProcessing();
-
-        // Invoke the worker to probe media
         $action = $this->processMediaAction ?? app(ProcessMediaAction::class);
-        $result = $action->probe($contract);
 
-        // Store probe result
-        $probeData = $result['probe'] ?? [];
-        $durationMs = $probeData['duration_ms'] ?? 0;
+        // If already probed, reuse existing probe data; otherwise invoke probe
+        if ($asset->processing_status === MediaAsset::PROCESSING_PROBED) {
+            $probeData = $asset->probe_result ?? [];
+            $durationMs = $asset->duration_ms ?? 0;
 
-        $asset->markProbed($probeData, $durationMs);
+            Log::info('ProcessMediaAsset: already probed, skipping probe', [
+                'media_asset_id' => $asset->id,
+            ]);
+        } else {
+            // Mark as processing
+            $asset->markProcessing();
 
-        Log::info('ProcessMediaAsset: probe succeeded', [
-            'media_asset_id' => $asset->id,
-            'duration_ms' => $durationMs,
-        ]);
+            // Invoke the worker to probe media
+            $result = $action->probe($contract);
+
+            // Store probe result
+            $probeData = $result['probe'] ?? [];
+            $durationMs = $probeData['duration_ms'] ?? 0;
+
+            $asset->markProbed($probeData, $durationMs);
+
+            Log::info('ProcessMediaAsset: probe succeeded', [
+                'media_asset_id' => $asset->id,
+                'duration_ms' => $durationMs,
+            ]);
+        }
+
+        // Check if audio stream exists in probe result
+        $audioCodec = $probeData['audio_codec'] ?? null;
+
+        if ($audioCodec === null) {
+            // No audio stream, mark as completed
+            $asset->markCompleted();
+            Log::info('ProcessMediaAsset: no audio stream, marking completed', [
+                'media_asset_id' => $asset->id,
+            ]);
+
+            return;
+        }
+
+        // Check for existing audio_normalized DerivedAsset (idempotency)
+        $existingDerived = DerivedAsset::where('media_asset_id', $asset->id)
+            ->where('type', DerivedAsset::TYPE_AUDIO_NORMALIZED)
+            ->first();
+
+        if ($existingDerived !== null) {
+            // Already extracted, mark as completed
+            $asset->markCompleted();
+            Log::info('ProcessMediaAsset: audio already extracted, skipping', [
+                'media_asset_id' => $asset->id,
+            ]);
+
+            return;
+        }
+
+        // Build extract_audio contract
+        $extractContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'extract_audio');
+        $extractContract->outputStorage = [
+            'disk' => $asset->storage_disk,
+            'key' => $this->buildOutputKey($asset),
+            'mime_type' => 'audio/wav',
+        ];
+
+        try {
+            // Invoke extractAudio
+            $extractResult = $action->extractAudio($extractContract);
+
+            // Create DerivedAsset record
+            $extraction = $extractResult['extraction'] ?? [];
+            DerivedAsset::create([
+                'media_asset_id' => $asset->id,
+                'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
+                'storage_disk' => $asset->storage_disk,
+                'storage_key' => $extraction['output_path'] ?? '',
+                'mime_type' => 'audio/wav',
+                'size_bytes' => $extraction['output_size_bytes'] ?? 0,
+                'duration_ms' => $extraction['duration_ms'] ?? null,
+                'sample_rate' => $extraction['sample_rate'] ?? null,
+                'channels' => $extraction['channels'] ?? null,
+                'codec' => $extraction['codec'] ?? null,
+            ]);
+
+            // Mark as completed
+            $asset->markCompleted();
+
+            Log::info('ProcessMediaAsset: audio extraction succeeded', [
+                'media_asset_id' => $asset->id,
+            ]);
+        } catch (\Throwable $e) {
+            $asset->markFailed($e->getMessage());
+            Log::error('ProcessMediaAsset: audio extraction failed', [
+                'media_asset_id' => $asset->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Build the output storage key for extracted audio.
+     *
+     * Format: projects/{project_id}/assets/{asset_id}/derivatives/audio/{hash}.wav
+     * The hash is deterministic, based on the media_asset_id and normalization parameters.
+     */
+    private function buildOutputKey(MediaAsset $asset): string
+    {
+        $hash = hash('sha256', $asset->id.':mono:16000:pcm_s16le');
+
+        return "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/{$hash}.wav";
     }
 
     /**

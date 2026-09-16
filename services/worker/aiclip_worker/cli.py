@@ -7,6 +7,7 @@ import json
 import sys
 from typing import Any
 
+from aiclip_worker.actions.extract_audio import extract_audio
 from aiclip_worker.actions.probe import probe_media
 from aiclip_worker.contracts import validate_contract
 
@@ -69,6 +70,60 @@ def _handle_probe(args: argparse.Namespace) -> int:
     return 1
 
 
+def _handle_extract_audio(args: argparse.Namespace) -> int:
+    """Handle the extract-audio subcommand. Returns exit code."""
+    contract = _read_contract_json(args)
+
+    if contract is None:
+        error_output = {
+            "status": "error",
+            "error": "Invalid or missing contract JSON",
+            "stderr": "",
+        }
+        json.dump(error_output, sys.stdout)
+        return 2
+
+    # Validate contract
+    is_valid, error_msg = validate_contract(contract)
+    if not is_valid:
+        error_output = {
+            "status": "error",
+            "error": error_msg,
+            "stderr": "",
+        }
+        json.dump(error_output, sys.stdout)
+        return 2
+
+    # Check that action is extract_audio
+    action = contract.get("action", "probe")
+    if action != "extract_audio":
+        error_output = {
+            "status": "error",
+            "error": f"Expected action 'extract_audio', got '{action}'",
+            "stderr": "",
+        }
+        json.dump(error_output, sys.stdout)
+        return 2
+
+    # Check that output_storage is present
+    if "output_storage" not in contract:
+        error_output = {
+            "status": "error",
+            "error": "Missing required field 'output_storage' for extract_audio action",
+            "stderr": "",
+        }
+        json.dump(error_output, sys.stdout)
+        return 2
+
+    # Extract audio
+    result = extract_audio(contract)
+    json.dump(result, sys.stdout)
+
+    if result["status"] == "success":
+        return 0
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point. Returns exit code."""
     parser = argparse.ArgumentParser(
@@ -89,10 +144,24 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to contract JSON file",
     )
 
+    extract_audio_parser = subparsers.add_parser("extract-audio", help="Extract and normalize audio")
+    extract_audio_parser.add_argument(
+        "--contract-json",
+        type=str,
+        help="Contract JSON string",
+    )
+    extract_audio_parser.add_argument(
+        "--contract-file",
+        type=str,
+        help="Path to contract JSON file",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "probe":
         return _handle_probe(args)
+    elif args.command == "extract-audio":
+        return _handle_extract_audio(args)
 
     parser.print_help()
     return 2
