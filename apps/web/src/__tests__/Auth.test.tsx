@@ -125,7 +125,9 @@ describe('root provider, forms and HTTP integration (F1–F3)', () => {
       expect(field).toHaveAttribute('aria-invalid', 'true');
       expect(field).toHaveAccessibleDescription(`Please correct ${fields[index]}.`);
     });
-    expect(screen.getByLabelText(labels[0])).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.getByLabelText(labels[0])).toHaveFocus();
+    });
     fireEvent.change(screen.getByLabelText(register ? 'Confirm Password' : 'Password'), { target: { value: 'corrected-password' } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });

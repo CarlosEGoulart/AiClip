@@ -24,6 +24,8 @@ class MediaAsset extends Model
 
     const PROCESSING_RUNNING = 'processing';
 
+    const PROCESSING_PROBED = 'probed';
+
     const PROCESSING_COMPLETED = 'completed';
 
     const PROCESSING_FAILED = 'failed';
@@ -32,6 +34,7 @@ class MediaAsset extends Model
         self::PROCESSING_STORED,
         self::PROCESSING_QUEUED,
         self::PROCESSING_RUNNING,
+        self::PROCESSING_PROBED,
         self::PROCESSING_COMPLETED,
         self::PROCESSING_FAILED,
     ];
@@ -44,7 +47,8 @@ class MediaAsset extends Model
     private const VALID_TRANSITIONS = [
         self::PROCESSING_STORED => [self::PROCESSING_QUEUED, self::PROCESSING_FAILED],
         self::PROCESSING_QUEUED => [self::PROCESSING_RUNNING, self::PROCESSING_FAILED],
-        self::PROCESSING_RUNNING => [self::PROCESSING_COMPLETED, self::PROCESSING_FAILED],
+        self::PROCESSING_RUNNING => [self::PROCESSING_PROBED, self::PROCESSING_FAILED],
+        self::PROCESSING_PROBED => [self::PROCESSING_COMPLETED, self::PROCESSING_FAILED],
         self::PROCESSING_COMPLETED => [],
         self::PROCESSING_FAILED => [],
     ];
@@ -62,14 +66,18 @@ class MediaAsset extends Model
         'processing_started_at',
         'processing_completed_at',
         'processing_error',
+        'probe_result',
+        'duration_ms',
     ];
 
     protected function casts(): array
     {
         return [
             'size_bytes' => 'integer',
+            'duration_ms' => 'integer',
             'processing_started_at' => 'datetime',
             'processing_completed_at' => 'datetime',
+            'probe_result' => 'array',
         ];
     }
 
@@ -114,6 +122,22 @@ class MediaAsset extends Model
         $this->update([
             'processing_status' => self::PROCESSING_RUNNING,
             'processing_started_at' => now(),
+        ]);
+    }
+
+    /**
+     * Transition to the probed state.
+     */
+    public function markProbed(array $probeResult, int $durationMs): void
+    {
+        if (! self::isValidTransition($this->processing_status, self::PROCESSING_PROBED)) {
+            return;
+        }
+
+        $this->update([
+            'processing_status' => self::PROCESSING_PROBED,
+            'probe_result' => $probeResult,
+            'duration_ms' => $durationMs,
         ]);
     }
 

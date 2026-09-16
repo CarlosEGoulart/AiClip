@@ -1,0 +1,16 @@
+[project]
+name = "aiclip-worker"
+version = "0.1.0"
+description = "AiClip deterministic media processing worker"
+requires-python = ">=3.10"
+dependencies = [
+    "jsonschema>=4.20.0,<5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0,<9.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -16,4 +16,18 @@ return [
 
     'max_upload_size' => (int) env('MEDIA_MAX_UPLOAD_SIZE', 104857600),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Worker Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the Python media processing worker. The worker
+    | command is invoked as a subprocess to probe media files.
+    |
+    */
+
+    'probe_timeout_seconds' => (int) env('MEDIA_PROBE_TIMEOUT_SECONDS', 30),
+
+    'worker_command' => env('MEDIA_WORKER_COMMAND', 'python -m aiclip_worker.cli'),
+
 ];
