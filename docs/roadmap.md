@@ -31,10 +31,11 @@ Completed slices:
 Completed slices:
 
 - Async processing job boundary (Issue #45)
+- Deterministic FFprobe media probing worker (Issue #47)
 
 Next slice:
 
-- Real worker implementation (FFmpeg, scene detection, transcription)
+- Deterministic audio extraction worker stage (FFmpeg audio extraction)
 
 ## Planned Milestones
 
@@ -53,4 +54,4 @@ Next slice:
 | M13 | Unified One-Click Publishing |
 | M14 | Production Hardening |
 
-No milestone beyond M2 is started. Only one implementation issue is active at a time.
+Only one implementation issue is active at a time. M3 is already in progress.

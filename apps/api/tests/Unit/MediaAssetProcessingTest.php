@@ -22,10 +22,11 @@ it('defines all processing state constants', function () {
 });
 
 it('validates processing states array contains all states', function () {
-    expect(MediaAsset::VALID_PROCESSING_STATES)->toHaveCount(5);
+    expect(MediaAsset::VALID_PROCESSING_STATES)->toHaveCount(6);
     expect(MediaAsset::VALID_PROCESSING_STATES)->toContain('stored');
     expect(MediaAsset::VALID_PROCESSING_STATES)->toContain('queued');
     expect(MediaAsset::VALID_PROCESSING_STATES)->toContain('processing');
+    expect(MediaAsset::VALID_PROCESSING_STATES)->toContain('probed');
     expect(MediaAsset::VALID_PROCESSING_STATES)->toContain('completed');
     expect(MediaAsset::VALID_PROCESSING_STATES)->toContain('failed');
 });
@@ -39,8 +40,10 @@ it('validates processing states array contains all states', function () {
 it('validates correct transitions', function () {
     expect(MediaAsset::isValidTransition('stored', 'queued'))->toBeTrue();
     expect(MediaAsset::isValidTransition('queued', 'processing'))->toBeTrue();
-    expect(MediaAsset::isValidTransition('processing', 'completed'))->toBeTrue();
+    expect(MediaAsset::isValidTransition('processing', 'probed'))->toBeTrue();
     expect(MediaAsset::isValidTransition('processing', 'failed'))->toBeTrue();
+    expect(MediaAsset::isValidTransition('probed', 'completed'))->toBeTrue();
+    expect(MediaAsset::isValidTransition('probed', 'failed'))->toBeTrue();
     expect(MediaAsset::isValidTransition('queued', 'failed'))->toBeTrue();
 });
 

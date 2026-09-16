@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Contracts\MediaProcessingContract;
+use App\Exceptions\ProcessMediaException;
 use App\Models\MediaAsset;
+use App\Services\ProcessMediaAction;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,6 +28,7 @@ class ProcessMediaAsset implements ShouldQueue
     public function __construct(
         public MediaAsset $mediaAsset,
         public string $idempotencyKey,
+        protected ?ProcessMediaAction $processMediaAction = null,
     ) {}
 
     /**
@@ -61,18 +64,23 @@ class ProcessMediaAsset implements ShouldQueue
         // Build the worker contract
         $contract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey);
 
-        // Log the contract (placeholder for future worker dispatch)
-        Log::info('ProcessMediaAsset: dispatching to worker', [
-            'media_asset_id' => $asset->id,
-            'contract' => $contract->toArray(),
-        ]);
-
         // Mark as processing
         $asset->markProcessing();
 
-        // Placeholder: real processing logic will be implemented in future slices
-        // For now, mark as completed immediately
-        $asset->markCompleted();
+        // Invoke the worker to probe media
+        $action = $this->processMediaAction ?? app(ProcessMediaAction::class);
+        $result = $action->probe($contract);
+
+        // Store probe result
+        $probeData = $result['probe'] ?? [];
+        $durationMs = $probeData['duration_ms'] ?? 0;
+
+        $asset->markProbed($probeData, $durationMs);
+
+        Log::info('ProcessMediaAsset: probe succeeded', [
+            'media_asset_id' => $asset->id,
+            'duration_ms' => $durationMs,
+        ]);
     }
 
     /**
@@ -86,11 +94,15 @@ class ProcessMediaAsset implements ShouldQueue
             return;
         }
 
-        $asset->markFailed($exception->getMessage());
+        $error = $exception instanceof ProcessMediaException
+            ? $exception->getMessage()
+            : $exception->getMessage();
+
+        $asset->markFailed($error);
 
         Log::error('ProcessMediaAsset: job failed', [
             'media_asset_id' => $asset->id,
-            'error' => $exception->getMessage(),
+            'error' => $error,
         ]);
     }
 

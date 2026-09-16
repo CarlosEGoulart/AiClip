@@ -4,12 +4,18 @@ namespace Tests\Feature\Media;
 
 use App\Models\Project;
 use App\Models\User;
+use App\Services\ProcessMediaAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\Support\SpaTestCase;
 
 uses(SpaTestCase::class, RefreshDatabase::class);
+
+afterEach(function () {
+    Mockery::close();
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -36,6 +42,15 @@ beforeEach(function () {
     ])->assertOk();
 
     $this->cookies = $cookies;
+
+    // Mock ProcessMediaAction to prevent actual worker invocation in sync queue
+    $actionMock = Mockery::mock(ProcessMediaAction::class);
+    $actionMock->shouldReceive('probe')
+        ->andReturn([
+            'status' => 'success',
+            'probe' => ['duration_ms' => 1000],
+        ]);
+    app()->instance(ProcessMediaAction::class, $actionMock);
 });
 
 /*
