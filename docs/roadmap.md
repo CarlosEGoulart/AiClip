@@ -26,16 +26,13 @@ Completed slices:
 
 - Project-scoped video upload and S3-compatible storage (Issue #35, PR #36)
 
-## M3 — Asynchronous Media Processing (in progress)
+## M3 — Asynchronous Media Processing (completed)
 
 Completed slices:
 
 - Async processing job boundary (Issue #45)
 - Deterministic FFprobe media probing worker (Issue #47)
-
-Next slice:
-
-- Deterministic audio extraction worker stage (FFmpeg audio extraction)
+- Deterministic FFmpeg audio extraction worker (Issue #49)
 
 ## Planned Milestones
 
@@ -54,4 +51,4 @@ Next slice:
 | M13 | Unified One-Click Publishing |
 | M14 | Production Hardening |
 
-Only one implementation issue is active at a time. M3 is already in progress.
+Only one implementation issue is active at a time.
