@@ -154,6 +154,7 @@ it('does not dispatch job for non-owner upload attempt', function () {
 */
 
 it('creates media asset with default processing_status stored', function () {
+    Queue::fake();
     $cookies = $this->cookies;
 
     $createResponse = $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Media Project']);
@@ -174,6 +175,7 @@ it('creates media asset with default processing_status stored', function () {
 });
 
 it('media asset has processing lifecycle columns after upload', function () {
+    Queue::fake();
     $cookies = $this->cookies;
 
     $createResponse = $this->spaRequest('POST', '/api/v1/projects', $cookies, ['name' => 'Media Project']);
