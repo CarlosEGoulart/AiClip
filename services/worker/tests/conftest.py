@@ -176,6 +176,7 @@ def create_test_fixtures() -> Generator[None, None, None]:
     valid_path = fixtures_dir / "valid_sample.mp4"
     corrupt_path = fixtures_dir / "corrupt_sample.mp4"
     video_only_path = fixtures_dir / "video_only.mp4"
+    audio_only_path = fixtures_dir / "audio_only.mp3"
 
     if not valid_path.exists():
         # Create a minimal valid MP4 using ffmpeg
@@ -228,6 +229,28 @@ def create_test_fixtures() -> Generator[None, None, None]:
                 b'\x00\x00\x00\x1c\x66\x74\x79\x70\x69\x73\x6f\x6d'
                 b'\x00\x00\x02\x00\x69\x73\x6f\x6d\x69\x73\x6f\x32'
                 b'\x6d\x70\x34\x31'
+            )
+
+    if not audio_only_path.exists():
+        # Create an audio-only MP3 using FFmpeg lavfi sine source
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                    "-c:a", "libmp3lame",
+                    "-q:a", "9",
+                    str(audio_only_path),
+                ],
+                capture_output=True,
+                timeout=30,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            # If ffmpeg is not available, create a minimal MP3 header
+            audio_only_path.write_bytes(
+                b'\xff\xfb\x90\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                b'\x00\x00\x00\x00\x00\x00'
             )
 
     yield
