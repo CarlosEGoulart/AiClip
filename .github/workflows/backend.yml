@@ -57,16 +57,15 @@ jobs:
 
       - name: Initialize MinIO bucket
         run: |
-          # Download MinIO Client
-          curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
-          chmod +x /usr/local/bin/mc
-          # Configure alias
-          mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin
-          # Create bucket (ignore if exists)
-          mc mb --ignore-existing aiclip/aiclip-media
-          # Set bucket policy to private (default)
-          mc anonymous set private aiclip/aiclip-media
-          echo "MinIO bucket initialized successfully"
+          # Run mc commands via MinIO Docker image (avoids downloading binary)
+          docker run --rm --network host \
+            quay.io/minio/mc:latest \
+            sh -c "
+              mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
+              mc mb --ignore-existing aiclip/aiclip-media &&
+              mc anonymous set private aiclip/aiclip-media &&
+              echo 'MinIO bucket initialized successfully'
+            "
 
       - name: Verify MinIO health
         run: |
