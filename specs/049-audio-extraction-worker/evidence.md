@@ -172,7 +172,7 @@ Code was reviewed and refactored:
 25. ✅ All existing tests pass without modification
 26. ✅ Code follows project conventions
 27. ✅ No secrets in logs or worker payloads
-28. ✅ FFmpeg deterministically pinned in CI
+28. ✅ FFmpeg explicitly installed and version recorded in CI
 
 ## Security Considerations Verified
 
@@ -297,3 +297,34 @@ Decision: APPROVE
 2. Monitor FFmpeg timeout for large files
 3. Consider adding audio quality metrics in future iteration
 4. Document derived asset naming convention for developers
+
+## Final CI Verification
+
+The following results are from the actual CI execution on the final PR HEAD.
+
+### Worker Tests (CI)
+
+- **Runner**: Ubuntu with Python 3.12, FFmpeg/FFprobe
+- **Command**: `cd services/worker && python -m pytest tests/ -v`
+- **Result**: 55 collected, 55 passed, 0 skipped
+- **FFmpeg version**: 6.1.1-3ubuntu5 (installed via `apt-get install -y ffmpeg`)
+- **Note**: CI installs FFmpeg from the Ubuntu package repository. The version is recorded but not pinned to an exact hash. This is acceptable for CI determinism; the worker defensively parses FFprobe JSON output.
+
+### Laravel Tests (CI)
+
+- **Command**: `php artisan test`
+- **Result**: 224 tests, 1457 assertions, 0 failures
+- **MinIO**: All 4 MinIOIntegrationTest tests passed
+- **Database**: PostgreSQL healthy, migrations successful
+
+### Frontend Tests (CI)
+
+- **Result**: 187 tests passed, 0 failures
+
+### E2E Tests (CI)
+
+- **Result**: Full suite passed
+
+### Decision
+
+Decision: APPROVE
