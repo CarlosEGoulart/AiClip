@@ -82,7 +82,7 @@ class MediaSceneAnalysisTest extends TestCase
 
         $scenes = [
             ['index' => 0, 'start_ms' => 0, 'end_ms' => 3120],
-            ['index' => 1, 'start_ms' => 3120, 'end_ms' => 8400],
+            ['index' => 1, 'start_ms' => 3120, 'end_ms' => 5000],
         ];
 
         $sceneAnalysis->markCompleted(
@@ -222,7 +222,7 @@ class MediaSceneAnalysisTest extends TestCase
 
         $scenes = [
             ['index' => 0, 'start_ms' => 0, 'end_ms' => 3120],
-            ['index' => 1, 'start_ms' => 3120, 'end_ms' => 8400],
+            ['index' => 1, 'start_ms' => 3120, 'end_ms' => 5000],
         ];
 
         $sceneAnalysis = MediaSceneAnalysis::create([
