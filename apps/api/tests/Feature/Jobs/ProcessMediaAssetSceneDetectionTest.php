@@ -316,6 +316,30 @@ it('marks scene analysis failed on detection error', function () {
         'video_codec' => 'h264',
     ];
 
+    $extractionResult = [
+        'status' => 'success',
+        'extraction' => [
+            'output_path' => '/tmp/audio_normalized.wav',
+            'output_size_bytes' => 160000,
+            'duration_ms' => 5000,
+            'sample_rate' => 16000,
+            'channels' => 1,
+            'codec' => 'pcm_s16le',
+            'format' => 'wav',
+        ],
+    ];
+
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Hello world',
+            'segments' => [['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Hello']],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
     $actionMock = Mockery::mock(ProcessMediaAction::class);
     $actionMock->shouldReceive('probe')->once()->andReturn(['status' => 'success', 'probe' => $probeResult]);
     $actionMock->shouldReceive('detectScenes')
@@ -325,6 +349,8 @@ it('marks scene analysis failed on detection error', function () {
             1,
             'Engine error',
         ));
+    $actionMock->shouldReceive('extractAudio')->once()->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
 
     app()->instance(ProcessMediaAction::class, $actionMock);
 
@@ -954,35 +980,11 @@ it('uses asset duration_ms when probe already completed', function () {
         ],
     ];
 
-    $extractionResult = [
-        'status' => 'success',
-        'extraction' => [
-            'output_path' => '/tmp/audio_normalized.wav',
-            'output_size_bytes' => 160000,
-            'duration_ms' => 10000,
-            'sample_rate' => 16000,
-            'channels' => 1,
-            'codec' => 'pcm_s16le',
-            'format' => 'wav',
-        ],
-    ];
-
-    $transcribeResult = [
-        'status' => 'success',
-        'transcription' => [
-            'language' => 'en',
-            'full_text' => 'Hello world',
-            'segments' => [['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Hello']],
-            'engine' => 'deterministic',
-            'model' => 'deterministic',
-        ],
-    ];
-
     $actionMock = Mockery::mock(ProcessMediaAction::class);
     $actionMock->shouldNotReceive('probe');
     $actionMock->shouldReceive('detectScenes')->once()->andReturn($sceneDetectionResult);
-    $actionMock->shouldReceive('extractAudio')->once()->andReturn($extractionResult);
-    $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
+    $actionMock->shouldNotReceive('extractAudio');
+    $actionMock->shouldNotReceive('transcribe');
 
     app()->instance(ProcessMediaAction::class, $actionMock);
 

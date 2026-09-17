@@ -90,6 +90,7 @@ class MediaSceneAnalysisTest extends TestCase
             '0.0.0',
             [],
             $scenes,
+            5000,
         );
 
         $this->assertEquals(MediaSceneAnalysis::STATUS_COMPLETED, $sceneAnalysis->fresh()->status);
@@ -155,7 +156,7 @@ class MediaSceneAnalysisTest extends TestCase
         ]);
 
         // pending -> completed is invalid, should be noop
-        $sceneAnalysis->markCompleted('engine', '1.0', [], []);
+        $sceneAnalysis->markCompleted('engine', '1.0', [], [], 5000);
         $this->assertEquals(MediaSceneAnalysis::STATUS_PENDING, $sceneAnalysis->fresh()->status);
     }
 
@@ -165,7 +166,7 @@ class MediaSceneAnalysisTest extends TestCase
 
         MediaSceneAnalysis::validateScenes([
             ['index' => 0, 'start_ms' => -1, 'end_ms' => 3120],
-        ]);
+        ], 5000);
     }
 
     public function test_reject_end_ms_less_than_start_ms(): void
@@ -174,7 +175,7 @@ class MediaSceneAnalysisTest extends TestCase
 
         MediaSceneAnalysis::validateScenes([
             ['index' => 0, 'start_ms' => 3120, 'end_ms' => 1000],
-        ]);
+        ], 5000);
     }
 
     public function test_reject_unordered_scenes(): void
@@ -184,7 +185,7 @@ class MediaSceneAnalysisTest extends TestCase
         MediaSceneAnalysis::validateScenes([
             ['index' => 0, 'start_ms' => 1000, 'end_ms' => 2000],
             ['index' => 1, 'start_ms' => 0, 'end_ms' => 1000],
-        ]);
+        ], 5000);
     }
 
     public function test_reject_overlapping_scenes(): void
@@ -194,7 +195,7 @@ class MediaSceneAnalysisTest extends TestCase
         MediaSceneAnalysis::validateScenes([
             ['index' => 0, 'start_ms' => 0, 'end_ms' => 1500],
             ['index' => 1, 'start_ms' => 1000, 'end_ms' => 2000],
-        ]);
+        ], 5000);
     }
 
     public function test_reject_duplicate_indexes(): void
@@ -204,13 +205,13 @@ class MediaSceneAnalysisTest extends TestCase
         MediaSceneAnalysis::validateScenes([
             ['index' => 0, 'start_ms' => 0, 'end_ms' => 1000],
             ['index' => 0, 'start_ms' => 1000, 'end_ms' => 2000],
-        ]);
+        ], 5000);
     }
 
     public function test_reject_empty_scenes_array(): void
     {
         // Empty scenes array should be valid (no exception)
-        MediaSceneAnalysis::validateScenes([]);
+        MediaSceneAnalysis::validateScenes([], 5000);
         // If we get here without exception, the test passes
         $this->assertTrue(true);
     }
@@ -377,7 +378,7 @@ class MediaSceneAnalysisTest extends TestCase
     public function test_validate_scenes_rejects_end_ms_equal_start_ms_with_duration(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('end_ms.*must be > start_ms');
+        $this->expectExceptionMessage('must be > start_ms');
 
         MediaSceneAnalysis::validateScenes([
             ['index' => 0, 'start_ms' => 1000, 'end_ms' => 1000],
