@@ -196,4 +196,12 @@ class MediaAsset extends Model
     {
         return $this->hasOne(MediaTranscript::class);
     }
+
+    /**
+     * Get the scene analysis for this media asset.
+     */
+    public function sceneAnalysis(): HasOne
+    {
+        return $this->hasOne(MediaSceneAnalysis::class);
+    }
 }

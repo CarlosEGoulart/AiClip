@@ -126,7 +126,7 @@ class MediaProcessingContract
         }
 
         // Validate action is valid
-        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe'], true)) {
+        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes'], true)) {
             return false;
         }
 

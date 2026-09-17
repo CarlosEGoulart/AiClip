@@ -199,6 +199,18 @@ class ProcessMediaAction
     }
 
     /**
+     * Detect scenes in video using the Python worker CLI.
+     *
+     * @return array{status: string, scene_detection: array<string, mixed>}
+     *
+     * @throws ProcessMediaException
+     */
+    public function detectScenes(MediaProcessingContract $contract): array
+    {
+        throw new \RuntimeException('detectScenes method not yet implemented');
+    }
+
+    /**
      * Create a process instance. Overridable for testing.
      *
      * @param  list<string>  $command
