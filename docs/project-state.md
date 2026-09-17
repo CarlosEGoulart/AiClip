@@ -39,24 +39,30 @@ CSRF exceptions for media upload routes.
 E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
 5173/8000. Email verification not implemented. No project update/edit endpoint
 yet (out of scope for #30). Real runtime transcription model requires the
-faster-whisper optional dependency and model download. Mandatory CI uses
-deterministic engine. Scene detection, semantic clip analysis/ranking,
+faster-whisper optional dependency and model download. Real runtime scene
+detection requires the pyscenedetect optional dependency and opencv. Mandatory
+CI uses deterministic engines. Semantic clip analysis/ranking,
 rendering, and social features do not exist yet.
 
 # Current Milestone
 
 M4 Video Understanding (in progress):
 - Deterministic transcription worker stage (Issue #51).
+- Deterministic scene detection worker stage (Issue #53).
 - Transcription engine abstraction (DeterministicTranscriber for CI,
   FasterWhisperTranscriber for runtime).
+- Scene detection engine abstraction (DeterministicSceneDetector for CI,
+  PySceneDetectAdapter for runtime).
 - MediaTranscript model with retryable lifecycle
   (pending → transcribing → completed/failed → transcribing).
+- MediaSceneAnalysis model with retryable lifecycle
+  (pending → detecting → completed/failed).
 - Segment validation and transcription timeout enforcement.
-- ProcessMediaAsset chains: probe → audio extraction → transcription.
+- ProcessMediaAsset chains: probe → scene detection → audio extraction → transcription.
+- Scene failure does not block transcription; no-audio video still receives scene detection.
 - Laravel response validation for malformed worker output.
 
 # Next Architectural Goal
 
-M4 Video Understanding — next narrow slice: scene segmentation/detection.
-Divide completed transcripts and video into semantic segments (scenes)
-for downstream clip analysis.
+M4 Video Understanding — next narrow slice: clip ranking/analysis.
+Determine which segments are most interesting for clip extraction.
