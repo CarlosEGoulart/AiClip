@@ -219,19 +219,19 @@ class ProcessMediaAsset implements ShouldQueue
 
             // Validate required fields
             $missingFields = [];
-            if (empty($language) || ! is_string($language)) {
+            if (! is_string($language) || $language === '') {
                 $missingFields[] = 'language';
             }
-            if (empty($fullText) || ! is_string($fullText)) {
+            if (! is_string($fullText)) {
                 $missingFields[] = 'full_text';
             }
-            if (! is_array($segments) || count($segments) === 0) {
+            if (! is_array($segments)) {
                 $missingFields[] = 'segments';
             }
-            if (empty($engine) || ! is_string($engine)) {
+            if (! is_string($engine) || $engine === '') {
                 $missingFields[] = 'engine';
             }
-            if (empty($model) || ! is_string($model)) {
+            if (! is_string($model) || $model === '') {
                 $missingFields[] = 'model';
             }
 
