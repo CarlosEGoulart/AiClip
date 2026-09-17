@@ -6,6 +6,7 @@
 - **Title**: feat(media): add deterministic transcription worker stage
 - **Branch**: @carlosegoulart/51/feat/transcription-worker
 - **Date**: 2026-09-17
+- **PR**: #52
 
 ## Implementation Summary
 
