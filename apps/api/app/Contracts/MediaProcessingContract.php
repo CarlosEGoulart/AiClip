@@ -152,6 +152,13 @@ class MediaProcessingContract
             }
         }
 
+        // If action is detect_scenes, durationMs must be present and > 0
+        if ($this->action === 'detect_scenes') {
+            if (! isset($this->durationMs) || ! is_int($this->durationMs) || $this->durationMs <= 0) {
+                return false;
+            }
+        }
+
         return true;
     }
 }

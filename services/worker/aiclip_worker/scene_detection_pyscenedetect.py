@@ -43,7 +43,7 @@ class PySceneDetectAdapter(SceneDetector):
             Exception: If video is corrupt/unreadable (exceptions propagate).
         """
         import scenedetect
-        from scenedetect import ContentDetector, open_video
+        from scenedetect import ContentDetector
 
         # Determine threshold: explicit option > env var > default 27.0
         threshold = 27.0
@@ -66,13 +66,10 @@ class PySceneDetectAdapter(SceneDetector):
         if options and "duration_ms" in options:
             effective_params["duration_ms"] = int(options["duration_ms"])
 
-        # Open the real video — corrupt/unreadable errors propagate naturally
-        video = open_video(video_path)
-
         # Build ContentDetector with the threshold
         detector = ContentDetector(threshold=threshold)
 
-        # Run scene detection
+        # Run scene detection directly — corrupt/unreadable errors propagate naturally
         scene_list = scenedetect.detect(video_path, detector)
 
         # Convert timecodes to integer milliseconds and create Scene objects

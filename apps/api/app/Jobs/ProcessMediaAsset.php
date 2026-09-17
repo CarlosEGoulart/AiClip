@@ -141,12 +141,12 @@ class ProcessMediaAsset implements ShouldQueue
                         );
                     }
 
+                    // Validate required fields explicitly - no fallback defaults
                     $detector = $sceneDetection['detector'] ?? null;
                     $detectorVersion = $sceneDetection['detector_version'] ?? null;
-                    $parameters = $sceneDetection['parameters'] ?? [];
-                    $scenes = $sceneDetection['scenes'] ?? [];
+                    $parameters = $sceneDetection['parameters'] ?? null;
+                    $scenes = $sceneDetection['scenes'] ?? null;
 
-                    // Validate required fields
                     if (! is_string($detector) || $detector === '') {
                         throw new ProcessMediaException(
                             'Worker returned success but detector is missing or empty',

@@ -95,7 +95,7 @@ class MediaSceneAnalysis extends Model
         string $detectorVersion,
         array $parameters,
         array $scenes,
-        ?int $durationMs = null,
+        int $durationMs,
     ): void {
         if (! self::isValidTransition($this->status, self::STATUS_COMPLETED)) {
             return;
@@ -133,7 +133,7 @@ class MediaSceneAnalysis extends Model
      *
      * @param  array<int, array{index: int, start_ms: int, end_ms: int}>  $scenes
      */
-    public static function validateScenes(array $scenes, ?int $durationMs = null): void
+    public static function validateScenes(array $scenes, int $durationMs): void
     {
         if (empty($scenes)) {
             return;
@@ -193,13 +193,26 @@ class MediaSceneAnalysis extends Model
             $seenIndexes[] = $index;
         }
 
-        if ($durationMs !== null && $durationMs > 0) {
-            foreach ($scenes as $i => $scene) {
-                if (! isset($scene['end_ms']) || $scene['end_ms'] > $durationMs) {
-                    throw new \InvalidArgumentException(
-                        "Scene {$i} end_ms exceeds media duration ({$durationMs}ms)"
-                    );
-                }
+        // Validate sequential 0-based indexes
+        foreach ($scenes as $i => $scene) {
+            if ($scene['index'] !== $i) {
+                throw new \InvalidArgumentException(
+                    "Scenes must have sequential 0-based indexes: "
+                    ."scene at position {$i} has index {$scene['index']}, expected {$i}"
+                );
+            }
+        }
+
+        // Validate duration bounds
+        if ($durationMs <= 0) {
+            throw new \InvalidArgumentException("Duration must be > 0, got {$durationMs}");
+        }
+
+        foreach ($scenes as $i => $scene) {
+            if (! isset($scene['end_ms']) || $scene['end_ms'] > $durationMs) {
+                throw new \InvalidArgumentException(
+                    "Scene {$i} end_ms exceeds media duration ({$durationMs}ms)"
+                );
             }
         }
     }

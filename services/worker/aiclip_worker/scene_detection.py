@@ -118,7 +118,7 @@ def get_scene_detector(name: str | None = None) -> SceneDetector:
     Args:
         name: Detector name ('deterministic' or 'pyscenedetect').
               If None, uses SCENE_DETECTION_ENGINE env var.
-              Defaults to 'deterministic'.
+              Defaults to 'pyscenedetect'.
 
     Returns:
         SceneDetector instance.
@@ -138,8 +138,8 @@ def get_scene_detector(name: str | None = None) -> SceneDetector:
             return PySceneDetectAdapter()
         except ImportError as e:
             raise ImportError(
-                "pyscenedetect is required for PySceneDetectAdapter. "
-                "Install it with: pip install pyscenedetect opencv-python-headless"
+                "scenedetect is required for PySceneDetectAdapter. "
+                "Install it with: pip install scenedetect[opencv-headless]"
             ) from e
     else:
         raise ValueError(f"Unknown scene detection engine: {name}")
@@ -191,3 +191,11 @@ def validate_scene_result(scenes: list[Scene]) -> None:
                 f"Duplicate scene index: {scene.index}"
             )
         seen_indexes.add(scene.index)
+
+    # Validate sequential 0-based indexes
+    for i, scene in enumerate(scenes):
+        if scene.index != i:
+            raise ValueError(
+                f"Scenes must have sequential 0-based indexes: "
+                f"scene at position {i} has index {scene.index}, expected {i}"
+            )

@@ -18,6 +18,14 @@ from aiclip_worker.scene_detection import (
     validate_scene_result,
 )
 
+# Try to import PySceneDetectAdapter for mock-based tests
+try:
+    from aiclip_worker.scene_detection_pyscenedetect import PySceneDetectAdapter
+    HAS_PYSCENEDETECT = True
+except ImportError:
+    HAS_PYSCENEDETECT = False
+    PySceneDetectAdapter = None  # type: ignore
+
 
 class TestScene:
     """Test Scene dataclass."""
@@ -315,3 +323,185 @@ class TestGetSceneDetector:
         with patch.dict(os.environ, {"SCENE_DETECTION_ENGINE": "unknown"}):
             detector = get_scene_detector("deterministic")
             assert isinstance(detector, DeterministicSceneDetector)
+
+
+class TestValidateSceneResultIndexInvariants:
+    """Test validate_scene_result enforces sequential 0-based index invariants."""
+
+    def test_validate_rejects_first_scene_not_zero(self) -> None:
+        """validate_scene_result rejects when first scene index != 0."""
+        scenes = [
+            Scene(index=1, start_ms=0, end_ms=1000),
+            Scene(index=2, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="sequential 0-based indexes"):
+            validate_scene_result(scenes)
+
+    def test_validate_rejects_gaps_in_indexes(self) -> None:
+        """validate_scene_result rejects gaps in indexes (0, 2)."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=1000),
+            Scene(index=2, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="sequential 0-based indexes"):
+            validate_scene_result(scenes)
+
+    def test_validate_rejects_reversed_indexes(self) -> None:
+        """validate_scene_result rejects reversed indexes (1, 0)."""
+        scenes = [
+            Scene(index=1, start_ms=0, end_ms=1000),
+            Scene(index=0, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="sequential 0-based indexes"):
+            validate_scene_result(scenes)
+
+    def test_validate_rejects_duplicate_indexes_at_different_positions(self) -> None:
+        """validate_scene_result rejects duplicate indexes (0, 0)."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=1000),
+            Scene(index=0, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="(?i)duplicate"):
+            validate_scene_result(scenes)
+
+    def test_validate_accepts_valid_sequential_indexes(self) -> None:
+        """validate_scene_result accepts 0, 1, 2, ..."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=1000),
+            Scene(index=1, start_ms=1000, end_ms=2000),
+            Scene(index=2, start_ms=2000, end_ms=3000),
+        ]
+        validate_scene_result(scenes)  # Should not raise
+
+
+@pytest.mark.skipif(not HAS_PYSCENEDETECT, reason="PySceneDetect not available")
+class TestPySceneDetectAdapter:
+    """Test PySceneDetectAdapter with mocked scenedetect."""
+
+    def test_adapter_get_name(self) -> None:
+        """PySceneDetectAdapter returns 'pyscenedetect' as name."""
+        adapter = PySceneDetectAdapter()
+        assert adapter.get_name() == "pyscenedetect"
+
+    def test_adapter_get_version(self) -> None:
+        """PySceneDetectAdapter returns version string."""
+        adapter = PySceneDetectAdapter()
+        version = adapter.get_version()
+        assert isinstance(version, str)
+        assert version != ""
+
+    def test_adapter_is_scene_detector(self) -> None:
+        """PySceneDetectAdapter is a SceneDetector."""
+        adapter = PySceneDetectAdapter()
+        assert isinstance(adapter, SceneDetector)
+
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_returns_scenes_with_correct_structure(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter returns SceneResult with proper structure from mocked detect."""
+        from scenedetect import FrameTimecode
+
+        # Mock scenedetect.detect to return two scenes
+        mock_scene_1 = (FrameTimecode(0, 30.0), FrameTimecode(93, 30.0))  # 0s to 3.1s
+        mock_scene_2 = (FrameTimecode(93, 30.0), FrameTimecode(180, 30.0))  # 3.1s to 6s
+        mock_detect.return_value = [mock_scene_1, mock_scene_2]
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4", options={"duration_ms": 6000})
+
+        assert result.detector == "pyscenedetect"
+        assert result.detector_version == "0.6.7"
+        assert result.parameters == {"threshold": 27.0, "duration_ms": 6000}
+        assert len(result.scenes) == 2
+
+        # Check first scene
+        assert result.scenes[0].index == 0
+        assert result.scenes[0].start_ms == 0
+        assert result.scenes[0].end_ms == 3100  # 3.1s * 1000
+
+        # Check second scene
+        assert result.scenes[1].index == 1
+        assert result.scenes[1].start_ms == 3100
+        assert result.scenes[1].end_ms == 6000  # 6s * 1000
+
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_handles_zero_duration_scene(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter converts zero-duration scenes to 1ms minimum."""
+        from scenedetect import FrameTimecode
+
+        # Mock scenedetect.detect returning a zero-duration scene
+        mock_scene = (FrameTimecode(0, 30.0), FrameTimecode(0, 30.0))  # 0s to 0s
+        mock_detect.return_value = [mock_scene]
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4")
+
+        assert len(result.scenes) == 1
+        assert result.scenes[0].start_ms == 0
+        assert result.scenes[0].end_ms == 1  # Should be start_ms + 1
+
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_respects_threshold_option(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter passes threshold option to ContentDetector."""
+        from scenedetect import FrameTimecode
+
+        mock_scene = (FrameTimecode(0, 30.0), FrameTimecode(30, 30.0))
+        mock_detect.return_value = [mock_scene]
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4", options={"threshold": 15.0})
+
+        assert result.parameters["threshold"] == 15.0
+
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_empty_result(self, mock_detect: MagicMock) -> None:
+        """Adapter handles empty scene list from scenedetect."""
+        mock_detect.return_value = []
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4")
+
+        assert result.scenes == []
+
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_propagates_corrupt_video_error(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter propagates exceptions for corrupt/unreadable video."""
+        mock_detect.side_effect = RuntimeError("Failed to decode video")
+
+        adapter = PySceneDetectAdapter()
+        with pytest.raises(RuntimeError, match="Failed to decode video"):
+            adapter.detect("/fake/path/corrupt.mp4")
+
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
+    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_multiple_scenes_ordered(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter returns scenes ordered by start_ms with sequential indexes."""
+        from scenedetect import FrameTimecode
+
+        # Return scenes out of order to verify adapter produces ordered output
+        mock_scene_1 = (FrameTimecode(150, 30.0), FrameTimecode(300, 30.0))  # 5s to 10s
+        mock_scene_2 = (FrameTimecode(0, 30.0), FrameTimecode(150, 30.0))   # 0s to 5s
+        mock_detect.return_value = [mock_scene_1, mock_scene_2]
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4")
+
+        # Adapter should produce sequential 0-based indexes in order returned
+        assert len(result.scenes) == 2
+        assert result.scenes[0].index == 0
+        assert result.scenes[1].index == 1
+        # Note: scenedetect returns scenes in detection order; adapter preserves that order

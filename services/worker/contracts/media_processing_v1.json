@@ -53,10 +53,17 @@
       "properties": {
         "duration_ms": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 1
         }
-      }
+      },
+      "required": ["duration_ms"]
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "detect_scenes" } } },
+      "then": { "required": ["media"] }
+    }
+  ]
 }

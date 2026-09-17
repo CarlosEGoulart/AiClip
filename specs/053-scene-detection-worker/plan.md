@@ -13,12 +13,19 @@ Create the scene detection engine abstraction (interface and deterministic CI im
    - `SceneDetector` abstract base class with `detect(video_path: str, options: dict) -> SceneResult`
    - `DeterministicSceneDetector` implementation that returns fixed output based on video file path hash
    - `PySceneDetectAdapter` implementation using PySceneDetect library
-   - Factory function `get_scene_detector(engine: str) -> SceneDetector` based on environment variable
-   - `validate_scene_result(scenes: list[Scene])` function for boundary validation
+   - Factory function `get_scene_detector(engine: str | None) -> SceneDetector` — **accepts `None`, not `"deterministic"`** (Blocker #1)
+   - `validate_scene_result(scenes: list[Scene])` function for boundary validation (includes index invariant: 0-based sequential, no gaps/duplicates/reversed — Blocker #9)
 
 ### Files to Modify
 
 None.
+
+### Blocker Fixes in This Phase
+
+- **Blocker #1**: Factory accepts `None` (not `"deterministic"`); CI explicitly sets `SCENE_DETECTION_ENGINE=deterministic`
+- **Blocker #1**: Stale install docs in module docstring corrected to `pip install scenedetect[opencv-headless]`
+- **Blocker #9**: `validate_scene_result` enforces 0-based sequential index invariant
+- **Blocker #10**: `PySceneDetectAdapter` does NOT call `open_video()` before `scenedetect.detect()`
 
 ### Verification Steps
 
@@ -29,7 +36,12 @@ None.
    - Test `DeterministicSceneDetector` returns different output for different input
    - Test `PySceneDetectAdapter` initialization with configuration (mocked)
    - Test `get_scene_detector` returns correct implementation based on engine name
+   - **Test `get_scene_detector(None)` returns `PySceneDetectAdapter` (production default)** (Blocker #1)
+   - **Test `get_scene_detector("pyscenedetect")` returns `PySceneDetectAdapter`** (Blocker #1)
+   - **Test `get_scene_detector("deterministic")` returns `DeterministicSceneDetector`** (Blocker #1)
    - Test `validate_scene_result` enforces ordering, non-overlap, valid timing
+   - **Test `validate_scene_result` enforces 0-based sequential index invariant (first=0, no gaps, no duplicates, no reversed)** (Blocker #9)
+   - Test `validate_scene_result` accepts empty scenes
 
 ## Phase 2: Contract Schema Extension
 
@@ -40,8 +52,12 @@ Extend the worker contract schema to support the `detect_scenes` action.
 
 1. **`services/worker/contracts/media_processing_v1.json`**
    - Add `detect_scenes` to `action` enum: `["probe", "extract_audio", "transcribe", "detect_scenes"]`
-   - No additional required fields for `detect_scenes` (input is the source video itself)
+   - **`media.duration_ms`: required integer, minimum 1 for `detect_scenes` action** (Blocker #6)
    - Maintain backward compatibility: existing contracts without changes still validate for probe/extract_audio/transcribe
+
+### Blocker Fixes in This Phase
+
+- **Blocker #6**: Contract schema requires `media.duration_ms >= 1` for `detect_scenes` action
 
 ### Files to Create
 
@@ -51,8 +67,11 @@ None.
 
 1. **Schema validation tests** (RED first):
    - Test existing probe contract still validates
-   - Test contract with `action: "detect_scenes"` validates
-   - Test contract with `action: "detect_scenes"` and no extra fields validates
+   - Test contract with `action: "detect_scenes"` and `media.duration_ms >= 1` validates
+   - **Test contract with `action: "detect_scenes"` but missing `media.duration_ms` fails** (Blocker #6)
+   - **Test contract with `action: "detect_scenes"` and `media.duration_ms: 0` fails** (Blocker #6)
+   - **Test contract with `action: "detect_scenes"` and `media.duration_ms: -1` fails** (Blocker #6)
+   - Test contract with `action: "detect_scenes"` and valid duration validates
    - Test contract with unknown action fails validation
 
 ## Phase 3: Python Worker: detect-scenes Action
@@ -127,6 +146,9 @@ Create the MediaSceneAnalysis model and migration for storing scene detection me
    - Status constants: `STATUS_PENDING`, `STATUS_DETECTING`, `STATUS_COMPLETED`, `STATUS_FAILED`
    - `belongsTo(MediaAsset::class)` relationship
    - Status transition methods: `markDetecting()`, `markCompleted()`, `markFailed()`
+   - **`markCompleted(string $detector, string $detectorVersion, array $parameters, array $scenes, int $durationMs)` — `$durationMs` REQUIRED, must be > 0** (Blocker #5)
+   - **`validateScenes(array $scenes, int $durationMs)` — `$durationMs` REQUIRED, must be > 0; rejects `end_ms > durationMs`** (Blocker #5)
+   - **Index invariant validation: first index=0, sequential, no gaps/duplicates/reversed** (Blocker #9)
 
 2. **`apps/api/database/migrations/2026_09_17_100000_create_media_scene_analyses_table.php`**
    - Creates `media_scene_analyses` table
@@ -140,6 +162,12 @@ Create the MediaSceneAnalysis model and migration for storing scene detection me
    - Add `sceneAnalysis(): HasOne` relationship method
    - Add `isVideo(): bool` helper method (checks `video_codec` in `probe_result`)
 
+### Blocker Fixes in This Phase
+
+- **Blocker #5**: `markCompleted` and `validateScenes` require `int $durationMs > 0` (not nullable)
+- **Blocker #9**: Index invariant validation added to `validateScenes`
+- **Blocker #13**: Issue #53 originally proposed `MediaScene` model + `media_scenes` table (normalized). This implementation uses Option B: single `MediaSceneAnalysis` row with JSON `scenes` column. No `MediaScene` model or `media_scenes` table will be created.
+
 ### Verification Steps
 
 1. **Unit tests for MediaSceneAnalysis model** (RED first):
@@ -151,6 +179,11 @@ Create the MediaSceneAnalysis model and migration for storing scene detection me
    - Test status transitions (pending → detecting → completed/failed)
    - Test invalid transitions are no-ops
    - Test failed → detecting retry transition
+   - **Test `markCompleted` requires `durationMs > 0`; rejects `durationMs <= 0`** (Blocker #5)
+   - **Test `validateScenes` requires `durationMs > 0`; rejects `durationMs <= 0`** (Blocker #5)
+   - **Test `validateScenes` rejects scenes where `end_ms > durationMs`** (Blocker #5)
+   - **Test `validateScenes` accepts empty scenes but still requires `durationMs > 0`** (Blocker #5)
+   - **Test `validateScenes` enforces index invariant: first=0, sequential, no gaps/duplicates/reversed** (Blocker #9)
 
 ## Phase 6: Laravel: ProcessMediaAction::detectScenes()
 
@@ -165,12 +198,19 @@ Add the `detectScenes()` method to ProcessMediaAction service.
    - Invokes worker CLI: `python -m aiclip_worker.cli detect-scenes --contract-json <json>`
    - Enforces timeout (configurable via `media.scene_detect_timeout_seconds`, default 120)
    - Throws `ProcessMediaException` on failure
+   - **Validates worker result: requires `detector`, `detector_version`, `parameters` (array), `scenes` (array) — missing fields throw** (Blocker #8)
 
 2. **`apps/api/config/media.php`**
    - Add `scene_detect_timeout_seconds` configuration (default 120)
 
 3. **`apps/api/app/Contracts/MediaProcessingContract.php`**
    - Add `detect_scenes` to valid actions list in `validate()` method
+   - **Require `$this->durationMs > 0` for `detect_scenes` action** (Blocker #6)
+
+### Blocker Fixes in This Phase
+
+- **Blocker #6**: `MediaProcessingContract::validate()` requires `durationMs > 0` for `detect_scenes`
+- **Blocker #8**: `detectScenes()` validates required fields in worker result, does not coerce missing to empty
 
 ### Verification Steps
 
@@ -180,6 +220,10 @@ Add the `detectScenes()` method to ProcessMediaAction service.
    - Mock `Process` to simulate timeout
    - Verify contract JSON passed correctly
    - Verify detection result parsed correctly
+   - **Test `detectScenes` throws when worker result missing `detector`** (Blocker #8)
+   - **Test `detectScenes` throws when worker result missing `detector_version`** (Blocker #8)
+   - **Test `detectScenes` throws when worker result missing `parameters` or not array** (Blocker #8)
+   - **Test `detectScenes` throws when worker result missing `scenes` or not array** (Blocker #8)
 
 ## Phase 7: Laravel: ProcessMediaAsset Pipeline Restructuring
 
@@ -199,8 +243,10 @@ Restructure the ProcessMediaAsset job to run scene detection independently of au
         - If not exists or failed: create/retry
         - Create MediaSceneAnalysis with status `pending`
         - Mark as `detecting`
+        - **Build `detect_scenes` contract with `media.duration_ms = $asset->duration_ms` (REQUIRED from authoritative probe)** (Blocker #6)
         - Invoke `ProcessMediaAction::detectScenes()`
-        - On success: update with result, mark `completed`
+        - **Validate worker result: requires `detector`, `detector_version`, `parameters` (array), `scenes` (array)** (Blocker #8)
+        - On success: update with result, mark `completed` **passing `$asset->duration_ms`** (Blocker #5)
         - On failure: mark `failed`
    - Restructure audio path:
      a. Only proceed if `audio_codec` is present
@@ -210,6 +256,12 @@ Restructure the ProcessMediaAsset job to run scene detection independently of au
      - Mark MediaAsset `completed` when BOTH:
        - Scene detection resolved (completed/failed) OR no video_codec
        - Audio path resolved (completed/failed/skipped)
+
+### Blocker Fixes in This Phase
+
+- **Blocker #5**: `markCompleted()` called with required `$asset->duration_ms` (> 0)
+- **Blocker #6**: Contract includes required `media.duration_ms` from probe
+- **Blocker #8**: Worker result validated for required fields, no silent coercion
 
 ### Verification Steps
 
@@ -224,6 +276,8 @@ Restructure the ProcessMediaAsset job to run scene detection independently of au
    - Test transcription failure does NOT block scene detection
    - Test video without audio still receives scene detection
    - Test audio-only file skips scene detection but proceeds with transcription
+   - **Test job passes `duration_ms` in contract and to `markCompleted()`** (Blockers #5, #6)
+   - **Test job throws when worker result missing required fields** (Blocker #8)
    - Test existing transcription tests still pass (no regression)
 
 ## Phase 8: Deterministic Unit Tests for Worker
@@ -257,12 +311,54 @@ Create comprehensive unit tests for the Python worker scene detection logic.
    - Test factory function returns correct implementation
    - Test validate_scene_result enforces invariants
 
+4. **`services/worker/tests/test_pyscenedetect_adapter.py`** (Blocker #2)
+   - ~15 mock-based tests for PySceneDetectAdapter:
+     - Implements SceneDetector protocol
+     - Lazy import of scenedetect (import only on detect() call)
+     - ContentDetector threshold configuration via options
+     - Detection API invoked with correct parameters
+     - Timecodes correctly converted to milliseconds
+     - 0-based sequential scene indexes produced
+     - Empty scenes list handled correctly
+     - Corrupt media → graceful failure with error
+     - Missing scenedetect dependency → clear ImportError with install hint
+     - Version reported via get_version() from scenedetect.__version__
+     - Parameters reported in SceneResult.parameters
+     - Explicit SCENE_DETECTION_ENGINE=deterministic selects DeterministicSceneDetector
+     - Unset SCENE_DETECTION_ENGINE selects pyscenedetect (production default)
+     - Invalid engine name raises appropriate error
+     - No double video open — open_video() NOT called before detect() (Blocker #10)
+
+5. **`services/worker/tests/test_pyscenedetect_integration.py`** (Blocker #3 — optional CI gate)
+   - Generate FFmpeg test video: solid color A→B→C segments
+   - Run real PySceneDetectAdapter.detect() on generated video
+   - Verify: real scenedetect invoked, real video decode, real ContentDetector
+   - Verify ordered boundaries, non-overlapping, integer ms timestamps
+   - Verify final scene end_ms within actual media duration
+   - Mark as `@pytest.mark.integration` — runs only when [scene_detection] extra installed
+
 ### Files to Modify
 
 1. **`services/worker/tests/conftest.py`**
    - Add `sample_contract_detect_scenes` fixture
    - Add `sample_contract_detect_scenes_no_storage_key` fixture
    - Add `sample_contract_detect_scenes_nonexistent_file` fixture
+   - Add `ffmpeg_test_video` fixture (generates solid A→B→C video)
+
+### Verification Steps
+
+1. **Run pytest**:
+   ```bash
+   cd services/worker
+   python -m pytest tests/ -v
+   ```
+
+2. **Verify all tests pass**:
+   - No skipped tests
+   - No flaky tests
+   - All assertions are deterministic
+   - **PySceneDetectAdapter unit tests: ~15 tests pass** (Blocker #2)
+   - **Integration test passes when run with [scene_detection] extra** (Blocker #3)
 
 ### Verification Steps
 
@@ -291,6 +387,13 @@ Create feature tests for the MediaSceneAnalysis model and ProcessMediaAsset scen
    - Test cascade delete
    - Test status transitions
    - Test failed → retry transition
+   - **Test `markCompleted` requires `durationMs > 0`; rejects `durationMs <= 0`** (Blocker #5, #7)
+   - **Test `validateScenes` requires `durationMs > 0`; rejects `durationMs <= 0`** (Blocker #5, #7)
+   - **Test `validateScenes` rejects scenes where `end_ms > durationMs`** (Blocker #7)
+   - **Test `validateScenes` accepts empty scenes but still requires `durationMs > 0`** (Blocker #7)
+   - **Test `validateScenes` enforces index invariant: first=0, sequential, no gaps/duplicates/reversed** (Blocker #9)
+   - **Test overflow never persists COMPLETED; overflow marks FAILED** (Blocker #7)
+   - **Test retry FAILED→DETECTING→COMPLETED works after fixing overflow** (Blocker #7)
 
 2. **`apps/api/tests/Feature/Jobs/ProcessMediaAssetSceneDetectionTest.php`**
    - Test job chains probe → scene detection → completed
@@ -301,6 +404,13 @@ Create feature tests for the MediaSceneAnalysis model and ProcessMediaAsset scen
    - Test scene detection failure does not block audio path
    - Test video without audio still receives scene detection
    - Test existing tests remain green
+   - **Test end==duration accepted** (Blocker #7)
+   - **Test end<duration accepted** (Blocker #7)
+   - **Test end>duration rejected** (Blocker #7)
+   - **Test large overflow rejected** (Blocker #7)
+   - **Test duration==0 rejected** (Blocker #7)
+   - **Test missing duration rejected** (Blocker #7)
+   - **Test malformed duration rejected** (Blocker #7)
 
 ### Files to Modify
 
@@ -322,6 +432,7 @@ Create feature tests for the MediaSceneAnalysis model and ProcessMediaAsset scen
    - No queue issues
    - No mocking issues
    - Existing transcription tests pass
+   - **All Blocker #7 duration boundary tests pass**
 
 ## Phase 10: CI Integration
 
@@ -331,9 +442,15 @@ Ensure CI can run Python worker tests and Laravel tests with scene detection.
 ### Files to Modify
 
 1. **`.github/workflows/backend.yml`** (if exists)
-   - Add `SCENE_DETECTION_ENGINE=deterministic` in CI environment
+   - Add `SCENE_DETECTION_ENGINE=deterministic` in CI environment (explicit, not relying on code default)
+   - **Change `pip install -e .` to `pip install -e ".[scene_detection,dev]"`** (Blocker #4)
    - Add scene detect timeout configuration
    - Ensure worker tests run BEFORE Laravel tests
+
+### Blocker Fixes in This Phase
+
+- **Blocker #4**: CI installs `[scene_detection]` extra so PySceneDetectAdapter can be imported/tested
+- **Blocker #1**: CI explicitly sets `SCENE_DETECTION_ENGINE=deterministic` (not relying on code default)
 
 ### Verification Steps
 
@@ -341,6 +458,8 @@ Ensure CI can run Python worker tests and Laravel tests with scene detection.
    - All checks green
    - Worker tests pass in CI
    - Laravel tests pass in CI
+   - **No model downloads in CI**
+   - **Deterministic engine used in CI**
    - No flaky tests
    - No model downloads in CI
 

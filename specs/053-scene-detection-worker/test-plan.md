@@ -1,5 +1,27 @@
 # Test Plan: Deterministic Scene Detection Worker Stage
 
+## Blocker Reconciliation Summary
+
+This test plan addresses all 13 requirements-compliance blockers from the PR review:
+
+| Blocker | Description | Test Coverage |
+|---------|-------------|---------------|
+| #1 | CLI runtime default overrides factory; stale install docs | Engine selection tests; docstring verification |
+| #2 | PySceneDetectAdapter unit tests missing (~15 mock tests) | New `test_pyscenedetect_adapter.py` |
+| #3 | Integration test missing (real FFmpeg video + real adapter) | New `test_pyscenedetect_integration.py` |
+| #4 | CI missing `[scene_detection]` extra | CI configuration test; documented in Phase 10 |
+| #5 | Duration fail-open in `validateScenes` | Duration boundary tests (Model + Job) |
+| #6 | Contract doesn't require duration for detect_scenes | Contract validation tests |
+| #7 | Laravel boundary tests missing | Comprehensive duration/index boundary tests |
+| #8 | Malformed success accepted (silent coercion) | Worker result validation tests |
+| #9 | Index invariant not enforced | Index invariant tests (0-based, sequential, no gaps/dupes/reversed) |
+| #10 | Double video open in PySceneDetectAdapter | Adapter test: `open_video()` not called |
+| #11 | Evidence invalid (PENDING, contradictions) | N/A — evidence.md handled by Orchestrator |
+| #12 | PR body stale | N/A — PR body handled by Orchestrator |
+| #13 | Issue #53 vs Spec disagree (MediaScene model) | N/A — Spec documents Option B reconciliation |
+
+---
+
 ## Unit Tests
 
 ### Python Worker Scene Detection Engine Abstraction
@@ -63,19 +85,79 @@
 - **When**: `DeterministicSceneDetector.detect()` is called
 - **Then**: `scenes` is empty list (not error)
 
-#### PySceneDetect Adapter
+#### PySceneDetect Adapter (Blocker #2 — ~15 mock-based tests)
 
-**Test**: `test_pyscenedetect_adapter_initialization`
-- **Given**: Environment variables for threshold
-- **When**: `PySceneDetectAdapter` is instantiated
-- **Then**: Configuration is stored
-- **And**: No model download occurs (mocked)
+**Test**: `test_pyscenedetect_adapter_implements_protocol`
+- **Given**: `PySceneDetectAdapter` class
+- **When**: Instantiated
+- **Then**: Is instance of `SceneDetector` ABC
 
-**Test**: `test_pyscenedetect_adapter_detect_calls_engine`
-- **Given**: Mocked PySceneDetect
-- **When**: `PySceneDetectAdapter.detect()` is called
-- **Then**: Scene detection is invoked
-- **And**: Result is converted to `SceneResult`
+**Test**: `test_pyscenedetect_adapter_lazy_import`
+- **Given**: `PySceneDetectAdapter` instantiated
+- **When**: `detect()` NOT called
+- **Then**: `scenedetect` NOT imported
+- **And**: Import occurs only inside `detect()`
+
+**Test**: `test_pyscenedetect_adapter_content_detector_threshold`
+- **Given**: `options={"threshold": 15.0}`
+- **When**: `detect()` called (mocked scenedetect)
+- **Then**: `ContentDetector(threshold=15.0)` instantiated
+
+**Test**: `test_pyscenedetect_adapter_detect_api_invoked`
+- **Given**: Mocked `scenedetect.detect`
+- **When**: `detect(video_path, options)` called
+- **Then**: `scenedetect.detect()` called with correct video_path and detector
+
+**Test**: `test_pyscenedetect_adapter_timecodes_to_ms`
+- **Given**: Mocked scenedetect returns timecodes (FrameTimecode objects)
+- **When**: `detect()` called
+- **Then**: Scenes have integer `start_ms`, `end_ms` (correct conversion)
+
+**Test**: `test_pyscenedetect_adapter_zero_based_sequential_indexes`
+- **Given**: Mocked scenedetect returns 3 scenes
+- **When**: `detect()` called
+- **Then**: Scene indexes are 0, 1, 2 (sequential, 0-based)
+
+**Test**: `test_pyscenedetect_adapter_empty_scenes`
+- **Given**: Mocked scenedetect returns empty list
+- **When**: `detect()` called
+- **Then**: Returns `SceneResult` with empty `scenes` list (not error)
+
+**Test**: `test_pyscenedetect_adapter_corrupt_media_failure`
+- **Given**: Mocked scenedetect raises exception on corrupt video
+- **When**: `detect()` called
+- **Then**: Raises/captures error gracefully; returns error result
+
+**Test**: `test_pyscenedetect_adapter_missing_dependency_failure`
+- **Given**: `scenedetect` not installed
+- **When**: `PySceneDetectAdapter` instantiated and `detect()` called
+- **Then**: Raises `ImportError` with clear install hint (`pip install scenedetect[opencv-headless]`)
+
+**Test**: `test_pyscenedetect_adapter_version_reported`
+- **Given**: `scenedetect.__version__ = "0.6.2"`
+- **When**: `get_version()` called
+- **Then**: Returns "0.6.2"
+
+**Test**: `test_pyscenedetect_adapter_parameters_reported`
+- **Given**: `options={"threshold": 27.0}`
+- **When**: `detect()` called
+- **Then**: `SceneResult.parameters == {"threshold": 27.0}`
+
+**Test**: `test_pyscenedetect_adapter_explicit_deterministic_still_works`
+- **Given**: `SCENE_DETECTION_ENGINE=deterministic`
+- **When**: `get_scene_detector("deterministic")` called
+- **Then**: Returns `DeterministicSceneDetector` instance
+
+**Test**: `test_pyscenedetect_adapter_unset_env_selects_pyscenedetect`
+- **Given**: `SCENE_DETECTION_ENGINE` unset
+- **When**: `get_scene_detector(None)` called
+- **Then**: Returns `PySceneDetectAdapter` instance (production default)
+
+**Test**: `test_pyscenedetect_adapter_no_double_video_open` (Blocker #10)
+- **Given**: Mocked `scenedetect.open_video` and `scenedetect.detect`
+- **When**: `PySceneDetectAdapter.detect()` called
+- **Then**: `scenedetect.open_video()` NOT called
+- **And**: `scenedetect.detect()` called (handles opening internally)
 
 #### Factory Function
 
@@ -89,12 +171,17 @@
 - **When**: `get_scene_detector()` is called
 - **Then**: Returns `PySceneDetectAdapter` instance
 
+**Test**: `test_get_scene_detector_returns_pyscenedetect_for_none_engine` (Blocker #1)
+- **Given**: `SCENE_DETECTION_ENGINE` unset, `get_scene_detector(None)` called
+- **When**: Factory invoked with `None`
+- **Then**: Returns `PySceneDetectAdapter` instance (production default)
+
 **Test**: `test_get_scene_detector_raises_for_unknown_engine`
 - **Given**: `SCENE_DETECTION_ENGINE=unknown`
 - **When**: `get_scene_detector()` is called
 - **Then**: Raises `ValueError` or `ImportError`
 
-#### Scene Result Validation
+#### Scene Result Validation (includes Blocker #9 index invariant)
 
 **Test**: `test_validate_scene_result_passes_for_valid_scenes`
 - **Given**: Ordered, non-overlapping scenes with valid timing
@@ -130,6 +217,26 @@
 - **Given**: Scene with end_ms = start_ms
 - **When**: `validate_scene_result()` is called
 - **Then**: Raises `ValueError`
+
+**Test**: `test_validate_scene_result_enforces_index_invariant_first_is_zero` (Blocker #9)
+- **Given**: Scenes with first index = 1
+- **When**: `validate_scene_result()` is called
+- **Then**: Raises `ValueError` (first index must be 0)
+
+**Test**: `test_validate_scene_result_enforces_index_invariant_sequential` (Blocker #9)
+- **Given**: Scenes with indexes [0, 2] (gap)
+- **When**: `validate_scene_result()` is called
+- **Then**: Raises `ValueError` (indexes must be sequential)
+
+**Test**: `test_validate_scene_result_enforces_index_invariant_no_duplicates` (Blocker #9)
+- **Given**: Scenes with indexes [0, 1, 1]
+- **When**: `validate_scene_result()` is called
+- **Then**: Raises `ValueError` (duplicate indexes)
+
+**Test**: `test_validate_scene_result_enforces_index_invariant_no_reversed` (Blocker #9)
+- **Given**: Scenes with indexes [1, 0]
+- **When**: `validate_scene_result()` is called
+- **Then**: Raises `ValueError` (indexes must be ascending)
 
 ### Python Worker detect-scenes Logic
 
@@ -195,13 +302,18 @@
 - **Then**: Returns dict with `status` = "error"
 - **And**: `error` contains "timeout" or "timed out"
 
-#### Engine Selection
+#### Engine Selection (Blocker #1)
 
 **Test**: `test_detect_scenes_uses_deterministic_engine_when_configured`
 - **Given**: `SCENE_DETECTION_ENGINE=deterministic`
 - **When**: `detect_scenes()` is called
 - **Then**: `DeterministicSceneDetector` is used
 - **And**: No model download occurs
+
+**Test**: `test_detect_scenes_child_passes_none_to_factory` (Blocker #1)
+- **Given**: `detect_scenes.py` child process
+- **When**: `get_scene_detector()` called without explicit engine
+- **Then**: Factory called with `None` (not `"deterministic"`)
 
 ### Worker CLI Tests: detect-scenes Subcommand
 
@@ -261,15 +373,15 @@
 - **Then**: stdout is valid JSON
 - **And**: JSON contains `status` = "error"
 
-### Worker Contract Validation Tests
+### Worker Contract Validation Tests (Blocker #6)
 
 **Test**: `test_contract_valid_with_action_detect_scenes`
-- **Given**: Contract with `action: "detect_scenes"`
+- **Given**: Contract with `action: "detect_scenes"` and `media.duration_ms >= 1`
 - **When**: Contract is validated
 - **Then**: Validation passes
 
 **Test**: `test_contract_valid_with_action_detect_scenes_no_extra_fields`
-- **Given**: Contract with `action: "detect_scenes"` and no extra fields
+- **Given**: Contract with `action: "detect_scenes"` and required `media.duration_ms`
 - **When**: Contract is validated
 - **Then**: Validation passes
 
@@ -277,6 +389,26 @@
 - **Given**: Contract with `action: "unknown_action"`
 - **When**: Contract is validated
 - **Then**: Validation fails
+
+**Test**: `test_contract_invalid_detect_scenes_missing_duration_ms` (Blocker #6)
+- **Given**: Contract with `action: "detect_scenes"` but NO `media.duration_ms`
+- **When**: Contract is validated
+- **Then**: Validation fails (duration_ms required for detect_scenes)
+
+**Test**: `test_contract_invalid_detect_scenes_duration_ms_zero` (Blocker #6)
+- **Given**: Contract with `action: "detect_scenes"` and `media.duration_ms: 0`
+- **When**: Contract is validated
+- **Then**: Validation fails (duration_ms must be >= 1)
+
+**Test**: `test_contract_invalid_detect_scenes_duration_ms_negative` (Blocker #6)
+- **Given**: Contract with `action: "detect_scenes"` and `media.duration_ms: -1`
+- **When**: Contract is validated
+- **Then**: Validation fails (duration_ms must be >= 1)
+
+**Test**: `test_contract_invalid_detect_scenes_duration_ms_malformed` (Blocker #6)
+- **Given**: Contract with `action: "detect_scenes"` and `media.duration_ms: "not_a_number"`
+- **When**: Contract is validated
+- **Then**: Validation fails (duration_ms must be integer)
 
 ### Worker Timeout and Process Isolation Tests
 
@@ -382,7 +514,7 @@
 
 **Test**: `test_mark_completed_transitions_detecting_to_completed`
 - **Given**: MediaSceneAnalysis with status `detecting`
-- **When**: `markCompleted()` is called with valid data
+- **When**: `markCompleted()` is called with valid data **and required `durationMs > 0`** (Blocker #5)
 - **Then**: Status becomes `completed`
 - **And**: `detector`, `detector_version`, `parameters`, `scenes` are stored
 
@@ -407,6 +539,95 @@
 - **When**: `markDetecting()` is called
 - **Then**: Status becomes `detecting`
 - **And**: Previous error is cleared
+
+**Test**: `test_mark_completed_rejects_duration_ms_zero_or_negative` (Blocker #5)
+- **Given**: MediaSceneAnalysis with status `detecting`
+- **When**: `markCompleted()` called with `durationMs = 0` or `durationMs = -1`
+- **Then**: Throws `InvalidArgumentException` ("Duration must be > 0")
+
+**Test**: `test_mark_completed_requires_duration_ms` (Blocker #5)
+- **Given**: MediaSceneAnalysis with status `detecting`
+- **When**: `markCompleted()` called without `durationMs` (signature change: now required)
+- **Then**: Type error / argument count error (durationMs is now required parameter)
+
+#### validateScenes Duration Boundary Tests (Blocker #7)
+
+**Test**: `test_validate_scenes_rejects_duration_ms_zero` (Blocker #7)
+- **Given**: Valid scenes array, `durationMs = 0`
+- **When**: `validateScenes($scenes, 0)` called
+- **Then**: Throws `InvalidArgumentException` ("Duration must be > 0")
+
+**Test**: `test_validate_scenes_rejects_duration_ms_negative` (Blocker #7)
+- **Given**: Valid scenes array, `durationMs = -1`
+- **When**: `validateScenes($scenes, -1)` called
+- **Then**: Throws `InvalidArgumentException` ("Duration must be > 0")
+
+**Test**: `test_validate_scenes_accepts_end_ms_equal_duration` (Blocker #7)
+- **Given**: Scene with `end_ms = durationMs` (exactly at boundary)
+- **When**: `validateScenes($scenes, $durationMs)` called
+- **Then**: No exception (end == duration accepted)
+
+**Test**: `test_validate_scenes_accepts_end_ms_less_than_duration` (Blocker #7)
+- **Given**: Scene with `end_ms < durationMs`
+- **When**: `validateScenes($scenes, $durationMs)` called
+- **Then**: No exception (end < duration accepted)
+
+**Test**: `test_validate_scenes_rejects_end_ms_greater_than_duration` (Blocker #7)
+- **Given**: Scene with `end_ms > durationMs` (overflow by 1ms)
+- **When**: `validateScenes($scenes, $durationMs)` called
+- **Then**: Throws `InvalidArgumentException` (scene end_ms exceeds media duration)
+
+**Test**: `test_validate_scenes_rejects_large_overflow` (Blocker #7)
+- **Given**: Scene with `end_ms >> durationMs` (large overflow)
+- **When**: `validateScenes($scenes, $durationMs)` called
+- **Then**: Throws `InvalidArgumentException`
+
+**Test**: `test_validate_scenes_accepts_empty_scenes_but_requires_duration` (Blocker #7)
+- **Given**: Empty scenes array, `durationMs = 5000`
+- **When**: `validateScenes([], 5000)` called
+- **Then**: No exception (empty scenes valid, but duration still required)
+
+**Test**: `test_validate_scenes_empty_scenes_rejects_zero_duration` (Blocker #7)
+- **Given**: Empty scenes array, `durationMs = 0`
+- **When**: `validateScenes([], 0)` called
+- **Then**: Throws `InvalidArgumentException` ("Duration must be > 0")
+
+**Test**: `test_validate_scenes_overflow_never_persists_completed` (Blocker #7)
+- **Given**: MediaSceneAnalysis in `detecting`, scenes with overflow
+- **When**: `markCompleted()` called (which calls `validateScenes`)
+- **Then**: Exception thrown; status remains `detecting` (not COMPLETED)
+
+**Test**: `test_validate_scenes_overflow_marks_failed` (Blocker #7)
+- **Given**: Job calls `detectScenes()`, gets overflow scenes, calls `markFailed()`
+- **When**: Job handles exception
+- **Then**: MediaSceneAnalysis status becomes `failed` (not completed)
+
+**Test**: `test_retry_failed_to_detecting_to_completed_after_fix` (Blocker #7)
+- **Given**: MediaSceneAnalysis status `failed` (from previous overflow)
+- **When**: `markDetecting()` called, then `markCompleted()` with valid scenes + duration
+- **Then**: Status transitions `failed` → `detecting` → `completed`
+
+#### Index Invariant Tests (Blocker #9)
+
+**Test**: `test_validate_scenes_enforces_first_index_zero` (Blocker #9)
+- **Given**: Scenes with first index = 1
+- **When**: `validateScenes($scenes, $durationMs)` called
+- **Then**: Throws `InvalidArgumentException` (first index must be 0)
+
+**Test**: `test_validate_scenes_enforces_sequential_indexes` (Blocker #9)
+- **Given**: Scenes with indexes [0, 2] (gap)
+- **When**: `validateScenes($scenes, $durationMs)` called
+- **Then**: Throws `InvalidArgumentException` (indexes must be sequential)
+
+**Test**: `test_validate_scenes_rejects_duplicate_indexes` (Blocker #9)
+- **Given**: Scenes with indexes [0, 1, 1]
+- **When**: `validateScenes($scenes, $durationMs)` called
+- **Then**: Throws `InvalidArgumentException` (duplicate indexes)
+
+**Test**: `test_validate_scenes_rejects_reversed_indexes` (Blocker #9)
+- **Given**: Scenes with indexes [1, 0]
+- **When**: `validateScenes($scenes, $durationMs)` called
+- **Then**: Throws `InvalidArgumentException` (indexes must be ascending)
 
 ### ProcessMediaAsset Job: Scene Detection Tests
 
@@ -536,6 +757,36 @@
 - **When**: `detectScenes()` is called
 - **Then**: Command includes `detect-scenes` subcommand
 
+**Test**: `test_action_requires_duration_ms_in_contract` (Blocker #6)
+- **Given**: Contract without `media.duration_ms`
+- **When**: `detectScenes()` is called
+- **Then**: Contract validation fails before process invocation
+
+**Test**: `test_action_validates_worker_result_required_fields` (Blocker #8)
+- **Given**: Mocked `Process` returning JSON missing `detector`
+- **When**: `detectScenes()` is called
+- **Then**: Throws `ProcessMediaException` ("Malformed scene_detection result: missing required fields")
+
+**Test**: `test_action_validates_worker_result_detector_version_required` (Blocker #8)
+- **Given**: Mocked `Process` returning JSON missing `detector_version`
+- **When**: `detectScenes()` is called
+- **Then**: Throws `ProcessMediaException`
+
+**Test**: `test_action_validates_worker_result_parameters_array_required` (Blocker #8)
+- **Given**: Mocked `Process` returning JSON with `parameters: null` or missing
+- **When**: `detectScenes()` is called
+- **Then**: Throws `ProcessMediaException` (parameters must be array)
+
+**Test**: `test_action_validates_worker_result_scenes_array_required` (Blocker #8)
+- **Given**: Mocked `Process` returning JSON with `scenes: null` or missing
+- **When**: `detectScenes()` is called
+- **Then**: Throws `ProcessMediaException` (scenes must be array)
+
+**Test**: `test_action_passes_duration_ms_to_contract` (Blocker #6)
+- **Given**: Contract with `media.duration_ms = 10000`
+- **When**: `detectScenes()` is called
+- **Then**: Worker receives contract with `duration_ms = 10000`
+
 ## E2E Scenarios
 
 ### End-to-End Scene Detection Flow
@@ -560,7 +811,7 @@
 - MediaSceneAnalysis exists with status `completed`
 - MediaSceneAnalysis has scenes ordered by start_ms
 - MediaSceneAnalysis scenes are non-overlapping
-- Scene indexes are 0-based and sequential
+- **Scene indexes are 0-based and sequential (no gaps, duplicates, reversed)** (Blocker #9)
 
 ### Error Scenario: Corrupt Video
 
@@ -605,6 +856,25 @@
 - Transcription proceeds
 - MediaAsset state is `completed`
 
+## Integration Tests (Blocker #3)
+
+### Real PySceneDetectAdapter + FFmpeg-Generated Video
+
+**Test**: `test_pyscenedetect_integration_real_video` (Blocker #3)
+- **Given**: FFmpeg-generated test video with solid color segments A→B→C
+  - `ffmpeg -f lavfi -i "testsrc=duration=10:size=320x240:rate=30" -c:v libx264 -pix_fmt yuv420p test_video.mp4`
+- **And**: `SCENE_DETECTION_ENGINE=pyscenedetect` (requires `[scene_detection]` extra)
+- **When**: `PySceneDetectAdapter.detect(test_video.mp4, {"duration_ms": 10000})` called
+- **Then**: Real `scenedetect` library invoked (not mocked)
+- **And**: Real video decode via OpenCV
+- **And**: Real `ContentDetector` used with default threshold
+- **And**: Scene boundaries ordered by start_ms
+- **And**: Scenes non-overlapping (`start_ms[i] >= end_ms[i-1]`)
+- **And**: All timestamps are integer milliseconds
+- **And**: Final scene `end_ms <= 10000` (within provided duration)
+- **And**: At least 2 scenes detected (A→B and B→C transitions)
+- **Mark**: `@pytest.mark.integration` — runs only when `[scene_detection]` extra installed
+
 ## RED/GREEN/REFACTOR Evidence Requirements
 
 ### For Each Test
@@ -639,22 +909,26 @@ For each test file:
 
 1. **Python Worker Unit Tests**
    - `test_scene_detection_engine.py`
+   - `test_pyscenedetect_adapter.py` (Blocker #2)
    - `test_detect_scenes.py`
    - `test_cli_detect_scenes.py`
 
-2. **Laravel Unit Tests**
+2. **Python Worker Integration Tests** (optional, requires `[scene_detection]` extra)
+   - `test_pyscenedetect_integration.py` (Blocker #3)
+
+3. **Laravel Unit Tests**
    - `MediaSceneAnalysisTest.php`
    - `ProcessMediaActionDetectScenesTest.php`
 
-3. **Laravel Feature Tests**
+4. **Laravel Feature Tests**
    - `ProcessMediaAssetSceneDetectionTest.php`
 
-4. **Existing Regression Tests**
+5. **Existing Regression Tests**
    - `ProcessMediaAssetTranscriptionTest.php` (updated mocks)
    - `ProcessMediaAssetProbeTest.php` (unchanged)
    - `ProcessMediaAssetAudioExtractionTest.php` (unchanged)
 
-5. **Full Test Suite**
+6. **Full Test Suite**
    - Run all tests to verify no regressions
 
 ## Test Environment Requirements
@@ -679,8 +953,8 @@ For each test file:
 ### CI Environment
 
 - All of the above
-- `SCENE_DETECTION_ENGINE=deterministic` environment variable
-- Python dependencies installed
+- `SCENE_DETECTION_ENGINE=deterministic` environment variable (explicit, not relying on code default — Blocker #1)
+- **Python dependencies installed with `[scene_detection]` extra: `pip install -e ".[scene_detection,dev]"`** (Blocker #4)
 - Database migrations run
 - MinIO service available
 - No model downloads
@@ -714,3 +988,13 @@ For each test file:
 - Error handling fully tested
 - Pipeline restructuring preserves existing audio extraction and transcription behavior
 - Existing transcription tests pass with updated mocks
+- **PySceneDetectAdapter: ~15 mock-based unit tests pass** (Blocker #2)
+- **Integration test: real FFmpeg video + real PySceneDetectAdapter passes** (Blocker #3)
+- **CI installs `[scene_detection]` extra and runs worker tests** (Blocker #4)
+- **Duration required for detect_scenes: contract validates `duration_ms >= 1`** (Blocker #6)
+- **Laravel duration-bound enforcement: all boundary tests pass** (Blocker #7)
+- **Worker result validation: missing fields throw, no silent coercion** (Blocker #8)
+- **Index invariant enforced: 0-based, sequential, no gaps/dupes/reversed** (Blocker #9)
+- **PySceneDetectAdapter: no double video open** (Blocker #10)
+- **Engine selection: child passes None, CI explicitly sets deterministic** (Blocker #1)
+- **Spec documents Option B reconciliation with Issue #53** (Blocker #13)

@@ -33,7 +33,7 @@ def _run_detect_scenes_child(contract: dict[str, Any]) -> dict[str, Any]:
         }
 
     try:
-        engine_name = os.environ.get("SCENE_DETECTION_ENGINE", "deterministic")
+        engine_name = os.environ.get("SCENE_DETECTION_ENGINE") or None
         detector = get_scene_detector(engine_name)
     except (ValueError, ImportError) as e:
         return {
