@@ -47,8 +47,8 @@ rendering, and social features do not exist yet.
 # Current Milestone
 
 M4 Video Understanding (in progress):
-- Deterministic transcription worker stage (Issue #51).
-- Deterministic scene detection worker stage (Issue #53).
+- Deterministic transcription worker stage (Issue #51) ✅
+- Deterministic scene detection worker stage (Issue #53) ✅
 - Transcription engine abstraction (DeterministicTranscriber for CI,
   FasterWhisperTranscriber for runtime).
 - Scene detection engine abstraction (DeterministicSceneDetector for CI,
