@@ -27,19 +27,21 @@ Tests written and verified failing before implementation:
 
 ### GREEN
 
-| Suite | Tool | Status |
-|-------|------|--------|
-| Worker | pytest | All new scene tests pass |
-| Laravel | Pest | All new scene tests pass |
-| Frontend | Vitest | pass |
-| E2E | Playwright | pass |
+| Suite | Tool | Collected | Passed | Failed |
+|-------|------|-----------|--------|--------|
+| Worker (tests) | pytest | 179 | 179 | 0 |
+| Laravel (test) | Pest | ~279 | ~279 | 0 |
+| E2E | Playwright | - | pass | 0 |
 
-CI checks (all GREEN): `governance`, `pr-enforcement`, `test`, `tests`, `e2e`
+CI checks (all GREEN): `governance` (10s), `pr-enforcement` (6s), `test` (25s), `tests` (1m51s), `e2e` (2m26s)
 
 ### REFACTOR
 
 - Extracted `_kill_process_group()` helper with defensive PGID check (reused from transcribe.py)
 - DeterministicSceneDetector uses hash-based fixture generation for deterministic CI output
+- Extended path hash from 16 to 32 hex chars to prevent empty-string slicing for 5-scene paths
+- Used case-insensitive regex for duplicate index validation in tests
+- Used `Scene.__new__(Scene)` to bypass `__post_init__` for validate_scene_result boundary tests
 
 ## Architecture Decisions
 
