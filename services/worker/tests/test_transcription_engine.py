@@ -44,6 +44,59 @@ class TestSegment:
         segment = Segment(start_ms=100, end_ms=200, text="test")
         assert isinstance(segment.text, str)
 
+    def test_segment_rejects_negative_start_ms(self) -> None:
+        """Segment rejects negative start_ms."""
+        with pytest.raises(ValueError, match="start_ms"):
+            Segment(start_ms=-1, end_ms=1000, text="test")
+
+    def test_segment_rejects_end_before_start(self) -> None:
+        """Segment rejects end_ms < start_ms."""
+        with pytest.raises(ValueError, match="end_ms"):
+            Segment(start_ms=1000, end_ms=500, text="test")
+
+    def test_segment_rejects_empty_text(self) -> None:
+        """Segment rejects empty text."""
+        with pytest.raises(ValueError, match="text"):
+            Segment(start_ms=0, end_ms=1000, text="")
+
+    def test_segment_rejects_whitespace_only_text(self) -> None:
+        """Segment rejects whitespace-only text."""
+        with pytest.raises(ValueError, match="text"):
+            Segment(start_ms=0, end_ms=1000, text="   ")
+
+
+class TestTranscriptValidation:
+    """Test transcript result validation."""
+
+    def test_transcript_result_rejects_unordered_segments(self) -> None:
+        """TranscriptResult rejects segments not ordered by start_ms."""
+        from aiclip_worker.transcription import validate_transcript_result
+        segments = [
+            Segment(start_ms=1000, end_ms=2000, text="second"),
+            Segment(start_ms=0, end_ms=1000, text="first"),
+        ]
+        with pytest.raises(ValueError, match="order"):
+            validate_transcript_result(segments)
+
+    def test_transcript_result_rejects_overlapping_segments(self) -> None:
+        """TranscriptResult rejects overlapping segments."""
+        from aiclip_worker.transcription import validate_transcript_result
+        segments = [
+            Segment(start_ms=0, end_ms=1500, text="first"),
+            Segment(start_ms=1000, end_ms=2000, text="second"),
+        ]
+        with pytest.raises(ValueError, match="overlap"):
+            validate_transcript_result(segments)
+
+    def test_validate_transcript_result_passes_for_valid(self) -> None:
+        """validate_transcript_result accepts valid segments."""
+        from aiclip_worker.transcription import validate_transcript_result
+        segments = [
+            Segment(start_ms=0, end_ms=1000, text="first"),
+            Segment(start_ms=1000, end_ms=2000, text="second"),
+        ]
+        validate_transcript_result(segments)  # Should not raise
+
 
 class TestTranscriptResult:
     """Test TranscriptResult dataclass."""
@@ -164,6 +217,68 @@ class TestFasterWhisperTranscriber:
         """FasterWhisperTranscriber is a Transcriber."""
         transcriber = FasterWhisperTranscriber()
         assert isinstance(transcriber, Transcriber)
+
+    def test_faster_whisper_transcribe_calls_model_transcribe(self) -> None:
+        """FasterWhisperTranscriber.transcribe calls WhisperModel.transcribe."""
+        mock_model = MagicMock()
+        mock_segment = MagicMock()
+        mock_segment.start = 0.0
+        mock_segment.end = 1.5
+        mock_segment.text = " Hello world "
+        mock_model.transcribe.return_value = (
+            [mock_segment],
+            MagicMock(language="en", language_probability=0.9),
+        )
+
+        with patch.dict(os.environ, {
+            "WHISPER_MODEL": "base",
+            "WHISPER_DEVICE": "cpu",
+            "WHISPER_COMPUTE_TYPE": "int8",
+        }):
+            with patch("aiclip_worker.transcription.FasterWhisperTranscriber._load_model") as mock_load:
+                transcriber = FasterWhisperTranscriber()
+                transcriber._model = mock_model
+                result = transcriber.transcribe("/tmp/test.wav", {"language": "en", "beam_size": 5})
+
+        mock_model.transcribe.assert_called_once_with(
+            "/tmp/test.wav", language="en", beam_size=5
+        )
+        assert result.language == "en"
+        assert len(result.segments) == 1
+        assert result.segments[0].start_ms == 0
+        assert result.segments[0].end_ms == 1500
+        assert result.segments[0].text == "Hello world"
+
+    def test_faster_whisper_model_load_is_lazy(self) -> None:
+        """FasterWhisperTranscriber does not load model on construction."""
+        with patch.dict(os.environ, {
+            "WHISPER_MODEL": "base",
+            "WHISPER_DEVICE": "cpu",
+            "WHISPER_COMPUTE_TYPE": "int8",
+        }):
+            with patch("aiclip_worker.transcription.FasterWhisperTranscriber._load_model") as mock_load:
+                transcriber = FasterWhisperTranscriber()
+                mock_load.assert_not_called()
+
+    def test_faster_whisper_missing_dependency_raises_import_error(self) -> None:
+        """FasterWhisperTranscriber raises ImportError when faster-whisper missing."""
+        transcriber = FasterWhisperTranscriber()
+        transcriber._model = None
+
+        with patch.dict("sys.modules", {"faster_whisper": None}):
+            with pytest.raises(ImportError, match="faster-whisper"):
+                transcriber._load_model()
+
+    def test_faster_whisper_model_error_propagates(self) -> None:
+        """FasterWhisperTranscriber propagates model errors."""
+        mock_model = MagicMock()
+        mock_model.transcribe.side_effect = RuntimeError("Model inference failed")
+
+        transcriber = FasterWhisperTranscriber()
+        transcriber._model = mock_model
+
+        with pytest.raises(RuntimeError, match="Model inference failed"):
+            transcriber.transcribe("/tmp/test.wav", {})
 
 
 class TestGetTranscriber:

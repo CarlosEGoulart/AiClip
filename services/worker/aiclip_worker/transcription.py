@@ -17,6 +17,21 @@ class Segment:
     end_ms: int
     text: str
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.start_ms, int):
+            raise TypeError("start_ms must be an integer")
+        if not isinstance(self.end_ms, int):
+            raise TypeError("end_ms must be an integer")
+        if self.start_ms < 0:
+            raise ValueError("start_ms must be >= 0")
+        if self.end_ms < self.start_ms:
+            raise ValueError("end_ms must be >= start_ms")
+        if not isinstance(self.text, str):
+            raise TypeError("text must be a string")
+        self.text = self.text.strip()
+        if not self.text:
+            raise ValueError("text must not be empty after trimming")
+
 
 @dataclass
 class TranscriptResult:
@@ -75,13 +90,16 @@ class DeterministicTranscriber(Transcriber):
 
         full_text = " ".join(seg.text for seg in segments)
 
-        return TranscriptResult(
+        result = TranscriptResult(
             language="en",
             full_text=full_text,
             segments=segments,
             engine="deterministic",
             model="deterministic",
         )
+        validate_transcript_result(result.segments)
+
+        return result
 
 
 class FasterWhisperTranscriber(Transcriber):
@@ -151,13 +169,16 @@ class FasterWhisperTranscriber(Transcriber):
 
         full_text = " ".join(full_text_parts)
 
-        return TranscriptResult(
+        result = TranscriptResult(
             language=info.language or "en",
             full_text=full_text,
             segments=segments,
             engine="faster_whisper",
             model=self.model_name,
         )
+        validate_transcript_result(result.segments)
+
+        return result
 
 
 def get_transcriber(engine: str | None = None) -> Transcriber:
@@ -183,3 +204,27 @@ def get_transcriber(engine: str | None = None) -> Transcriber:
         return FasterWhisperTranscriber()
     else:
         raise ValueError(f"Unknown transcription engine: {engine}")
+
+
+def validate_transcript_result(segments: list[Segment]) -> None:
+    """Validate that segments are ordered and non-overlapping.
+
+    Args:
+        segments: List of Segment objects to validate.
+
+    Raises:
+        ValueError: If segments are not ordered by start_ms or overlap.
+    """
+    for i in range(1, len(segments)):
+        if segments[i].start_ms < segments[i - 1].start_ms:
+            raise ValueError(
+                f"Segments must be ordered by start_ms: "
+                f"segment {i} start_ms={segments[i].start_ms} < "
+                f"segment {i - 1} start_ms={segments[i - 1].start_ms}"
+            )
+        if segments[i].start_ms < segments[i - 1].end_ms:
+            raise ValueError(
+                f"Segments must not overlap: "
+                f"segment {i} start_ms={segments[i].start_ms} < "
+                f"segment {i - 1} end_ms={segments[i - 1].end_ms}"
+            )
