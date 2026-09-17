@@ -91,6 +91,17 @@ it('creates DerivedAsset on successful extraction', function () {
         ],
     ];
 
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Hello world',
+            'segments' => [['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Hello world']],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
     $actionMock = Mockery::mock(ProcessMediaAction::class);
     $actionMock->shouldReceive('probe')
         ->once()
@@ -101,6 +112,9 @@ it('creates DerivedAsset on successful extraction', function () {
     $actionMock->shouldReceive('extractAudio')
         ->once()
         ->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')
+        ->once()
+        ->andReturn($transcribeResult);
 
     app()->instance(ProcessMediaAction::class, $actionMock);
 
@@ -137,6 +151,17 @@ it('stores extraction metadata in DerivedAsset', function () {
         ],
     ];
 
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Hello world',
+            'segments' => [['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Hello world']],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
     $actionMock = Mockery::mock(ProcessMediaAction::class);
     $actionMock->shouldReceive('probe')
         ->once()
@@ -147,6 +172,9 @@ it('stores extraction metadata in DerivedAsset', function () {
     $actionMock->shouldReceive('extractAudio')
         ->once()
         ->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')
+        ->once()
+        ->andReturn($transcribeResult);
 
     app()->instance(ProcessMediaAction::class, $actionMock);
 
@@ -227,6 +255,17 @@ it('skips extraction if DerivedAsset already exists', function () {
         'audio_codec' => 'aac',
     ];
 
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Hello world',
+            'segments' => [['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Hello world']],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
     $actionMock = Mockery::mock(ProcessMediaAction::class);
     $actionMock->shouldReceive('probe')
         ->once()
@@ -235,6 +274,9 @@ it('skips extraction if DerivedAsset already exists', function () {
             'probe' => $probeResult,
         ]);
     $actionMock->shouldNotReceive('extractAudio');
+    $actionMock->shouldReceive('transcribe')
+        ->once()
+        ->andReturn($transcribeResult);
 
     app()->instance(ProcessMediaAction::class, $actionMock);
 
@@ -359,11 +401,25 @@ it('valid transition probed to completed on extraction success', function () {
         ],
     ];
 
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Hello world',
+            'segments' => [['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Hello world']],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
     $actionMock = Mockery::mock(ProcessMediaAction::class);
     $actionMock->shouldNotReceive('probe');
     $actionMock->shouldReceive('extractAudio')
         ->once()
         ->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')
+        ->once()
+        ->andReturn($transcribeResult);
 
     app()->instance(ProcessMediaAction::class, $actionMock);
 

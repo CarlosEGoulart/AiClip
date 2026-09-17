@@ -34,6 +34,12 @@ Completed slices:
 - Deterministic FFprobe media probing worker (Issue #47)
 - Deterministic FFmpeg audio extraction worker (Issue #49)
 
+## M4 — Video Understanding (in progress)
+
+Completed slices:
+
+- Deterministic transcription worker stage (Issue #51)
+
 ## Planned Milestones
 
 | Milestone | Description |

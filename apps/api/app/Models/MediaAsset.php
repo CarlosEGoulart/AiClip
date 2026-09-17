@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class MediaAsset extends Model
 {
@@ -186,5 +187,13 @@ class MediaAsset extends Model
     public function derivedAssets(): HasMany
     {
         return $this->hasMany(DerivedAsset::class);
+    }
+
+    /**
+     * Get the transcript for this media asset.
+     */
+    public function transcript(): HasOne
+    {
+        return $this->hasOne(MediaTranscript::class);
     }
 }

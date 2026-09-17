@@ -20,7 +20,7 @@
     "created_at": { "type": "string", "format": "date-time" },
     "action": {
       "type": "string",
-      "enum": ["probe", "extract_audio"],
+      "enum": ["probe", "extract_audio", "transcribe"],
       "default": "probe"
     },
     "output_storage": {
@@ -42,6 +42,11 @@
         "width": { "type": "integer", "minimum": 1 },
         "height": { "type": "integer", "minimum": 1 }
       }
+    },
+    "derived_asset_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required for transcribe action. References DerivedAsset containing normalized audio."
     }
   },
   "additionalProperties": false

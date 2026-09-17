@@ -38,22 +38,25 @@ CSRF exceptions for media upload routes.
 
 E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
 5173/8000. Email verification not implemented. No project update/edit endpoint
-yet (out of scope for #30). No transcoding, scene detection, transcription,
-clip analysis, AI ranking, rendering, or social features exist yet.
+yet (out of scope for #30). Real runtime transcription model requires the
+faster-whisper optional dependency and model download. Mandatory CI uses
+deterministic engine. Scene detection, semantic clip analysis/ranking,
+rendering, and social features do not exist yet.
 
 # Current Milestone
 
-M3 Asynchronous Media Processing (completed):
-- Async processing job boundary (Issue #45).
-- Deterministic FFprobe media probing worker (Issue #47).
-- Deterministic FFmpeg audio extraction worker (Issue #49).
-- Audio normalization: mono, 16 kHz, PCM WAV derivative.
-- Private object storage for audio derivatives.
-- Laravel-controlled persistence and state management.
+M4 Video Understanding (in progress):
+- Deterministic transcription worker stage (Issue #51).
+- Transcription engine abstraction (DeterministicTranscriber for CI,
+  FasterWhisperTranscriber for runtime).
+- MediaTranscript model with retryable lifecycle
+  (pending → transcribing → completed/failed → transcribing).
+- Segment validation and transcription timeout enforcement.
+- ProcessMediaAsset chains: probe → audio extraction → transcription.
+- Laravel response validation for malformed worker output.
 
 # Next Architectural Goal
 
-M4 Video Understanding: first narrow slice — deterministic transcription
-worker stage. The normalized audio derivative from M3 becomes input for
-speech-to-text processing, producing structured transcript metadata with
-timestamps and segments.
+M4 Video Understanding — next narrow slice: scene segmentation/detection.
+Divide completed transcripts and video into semantic segments (scenes)
+for downstream clip analysis.
