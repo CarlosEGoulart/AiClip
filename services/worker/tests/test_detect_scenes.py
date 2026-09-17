@@ -44,6 +44,9 @@ def sample_contract_detect_scenes(sample_video_path: str) -> dict[str, Any]:
             "key": sample_video_path,
             "mime_type": "video/mp4",
         },
+        "media": {
+            "duration_ms": 6000
+        },
         "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "created_at": "2026-09-17T10:00:00Z",
         "action": "detect_scenes",
@@ -62,6 +65,9 @@ def sample_contract_no_storage_key() -> dict[str, Any]:
             "key": "",
             "mime_type": "video/mp4",
         },
+        "media": {
+            "duration_ms": 6000
+        },
         "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "created_at": "2026-09-17T10:00:00Z",
         "action": "detect_scenes",
@@ -79,6 +85,9 @@ def sample_contract_nonexistent_file() -> dict[str, Any]:
             "disk": "media",
             "key": "/nonexistent/path/video.mp4",
             "mime_type": "video/mp4",
+        },
+        "media": {
+            "duration_ms": 6000
         },
         "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "created_at": "2026-09-17T10:00:00Z",
@@ -200,6 +209,9 @@ class TestDetectScenesError:
                 "disk": "media",
                 "key": "",
                 "mime_type": "video/mp4",
+            },
+            "media": {
+                "duration_ms": 6000
             },
             "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
             "created_at": "2026-09-17T10:00:00Z",

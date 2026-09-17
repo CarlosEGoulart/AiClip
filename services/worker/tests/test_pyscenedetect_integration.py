@@ -48,7 +48,7 @@ class TestPySceneDetectIntegration:
             "color=c=red:size=320x240:duration=2:rate=30[red];"
             "color=c=green:size=320x240:duration=2:rate=30[green];"
             "color=c=blue:size=320x240:duration=2:rate=30[blue];"
-            "[red][green][blue]concat=n=3:v=1:a=0[outv]"
+            "[red][green][blue]concat=n=3:v=1:a=0[out]"
         )
 
         cmd = [
@@ -58,6 +58,7 @@ class TestPySceneDetectIntegration:
             "-i", filter_complex,
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
+            "-map", "[out]",
             "-t", str(duration_seconds),
             output_path,
         ]

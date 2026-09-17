@@ -26,6 +26,9 @@ def valid_contract_detect_scenes() -> dict[str, Any]:
             "key": str(FIXTURES_DIR / "valid_sample.mp4"),
             "mime_type": "video/mp4",
         },
+        "media": {
+            "duration_ms": 6000
+        },
         "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "created_at": "2026-09-17T10:00:00Z",
         "action": "detect_scenes",
@@ -43,6 +46,9 @@ def invalid_action_contract() -> dict[str, Any]:
             "disk": "media",
             "key": str(FIXTURES_DIR / "valid_sample.mp4"),
             "mime_type": "video/mp4",
+        },
+        "media": {
+            "duration_ms": 6000
         },
         "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "created_at": "2026-09-17T10:00:00Z",
@@ -79,6 +85,9 @@ class TestContractDetectScenesValidation:
                 "disk": "media",
                 "key": str(FIXTURES_DIR / "valid_sample.mp4"),
                 "mime_type": "video/mp4",
+            },
+            "media": {
+                "duration_ms": 6000
             },
             "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
             "created_at": "2026-09-17T10:00:00Z",

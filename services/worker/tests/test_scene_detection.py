@@ -395,8 +395,8 @@ class TestPySceneDetectAdapter:
         adapter = PySceneDetectAdapter()
         assert isinstance(adapter, SceneDetector)
 
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
     def test_adapter_detect_returns_scenes_with_correct_structure(
         self, mock_detect: MagicMock
     ) -> None:
@@ -426,8 +426,8 @@ class TestPySceneDetectAdapter:
         assert result.scenes[1].start_ms == 3100
         assert result.scenes[1].end_ms == 6000  # 6s * 1000
 
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
     def test_adapter_detect_handles_zero_duration_scene(
         self, mock_detect: MagicMock
     ) -> None:
@@ -445,8 +445,8 @@ class TestPySceneDetectAdapter:
         assert result.scenes[0].start_ms == 0
         assert result.scenes[0].end_ms == 1  # Should be start_ms + 1
 
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
     def test_adapter_detect_respects_threshold_option(
         self, mock_detect: MagicMock
     ) -> None:
@@ -461,8 +461,8 @@ class TestPySceneDetectAdapter:
 
         assert result.parameters["threshold"] == 15.0
 
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
     def test_adapter_detect_empty_result(self, mock_detect: MagicMock) -> None:
         """Adapter handles empty scene list from scenedetect."""
         mock_detect.return_value = []
@@ -472,8 +472,8 @@ class TestPySceneDetectAdapter:
 
         assert result.scenes == []
 
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
     def test_adapter_detect_propagates_corrupt_video_error(
         self, mock_detect: MagicMock
     ) -> None:
@@ -484,8 +484,8 @@ class TestPySceneDetectAdapter:
         with pytest.raises(RuntimeError, match="Failed to decode video"):
             adapter.detect("/fake/path/corrupt.mp4")
 
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.detect")
-    @patch("aiclip_worker.scene_detection_pyscenedetect.scenedetect.__version__", "0.6.7")
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
     def test_adapter_detect_multiple_scenes_ordered(
         self, mock_detect: MagicMock
     ) -> None:

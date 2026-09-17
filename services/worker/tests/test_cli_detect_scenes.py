@@ -41,6 +41,9 @@ def valid_contract_json(valid_video_path: str) -> str:
             "key": valid_video_path,
             "mime_type": "video/mp4",
         },
+        "media": {
+            "duration_ms": 6000
+        },
         "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "created_at": "2026-09-17T10:00:00Z",
         "action": "detect_scenes",
@@ -59,6 +62,9 @@ def probe_action_contract_json(valid_video_path: str) -> str:
             "disk": "media",
             "key": valid_video_path,
             "mime_type": "video/mp4",
+        },
+        "media": {
+            "duration_ms": 6000
         },
         "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "created_at": "2026-09-17T10:00:00Z",
@@ -96,6 +102,9 @@ class TestCLIDetectScenesValidContract:
                 "disk": "media",
                 "key": valid_video_path,
                 "mime_type": "video/mp4",
+            },
+            "media": {
+                "duration_ms": 6000
             },
             "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
             "created_at": "2026-09-17T10:00:00Z",
@@ -170,6 +179,9 @@ class TestCLIDetectScenesIncompatibleVersion:
                 "key": "/tmp/video.mp4",
                 "mime_type": "video/mp4",
             },
+            "media": {
+                "duration_ms": 6000
+            },
             "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
             "created_at": "2026-09-17T10:00:00Z",
             "action": "detect_scenes",
@@ -193,6 +205,9 @@ class TestCLIDetectScenesNoStorage:
             "version": "1.0.0",
             "media_asset_id": 1,
             "project_id": 1,
+            "media": {
+                "duration_ms": 6000
+            },
             "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
             "created_at": "2026-09-17T10:00:00Z",
             "action": "detect_scenes",
@@ -242,6 +257,9 @@ class TestCLIDetectScenesOutputFormat:
                 "key": "",
                 "mime_type": "video/mp4",
             },
+            "media": {
+                "duration_ms": 6000
+            },
             "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
             "created_at": "2026-09-17T10:00:00Z",
             "action": "detect_scenes",
@@ -284,6 +302,9 @@ class TestCLIDetectScenesExitCodes:
                 "disk": "media",
                 "key": "/nonexistent/path/video.mp4",
                 "mime_type": "video/mp4",
+            },
+            "media": {
+                "duration_ms": 6000
             },
             "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
             "created_at": "2026-09-17T10:00:00Z",
