@@ -57,6 +57,50 @@
 | 7. Documentation | FIXED | N/A | project-state.md + roadmap.md updated |
 | 8. Evidence/metadata | FIXED | N/A | Updated by independent Tester review |
 
+## Runtime Blocker Correction Cycle
+
+### Runtime Blocker Discovery
+
+Three runtime blockers were discovered after the initial GREEN verification:
+
+| # | Blocker | Discovery Method | Impact |
+|---|---------|-----------------|--------|
+| 1 | Subprocess not isolated — child shares parent PGID | Real subprocess tests + code review | `os.killpg()` would kill parent group on timeout |
+| 2 | Pipe deadlock race — poll-loop between poll/read | communicate() refactoring review | Could lose stdout data between poll returning and stdout.read() |
+| 3 | Laravel type validation — non-string segment text causes TypeError | Code review of ProcessMediaAsset | `trim()` on non-string input throws TypeError |
+
+### Correction Plan
+
+Planner returned `CORRECTION_PLAN_READY` for all 3 blockers. Builder implemented fixes in `transcribe.py` and `ProcessMediaAsset.php`.
+
+### Correction Implementation
+
+#### Blocker 1: Process Group Isolation
+- Added `start_new_session=True` to `subprocess.Popen` (transcribe.py line 148)
+- Rewrote `_kill_process_group()` with defensive PGID check:
+  - Gets child PGID via `os.getpgid(child.pid)` and parent PGID via `os.getpgrp()`
+  - Only uses `os.killpg()` when `child_pgid != parent_pgid`
+  - Falls back to `os.kill(child.pid, ...)` when PGIDs match (self-group defense)
+
+#### Blocker 2: Pipe Deadlock
+- Replaced manual `stdin.write()` + `poll()`-loop + `stdout.read()` with `child.communicate(input=contract_bytes, timeout=remaining)`
+- `communicate()` is the standard Python approach for bounded subprocess I/O with no deadlocks
+
+#### Blocker 3: Laravel Type Validation
+- Changed `if (trim($seg['text']) === '')` to `if (! is_string($seg['text']) || trim($seg['text']) === '')` in ProcessMediaAsset.php line 270
+
+### New Tests Added
+
+| Test Class | Test | What It Verifies |
+|-----------|------|------------------|
+| TestProcessGroupIsolation | test_popen_receives_start_new_session | Popen receives start_new_session=True |
+| TestRealWallClockTimeout | test_real_timeout_reaps_child_within_bounds | Real subprocess timeout completes in bounded wall-clock time |
+| TestSelfGroupDefense | test_killpg_not_called_when_pgid_equals_parent | killpg is NOT called when child PGID == parent PGID |
+| TestLargeStdout | test_large_stdout_no_deadlock | 256KB payload does not deadlock communicate() |
+| TestTranscribeTimeout | test_transcribe_timeout_is_real_wall_clock (updated) | FakeProcess.communicate() raises TimeoutExpired; respects wall-clock bound |
+| TestTranscribeTimeout | test_transcribe_timeout_kills_child (updated) | Updated for communicate()-based mock |
+| TestTranscribeError | test_transcribe_timeout_returns_error (updated) | Updated for communicate()-based mock |
+
 ## TDD Evidence
 
 ### RED
@@ -75,11 +119,11 @@ Tests written and verified failing before implementation:
 
 ### GREEN
 
-All tests pass on HEAD `af64275`:
+All tests pass on HEAD `c5705cd`:
 
 | Suite | Tool | Collected | Passed | Failed | Duration |
 |-------|------|-----------|--------|--------|----------|
-| Worker | pytest | 107 | 107 | 0 | 6.71s |
+| Worker | pytest | 111 | 111 | 0 | 6.71s |
 | Laravel | Pest/PHPUnit | 249 | 249 | 0 | 12.93s (1561 assertions) |
 | Frontend | Vitest | pass | — | — | — |
 | E2E | Playwright | pass | — | — | — |
@@ -89,6 +133,7 @@ CI checks (all GREEN): `governance`, `pr-enforcement`, `test`, `tests`, `e2e`
 ### REFACTOR
 
 - Extracted `_kill_process_group()` helper for bounded process teardown
+- Updated mock-based timeout tests to use communicate()-based patterns
 - No behavior changes; all tests remain green
 
 ## Acceptance Criteria Verification
