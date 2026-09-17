@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Any
 
 from aiclip_worker.transcription import get_transcriber
@@ -51,9 +52,17 @@ def transcribe(contract: dict[str, Any]) -> dict[str, Any]:
             "stderr": "",
         }
 
-    # Perform transcription
+    # Perform transcription with timeout using thread pool
     try:
-        result = transcriber.transcribe(file_path, {})
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(transcriber.transcribe, file_path, {})
+            result = future.result(timeout=timeout)
+    except FuturesTimeoutError:
+        return {
+            "status": "error",
+            "error": f"Transcription timed out after {timeout}s",
+            "stderr": "",
+        }
     except Exception as e:
         return {
             "status": "error",

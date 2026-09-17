@@ -209,15 +209,29 @@ class TestTranscribeError:
     def test_transcribe_timeout_returns_error(
         self, sample_contract_transcribe: dict[str, Any]
     ) -> None:
-        """Transcription with short timeout returns error."""
+        """Transcription that exceeds timeout returns error."""
+        import time
+        from aiclip_worker.transcription import TranscriptResult
+
+        def slow_transcribe(audio_path: str, options: dict) -> TranscriptResult:
+            time.sleep(5)
+            return TranscriptResult(
+                language="en", full_text="should not reach",
+                segments=[], engine="test", model="test",
+            )
+
         with patch.dict(os.environ, {
             "TRANSCRIPTION_ENGINE": "deterministic",
             "TRANSCRIBE_TIMEOUT_SECONDS": "1",
         }):
-            # Deterministic is instant, so this should still succeed
-            result = transcribe(sample_contract_transcribe)
-        # Deterministic engine is instant, so it should succeed
-        assert result["status"] == "success"
+            with patch("aiclip_worker.actions.transcribe.get_transcriber") as mock_factory:
+                mock_transcriber = MagicMock()
+                mock_transcriber.transcribe = slow_transcribe
+                mock_factory.return_value = mock_transcriber
+                result = transcribe(sample_contract_transcribe)
+
+        assert result["status"] == "error"
+        assert "timeout" in result["error"].lower() or "timed out" in result["error"].lower()
 
 
 class TestTranscribeEngineSelection:
