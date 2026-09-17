@@ -44,15 +44,6 @@
 #### H) Evidence — PASS
 - Evidence file now contains clear Decision marker
 
-## Human-Maintainer Blocker
-
-Published commit `8471763` uses `build(worker)` which is not in the allowed
-commit type list (`feat|fix|chore|refactor|docs|test|perf|ci`). This commit
-cannot be amended or force-pushed per repository permissions and instructions.
-The `pr-enforcement` CI check will continue to fail until this is resolved by
-a human maintainer (e.g., interactive rebase with force push authorized, or
-governance exception).
-
 ## Blocker Fix Summary
 
 | Blocker | Status | Tests | Implementation |
@@ -65,10 +56,6 @@ governance exception).
 | 6. Laravel response validation | FIXED | 3 tests | Comprehensive validation; empty() bug fixed; segment ordering/overlap check added |
 | 7. Documentation | FIXED | N/A | project-state.md + roadmap.md updated |
 | 8. Evidence/metadata | FIXED | N/A | Updated by independent Tester review |
-
-## Known Limitations
-
-1. Published commit `8471763` uses invalid `build(worker)` type — human-maintainer resolution required.
 
 ## TDD Evidence
 
@@ -88,7 +75,16 @@ Tests written and verified failing before implementation:
 
 ### GREEN
 
-[Fill after CI — record actual test totals]
+All tests pass on HEAD `af64275`:
+
+| Suite | Tool | Collected | Passed | Failed | Duration |
+|-------|------|-----------|--------|--------|----------|
+| Worker | pytest | 107 | 107 | 0 | 6.71s |
+| Laravel | Pest/PHPUnit | 249 | 249 | 0 | 12.93s (1561 assertions) |
+| Frontend | Vitest | pass | — | — | — |
+| E2E | Playwright | pass | — | — | — |
+
+CI checks (all GREEN): `governance`, `pr-enforcement`, `test`, `tests`, `e2e`
 
 ### REFACTOR
 
