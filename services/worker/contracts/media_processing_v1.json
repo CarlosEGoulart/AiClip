@@ -58,11 +58,5 @@
       }
     }
   },
-  "additionalProperties": false,
-  "allOf": [
-    {
-      "if": { "properties": { "action": { "const": "detect_scenes" } } },
-      "then": { "required": ["media", "media.duration_ms"] }
-    }
-  ]
+  "additionalProperties": false
 }
