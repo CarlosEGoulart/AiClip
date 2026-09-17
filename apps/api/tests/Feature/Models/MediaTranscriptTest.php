@@ -245,6 +245,31 @@ class MediaTranscriptTest extends TestCase
         $this->assertEquals('Transcription engine timeout', $transcript->fresh()->error);
     }
 
+    public function test_failed_to_transcribing_is_valid(): void
+    {
+        $mediaAsset = MediaAsset::factory()->create();
+        $derivedAsset = DerivedAsset::create([
+            'media_asset_id' => $mediaAsset->id,
+            'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
+            'storage_disk' => 'media',
+            'storage_key' => 'path/to/audio.wav',
+            'mime_type' => 'audio/wav',
+            'size_bytes' => 1024,
+        ]);
+
+        $transcript = MediaTranscript::create([
+            'media_asset_id' => $mediaAsset->id,
+            'derived_asset_id' => $derivedAsset->id,
+            'status' => MediaTranscript::STATUS_FAILED,
+            'error' => 'Previous error',
+        ]);
+
+        // failed -> transcribing should work now
+        $transcript->markTranscribing();
+        $this->assertEquals(MediaTranscript::STATUS_TRANSCRIBING, $transcript->fresh()->status);
+        $this->assertNull($transcript->fresh()->error);
+    }
+
     public function test_segments_cast_to_array(): void
     {
         $mediaAsset = MediaAsset::factory()->create();

@@ -37,7 +37,7 @@ class MediaTranscript extends Model
         self::STATUS_PENDING => [self::STATUS_TRANSCRIBING, self::STATUS_FAILED],
         self::STATUS_TRANSCRIBING => [self::STATUS_COMPLETED, self::STATUS_FAILED],
         self::STATUS_COMPLETED => [],
-        self::STATUS_FAILED => [],
+        self::STATUS_FAILED => [self::STATUS_TRANSCRIBING],
     ];
 
     protected $fillable = [
@@ -84,6 +84,7 @@ class MediaTranscript extends Model
 
         $this->update([
             'status' => self::STATUS_TRANSCRIBING,
+            'error' => null,
         ]);
     }
 
