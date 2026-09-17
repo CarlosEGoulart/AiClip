@@ -279,18 +279,18 @@ class ProcessMediaAsset implements ShouldQueue
             // Cross-segment ordering and overlap validation
             $prevEndMs = 0;
             foreach ($segments as $idx => $seg) {
-                if ($idx > 0 && $seg['start_ms'] < $prevEndMs) {
-                    throw new ProcessMediaException(
-                        "Worker returned success but segments overlap: segment {$idx} start_ms {$seg['start_ms']} < previous end_ms {$prevEndMs}",
-                        1,
-                        json_encode(['segment_index' => $idx, 'segment' => $seg, 'prev_end_ms' => $prevEndMs]),
-                    );
-                }
                 if ($idx > 0 && $seg['start_ms'] < $segments[$idx - 1]['start_ms']) {
                     throw new ProcessMediaException(
                         "Worker returned success but segments are not ordered: segment {$idx} start_ms {$seg['start_ms']} < segment " . ($idx - 1) . " start_ms {$segments[$idx - 1]['start_ms']}",
                         1,
                         json_encode(['segment_index' => $idx]),
+                    );
+                }
+                if ($idx > 0 && $seg['start_ms'] < $prevEndMs) {
+                    throw new ProcessMediaException(
+                        "Worker returned success but segments overlap: segment {$idx} start_ms {$seg['start_ms']} < previous end_ms {$prevEndMs}",
+                        1,
+                        json_encode(['segment_index' => $idx, 'segment' => $seg, 'prev_end_ms' => $prevEndMs]),
                     );
                 }
                 $prevEndMs = $seg['end_ms'];
