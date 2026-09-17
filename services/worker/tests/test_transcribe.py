@@ -212,24 +212,14 @@ class TestTranscribeError:
     def test_transcribe_timeout_returns_error(
         self, sample_contract_transcribe: dict[str, Any]
     ) -> None:
-        """Transcription that exceeds timeout returns error.
-
-        Mocks subprocess.Popen to return a child process whose poll() always
-        returns None (never exits). The supervisor loop detects the deadline
-        expiry, kills the child, and returns a timeout error.
-        """
+        """Transcription that exceeds timeout returns error."""
         mock_process = MagicMock()
         mock_process.pid = 99999
-        mock_process.stdin = MagicMock()
-        mock_process.stdout = io.BytesIO(b"")
-        mock_process.stderr = io.BytesIO(b"")
-        mock_process.poll.return_value = None  # Child never exits
 
-        def instant_wait(timeout=None):
-            mock_process.returncode = 0
-            return 0
+        def slow_communicate(input=None, timeout=None):
+            raise subprocess.TimeoutExpired(cmd=b"test", timeout=timeout or 1)
 
-        mock_process.wait.side_effect = instant_wait
+        mock_process.communicate.side_effect = slow_communicate
 
         with patch.dict(os.environ, {
             "TRANSCRIPTION_ENGINE": "deterministic",
@@ -279,32 +269,14 @@ class TestTranscribeTimeout:
     def test_transcribe_timeout_is_real_wall_clock(
         self, sample_contract_transcribe: dict[str, Any]
     ) -> None:
-        """Proves timeout kills child and returns in bounded time.
-
-        Elapsed wall-clock must be substantially less than the slow operation.
-        The FakeProcess.wait() returns immediately so _kill_process_group
-        does not block, and the supervisor's poll-loop detects deadline expiry.
-        """
-
+        """Proves timeout kills child and returns in bounded time."""
         def mock_popen_slow(*args, **kwargs):
-            """Mock Popen that simulates a child that never exits."""
-
             class FakeProcess:
                 pid = 99999
-                stdin = io.BytesIO()
-                stdout = io.BytesIO(b"")
-                stderr = io.BytesIO(b"")
-                returncode = None
 
-                def poll(self):
-                    return None  # Never exits
-
-                def wait(self, timeout=None):
-                    # Must return immediately so _kill_process_group is not blocked
-                    self.returncode = 0
-                    return 0
-
-                def communicate(self, timeout=None):
+                def communicate(self, input=None, timeout=None):
+                    import time as _time
+                    _time.sleep(5)
                     return (b"", b"")
 
             return FakeProcess()
@@ -327,26 +299,14 @@ class TestTranscribeTimeout:
     def test_transcribe_timeout_kills_child(
         self, sample_contract_transcribe: dict[str, Any]
     ) -> None:
-        """Verify child process is terminated, not orphaned.
-
-        Mocks subprocess.Popen, os.getpgid, and os.killpg. The process
-        poll() always returns None so the supervisor detects timeout.
-        wait() returns immediately so _kill_process_group is not blocked.
-        os.getpgid is mocked because PID 99999 does not exist on the real
-        system and would raise ProcessLookupError before os.killpg is reached.
-        """
+        """Verify child process is terminated, not orphaned."""
         mock_process = MagicMock()
         mock_process.pid = 99999
-        mock_process.stdin = MagicMock()
-        mock_process.stdout = io.BytesIO(b"")
-        mock_process.stderr = io.BytesIO(b"")
-        mock_process.poll.return_value = None  # Still running
 
-        def instant_wait(timeout=None):
-            mock_process.returncode = 0
-            return 0
+        def slow_communicate(input=None, timeout=None):
+            raise subprocess.TimeoutExpired(cmd=b"test", timeout=timeout or 1)
 
-        mock_process.wait.side_effect = instant_wait
+        mock_process.communicate.side_effect = slow_communicate
 
         with patch.dict(os.environ, {
             "TRANSCRIPTION_ENGINE": "deterministic",
@@ -359,5 +319,145 @@ class TestTranscribeTimeout:
 
         assert result["status"] == "error"
         assert "timeout" in result["error"].lower() or "timed out" in result["error"].lower()
-        # Verify kill was attempted
         assert mock_kill.called, "Process group should be killed on timeout"
+
+
+class TestProcessGroupIsolation:
+    def test_popen_receives_start_new_session(
+        self, sample_contract_transcribe: dict[str, Any]
+    ) -> None:
+        """subprocess.Popen is called with start_new_session=True."""
+        with patch.dict(os.environ, {"TRANSCRIPTION_ENGINE": "deterministic"}):
+            with patch("aiclip_worker.actions.transcribe.subprocess.Popen") as mock_popen:
+                mock_proc = MagicMock()
+                mock_proc.communicate.return_value = (
+                    json.dumps({
+                        "status": "success",
+                        "transcription": {
+                            "language": "en", "full_text": "ok",
+                            "segments": [], "engine": "deterministic", "model": "deterministic",
+                        },
+                    }).encode(),
+                    b"",
+                )
+                mock_proc.returncode = 0
+                mock_popen.return_value = mock_proc
+                transcribe(sample_contract_transcribe)
+
+                _, kwargs = mock_popen.call_args
+                assert kwargs.get("start_new_session") is True, (
+                    "Popen must receive start_new_session=True for process group isolation"
+                )
+
+
+class TestRealWallClockTimeout:
+    def test_real_timeout_reaps_child_within_bounds(
+        self, sample_contract_transcribe: dict[str, Any]
+    ) -> None:
+        """Real subprocess timeout: sleep 5s child + 1s timeout must complete < 3s wall."""
+        import sys as _sys
+        original_popen = subprocess.Popen
+
+        def real_sleep_popen(cmd, **kwargs):
+            return original_popen(
+                [_sys.executable, "-c", "import time; time.sleep(5)"],
+                **kwargs,
+            )
+
+        with patch.dict(os.environ, {
+            "TRANSCRIPTION_ENGINE": "deterministic",
+            "TRANSCRIBE_TIMEOUT_SECONDS": "1",
+        }):
+            with patch(
+                "aiclip_worker.actions.transcribe.subprocess.Popen",
+                side_effect=real_sleep_popen,
+            ):
+                start = time.monotonic()
+                result = transcribe(sample_contract_transcribe)
+                elapsed = time.monotonic() - start
+
+        assert result["status"] == "error"
+        assert "timeout" in result["error"].lower() or "timed out" in result["error"].lower()
+        assert elapsed < 3.0, f"Timeout took {elapsed:.1f}s, expected < 3s"
+
+
+class TestSelfGroupDefense:
+    def test_killpg_not_called_when_pgid_equals_parent(
+        self, sample_contract_transcribe: dict[str, Any]
+    ) -> None:
+        """When child PGID == parent PGID, killpg must not be called (self-group defense)."""
+        mock_process = MagicMock()
+        mock_process.pid = 99999
+        mock_process.stdin = MagicMock()
+        mock_process.stdout = io.BytesIO(b"")
+        mock_process.stderr = io.BytesIO(b"")
+        mock_process.poll.return_value = None
+
+        def instant_communicate(input=None, timeout=None):
+            mock_process.returncode = 0
+            return (b"", b"")
+
+        mock_process.communicate.side_effect = instant_communicate
+
+        with patch.dict(os.environ, {
+            "TRANSCRIPTION_ENGINE": "deterministic",
+            "TRANSCRIBE_TIMEOUT_SECONDS": "1",
+        }):
+            with patch("aiclip_worker.actions.transcribe.subprocess.Popen", return_value=mock_process):
+                with patch("aiclip_worker.actions.transcribe.os.getpgid", return_value=os.getpgrp()):
+                    with patch("aiclip_worker.actions.transcribe.os.killpg") as mock_killpg:
+                        with patch("aiclip_worker.actions.transcribe.os.kill") as mock_kill:
+                            result = transcribe(sample_contract_transcribe)
+
+        assert result["status"] == "error"
+        assert not mock_killpg.called, (
+            "os.killpg must NOT be called when child PGID == parent PGID"
+        )
+
+
+class TestLargeStdout:
+    def test_large_stdout_no_deadlock(
+        self, sample_contract_transcribe: dict[str, Any]
+    ) -> None:
+        """Child writing ~256 KiB to stdout does not deadlock the supervisor."""
+        import sys as _sys
+        original_popen = subprocess.Popen
+
+        large_payload = json.dumps({
+            "status": "success",
+            "transcription": {
+                "language": "en",
+                "full_text": "x" * (256 * 1024),
+                "segments": [],
+                "engine": "deterministic",
+                "model": "deterministic",
+            },
+        })
+        # Child: read stdin, then write large payload to stdout, then exit
+        child_script = (
+            "import sys, json; "
+            "contract = json.loads(sys.stdin.read()); "
+            f"sys.stdout.write({json.dumps(large_payload)!r}); "
+            "sys.stdout.flush()"
+        )
+
+        def large_stdout_popen(cmd, **kwargs):
+            return original_popen(
+                [_sys.executable, "-c", child_script],
+                **kwargs,
+            )
+
+        with patch.dict(os.environ, {
+            "TRANSCRIPTION_ENGINE": "deterministic",
+            "TRANSCRIBE_TIMEOUT_SECONDS": "10",
+        }):
+            with patch(
+                "aiclip_worker.actions.transcribe.subprocess.Popen",
+                side_effect=large_stdout_popen,
+            ):
+                start = time.monotonic()
+                result = transcribe(sample_contract_transcribe)
+                elapsed = time.monotonic() - start
+
+        assert result["status"] == "success"
+        assert elapsed < 5.0, f"Took {elapsed:.1f}s, should be fast"

@@ -267,7 +267,7 @@ class ProcessMediaAsset implements ShouldQueue
                         json_encode($seg),
                     );
                 }
-                if (trim($seg['text']) === '') {
+                if (! is_string($seg['text']) || trim($seg['text']) === '') {
                     throw new ProcessMediaException(
                         "Worker returned success but segment {$idx} has empty text",
                         1,

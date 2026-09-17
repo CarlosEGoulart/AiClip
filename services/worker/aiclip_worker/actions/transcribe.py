@@ -70,9 +70,20 @@ def _run_transcribe_child(contract: dict[str, Any]) -> dict[str, Any]:
 
 
 def _kill_process_group(child: subprocess.Popen) -> None:
-    """Kill child process group with bounded teardown."""
+    """Kill child process group with bounded teardown.
+
+    Defensive PGID check: only use os.killpg when child's PGID differs
+    from the parent's PGID. If they share a PGID, use os.kill() to
+    avoid killing unrelated processes in the parent group.
+    """
     try:
-        os.killpg(os.getpgid(child.pid), signal.SIGTERM)
+        child_pgid = os.getpgid(child.pid)
+        parent_pgid = os.getpgrp()
+
+        if child_pgid != parent_pgid:
+            os.killpg(child_pgid, signal.SIGTERM)
+        else:
+            os.kill(child.pid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError, OSError):
         pass
 
@@ -80,7 +91,13 @@ def _kill_process_group(child: subprocess.Popen) -> None:
         child.wait(timeout=1)
     except subprocess.TimeoutExpired:
         try:
-            os.killpg(os.getpgid(child.pid), signal.SIGKILL)
+            child_pgid = os.getpgid(child.pid)
+            parent_pgid = os.getpgrp()
+
+            if child_pgid != parent_pgid:
+                os.killpg(child_pgid, signal.SIGKILL)
+            else:
+                os.kill(child.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError, OSError):
             pass
         try:
@@ -128,109 +145,84 @@ def transcribe(contract: dict[str, Any]) -> dict[str, Any]:
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        start_new_session=True,
     )
 
-    try:
-        child.stdin.write(json.dumps(contract).encode())
-        child.stdin.close()
-    except Exception:
-        _kill_process_group(child)
-        return {
-            "status": "error",
-            "error": "Failed to write contract to child stdin",
-            "stderr": "",
-        }
+    contract_bytes = json.dumps(contract).encode()
 
     try:
-        while child.poll() is None:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                _kill_process_group(child)
-                return {
-                    "status": "error",
-                    "error": f"Transcription timed out after {timeout}s",
-                    "stderr": "",
-                }
-            time.sleep(min(0.1, remaining))
-
-        if time.monotonic() > deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             _kill_process_group(child)
-            return {
-                "status": "error",
-                "error": f"Transcription timed out after {timeout}s",
-                "stderr": "",
-            }
+            return {"status": "error", "error": f"Transcription timed out after {timeout}s", "stderr": ""}
 
-        stdout = child.stdout.read().decode()
-        stderr = child.stderr.read().decode()
+        stdout_bytes, stderr_bytes = child.communicate(
+            input=contract_bytes,
+            timeout=remaining,
+        )
+        stdout = stdout_bytes.decode()
+        stderr = stderr_bytes.decode()
 
-        if child.returncode != 0:
-            try:
-                output = json.loads(stdout)
-                if isinstance(output, dict) and output.get("status") == "error":
-                    return output
-            except (json.JSONDecodeError, TypeError):
-                pass
-            return {
-                "status": "error",
-                "error": f"Transcription failed (exit {child.returncode})",
-                "stderr": stderr[:500],
-            }
-
-        output = json.loads(stdout)
-        if not isinstance(output, dict) or output.get("status") != "success":
-            return {
-                "status": "error",
-                "error": "Invalid child output",
-                "stderr": "",
-            }
-
-        transcription = output.get("transcription")
-        if not isinstance(transcription, dict):
-            return {
-                "status": "error",
-                "error": "Missing transcription in child output",
-                "stderr": "",
-            }
-
-        for field in ("language", "engine", "model"):
-            val = transcription.get(field)
-            if not isinstance(val, str) or not val.strip():
-                return {
-                    "status": "error",
-                    "error": f"Missing or empty {field}",
-                    "stderr": "",
-                }
-
-        if not isinstance(transcription.get("full_text"), str):
-            return {
-                "status": "error",
-                "error": "Missing or invalid full_text",
-                "stderr": "",
-            }
-
-        if not isinstance(transcription.get("segments"), list):
-            return {
-                "status": "error",
-                "error": "Missing or invalid segments",
-                "stderr": "",
-            }
-
-        return output
-
-    except json.JSONDecodeError:
-        return {
-            "status": "error",
-            "error": "Invalid JSON from child process",
-            "stderr": "",
-        }
+    except subprocess.TimeoutExpired:
+        _kill_process_group(child)
+        return {"status": "error", "error": f"Transcription timed out after {timeout}s", "stderr": ""}
     except Exception as e:
         try:
             _kill_process_group(child)
         except Exception:
             pass
+        return {"status": "error", "error": f"Supervisor error: {e}", "stderr": ""}
+
+    if child.returncode != 0:
+        try:
+            output = json.loads(stdout)
+            if isinstance(output, dict) and output.get("status") == "error":
+                return output
+        except (json.JSONDecodeError, TypeError):
+            pass
         return {
             "status": "error",
-            "error": f"Supervisor error: {e}",
+            "error": f"Transcription failed (exit {child.returncode})",
+            "stderr": stderr[:500],
+        }
+
+    output = json.loads(stdout)
+    if not isinstance(output, dict) or output.get("status") != "success":
+        return {
+            "status": "error",
+            "error": "Invalid child output",
             "stderr": "",
         }
+
+    transcription = output.get("transcription")
+    if not isinstance(transcription, dict):
+        return {
+            "status": "error",
+            "error": "Missing transcription in child output",
+            "stderr": "",
+        }
+
+    for field in ("language", "engine", "model"):
+        val = transcription.get(field)
+        if not isinstance(val, str) or not val.strip():
+            return {
+                "status": "error",
+                "error": f"Missing or empty {field}",
+                "stderr": "",
+            }
+
+    if not isinstance(transcription.get("full_text"), str):
+        return {
+            "status": "error",
+            "error": "Missing or invalid full_text",
+            "stderr": "",
+        }
+
+    if not isinstance(transcription.get("segments"), list):
+        return {
+            "status": "error",
+            "error": "Missing or invalid segments",
+            "stderr": "",
+        }
+
+    return output
