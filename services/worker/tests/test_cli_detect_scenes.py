@@ -134,7 +134,9 @@ class TestCLIDetectScenesMissingAction:
 
     def test_cli_detect_scenes_no_contract_provided(self, capsys: Any) -> None:
         """CLI with no contract provided returns error."""
-        exit_code = main(["detect-scenes"])
+        with patch("aiclip_worker.cli.sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = True
+            exit_code = main(["detect-scenes"])
 
         assert exit_code == 2
 

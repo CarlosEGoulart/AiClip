@@ -235,30 +235,36 @@ class TestValidateSceneResult:
             Scene(index=0, start_ms=0, end_ms=1000),
             Scene(index=0, start_ms=1000, end_ms=2000),
         ]
-        with pytest.raises(ValueError, match="duplicate"):
+        with pytest.raises(ValueError, match="(?i)duplicate"):
             validate_scene_result(scenes)
 
     def test_validate_scenes_negative_boundary(self) -> None:
         """validate_scene_result rejects negative start_ms."""
-        scenes = [
-            Scene(index=0, start_ms=-1, end_ms=1000),
-        ]
+        scene = Scene.__new__(Scene)
+        scene.index = 0
+        scene.start_ms = -1
+        scene.end_ms = 1000
+        scenes = [scene]
         with pytest.raises(ValueError, match="start_ms"):
             validate_scene_result(scenes)
 
     def test_validate_scenes_duration_overflow(self) -> None:
         """validate_scene_result rejects end_ms <= start_ms."""
-        scenes = [
-            Scene(index=0, start_ms=1000, end_ms=1000),
-        ]
+        scene = Scene.__new__(Scene)
+        scene.index = 0
+        scene.start_ms = 1000
+        scene.end_ms = 1000
+        scenes = [scene]
         with pytest.raises(ValueError, match="end_ms"):
             validate_scene_result(scenes)
 
     def test_validate_scenes_rejects_end_ms_less_than_start_ms(self) -> None:
         """validate_scene_result rejects end_ms < start_ms."""
-        scenes = [
-            Scene(index=0, start_ms=1000, end_ms=500),
-        ]
+        scene = Scene.__new__(Scene)
+        scene.index = 0
+        scene.start_ms = 1000
+        scene.end_ms = 500
+        scenes = [scene]
         with pytest.raises(ValueError, match="end_ms"):
             validate_scene_result(scenes)
 

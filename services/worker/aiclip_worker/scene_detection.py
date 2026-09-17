@@ -70,7 +70,7 @@ class DeterministicSceneDetector(SceneDetector):
 
     def detect(self, video_path: str, options: dict | None = None) -> SceneResult:
         """Return deterministic scenes based on video file path hash."""
-        path_hash = hashlib.sha256(video_path.encode()).hexdigest()[:16]
+        path_hash = hashlib.sha256(video_path.encode()).hexdigest()[:32]
 
         # Generate 2-5 deterministic scenes based on hash
         num_scenes = 2 + (int(path_hash[:4], 16) % 4)  # 2-5 scenes
