@@ -39,6 +39,7 @@ Completed slices:
 Completed slices:
 
 - Deterministic transcription worker stage (Issue #51)
+- Deterministic scene detection worker stage (Issue #53)
 
 ## Planned Milestones
 
