@@ -95,10 +95,13 @@ class MediaSceneAnalysis extends Model
         string $detectorVersion,
         array $parameters,
         array $scenes,
+        ?int $durationMs = null,
     ): void {
         if (! self::isValidTransition($this->status, self::STATUS_COMPLETED)) {
             return;
         }
+
+        self::validateScenes($scenes, $durationMs);
 
         $this->update([
             'status' => self::STATUS_COMPLETED,
@@ -130,7 +133,7 @@ class MediaSceneAnalysis extends Model
      *
      * @param  array<int, array{index: int, start_ms: int, end_ms: int}>  $scenes
      */
-    public static function validateScenes(array $scenes): void
+    public static function validateScenes(array $scenes, ?int $durationMs = null): void
     {
         if (empty($scenes)) {
             return;
@@ -172,14 +175,14 @@ class MediaSceneAnalysis extends Model
             // Validate ordering
             if ($i > 0 && $startMs < $scenes[$i - 1]['start_ms']) {
                 throw new \InvalidArgumentException(
-                    "Scenes not ordered: scene {$i} start_ms={$startMs} < scene " . ($i - 1) . " start_ms={$scenes[$i - 1]['start_ms']}"
+                    "Scenes not ordered: scene {$i} start_ms={$startMs} < scene ".($i - 1)." start_ms={$scenes[$i - 1]['start_ms']}"
                 );
             }
 
             // Validate no overlap
             if ($i > 0 && $startMs < $scenes[$i - 1]['end_ms']) {
                 throw new \InvalidArgumentException(
-                    "Scenes overlap: scene {$i} start_ms={$startMs} < scene " . ($i - 1) . " end_ms={$scenes[$i - 1]['end_ms']}"
+                    "Scenes overlap: scene {$i} start_ms={$startMs} < scene ".($i - 1)." end_ms={$scenes[$i - 1]['end_ms']}"
                 );
             }
 
@@ -188,6 +191,16 @@ class MediaSceneAnalysis extends Model
                 throw new \InvalidArgumentException("Duplicate scene index: {$index}");
             }
             $seenIndexes[] = $index;
+        }
+
+        if ($durationMs !== null && $durationMs > 0) {
+            foreach ($scenes as $i => $scene) {
+                if (! isset($scene['end_ms']) || $scene['end_ms'] > $durationMs) {
+                    throw new \InvalidArgumentException(
+                        "Scene {$i} end_ms exceeds media duration ({$durationMs}ms)"
+                    );
+                }
+            }
         }
     }
 

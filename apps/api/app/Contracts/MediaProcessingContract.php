@@ -26,6 +26,8 @@ class MediaProcessingContract
 
     public ?int $derivedAssetId = null;
 
+    public ?int $durationMs = null;
+
     /**
      * Create a contract from a MediaAsset model.
      */
@@ -42,6 +44,7 @@ class MediaProcessingContract
         $contract->idempotencyKey = $idempotencyKey;
         $contract->createdAt = now()->toIso8601String();
         $contract->action = $action;
+        $contract->durationMs = $asset->duration_ms ?? null;
 
         return $contract;
     }
@@ -63,6 +66,7 @@ class MediaProcessingContract
         $contract->action = $data['action'] ?? 'probe';
         $contract->outputStorage = $data['output_storage'] ?? null;
         $contract->derivedAssetId = $data['derived_asset_id'] ?? null;
+        $contract->durationMs = $data['media']['duration_ms'] ?? null;
 
         return $contract;
     }
@@ -90,6 +94,10 @@ class MediaProcessingContract
 
         if ($this->derivedAssetId !== null) {
             $data['derived_asset_id'] = $this->derivedAssetId;
+        }
+
+        if ($this->durationMs !== null) {
+            $data['media'] = ['duration_ms' => $this->durationMs];
         }
 
         return $data;

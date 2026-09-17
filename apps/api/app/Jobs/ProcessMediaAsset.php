@@ -126,6 +126,7 @@ class ProcessMediaAsset implements ShouldQueue
                 $sceneAnalysis->markDetecting();
 
                 $sceneContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'detect_scenes');
+                $sceneContract->durationMs = $durationMs;
 
                 try {
                     $sceneResult = $action->detectScenes($sceneContract);
@@ -176,13 +177,14 @@ class ProcessMediaAsset implements ShouldQueue
                     }
 
                     // Validate scene format
-                    MediaSceneAnalysis::validateScenes($scenes);
+                    MediaSceneAnalysis::validateScenes($scenes, $durationMs);
 
                     $sceneAnalysis->markCompleted(
                         $detector,
                         $detectorVersion,
                         $parameters,
                         $scenes,
+                        $durationMs,
                     );
 
                     $sceneDetectionResolved = true;
@@ -391,7 +393,7 @@ class ProcessMediaAsset implements ShouldQueue
                     foreach ($segments as $idx => $seg) {
                         if ($idx > 0 && $seg['start_ms'] < $segments[$idx - 1]['start_ms']) {
                             throw new ProcessMediaException(
-                                "Worker returned success but segments are not ordered: segment {$idx} start_ms {$seg['start_ms']} < segment " . ($idx - 1) . " start_ms {$segments[$idx - 1]['start_ms']}",
+                                "Worker returned success but segments are not ordered: segment {$idx} start_ms {$seg['start_ms']} < segment ".($idx - 1)." start_ms {$segments[$idx - 1]['start_ms']}",
                                 1,
                                 json_encode(['segment_index' => $idx]),
                             );

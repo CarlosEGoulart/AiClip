@@ -43,7 +43,11 @@ def _run_detect_scenes_child(contract: dict[str, Any]) -> dict[str, Any]:
         }
 
     try:
-        result = detector.detect(file_path)
+        media = contract.get("media", {})
+        options: dict[str, Any] = {}
+        if "duration_ms" in media:
+            options["duration_ms"] = int(media["duration_ms"])
+        result = detector.detect(file_path, options=options if options else None)
         validate_scene_result(result.scenes)
     except Exception as e:
         return {
