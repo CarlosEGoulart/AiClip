@@ -948,8 +948,11 @@ it('propagates duration from probe to scene detection contract', function () {
     $actionMock->shouldReceive('probe')->once()->andReturn(['status' => 'success', 'probe' => $probeResult]);
     $actionMock->shouldReceive('detectScenes')
         ->once()
-        ->andReturn($sceneDetectionResult)
-        ->andReturnArg(0); // Capture the contract passed to detectScenes
+        ->andReturnUsing(function ($contract) use ($sceneDetectionResult) {
+            assert(array_key_exists('media', $contract));
+            assert($contract['media']['duration_ms'] === 7500);
+            return $sceneDetectionResult;
+        });
 
     app()->instance(ProcessMediaAction::class, $actionMock);
 
