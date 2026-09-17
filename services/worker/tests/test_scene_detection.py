@@ -291,11 +291,13 @@ class TestGetSceneDetector:
             detector = get_scene_detector()
             assert isinstance(detector, DeterministicSceneDetector)
 
-    def test_get_scene_detector_defaults_to_deterministic(self) -> None:
-        """get_scene_detector defaults to DeterministicSceneDetector."""
+    def test_get_scene_detector_defaults_to_pyscenedetect(self) -> None:
+        """get_scene_detector defaults to PySceneDetectAdapter when env var is unset."""
+        from aiclip_worker.scene_detection_pyscenedetect import PySceneDetectAdapter
+
         with patch.dict(os.environ, {}, clear=True):
             detector = get_scene_detector()
-            assert isinstance(detector, DeterministicSceneDetector)
+            assert isinstance(detector, PySceneDetectAdapter)
 
     def test_get_scene_detector_raises_for_unknown(self) -> None:
         """get_scene_detector raises ValueError for unknown engine."""
