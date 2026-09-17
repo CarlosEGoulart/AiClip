@@ -6,6 +6,7 @@ use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
+use App\Models\MediaTranscript;
 use App\Services\ProcessMediaAction;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -112,52 +113,119 @@ class ProcessMediaAsset implements ShouldQueue
             ->where('type', DerivedAsset::TYPE_AUDIO_NORMALIZED)
             ->first();
 
-        if ($existingDerived !== null) {
-            // Already extracted, mark as completed
-            $asset->markCompleted();
+        if ($existingDerived === null) {
+            // Build extract_audio contract
+            $extractContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'extract_audio');
+            $extractContract->outputStorage = [
+                'disk' => $asset->storage_disk,
+                'key' => $this->buildOutputKey($asset),
+                'mime_type' => 'audio/wav',
+            ];
+
+            try {
+                // Invoke extractAudio
+                $extractResult = $action->extractAudio($extractContract);
+
+                // Create DerivedAsset record
+                $extraction = $extractResult['extraction'] ?? [];
+                $existingDerived = DerivedAsset::create([
+                    'media_asset_id' => $asset->id,
+                    'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
+                    'storage_disk' => $asset->storage_disk,
+                    'storage_key' => $extraction['output_path'] ?? '',
+                    'mime_type' => 'audio/wav',
+                    'size_bytes' => $extraction['output_size_bytes'] ?? 0,
+                    'duration_ms' => $extraction['duration_ms'] ?? null,
+                    'sample_rate' => $extraction['sample_rate'] ?? null,
+                    'channels' => $extraction['channels'] ?? null,
+                    'codec' => $extraction['codec'] ?? null,
+                ]);
+
+                Log::info('ProcessMediaAsset: audio extraction succeeded', [
+                    'media_asset_id' => $asset->id,
+                ]);
+            } catch (\Throwable $e) {
+                $asset->markFailed($e->getMessage());
+                Log::error('ProcessMediaAsset: audio extraction failed', [
+                    'media_asset_id' => $asset->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return;
+            }
+        } else {
             Log::info('ProcessMediaAsset: audio already extracted, skipping', [
+                'media_asset_id' => $asset->id,
+            ]);
+        }
+
+        // --- Transcription Stage ---
+        // Check for existing MediaTranscript (idempotency)
+        $existingTranscript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+
+        if ($existingTranscript !== null && $existingTranscript->status === MediaTranscript::STATUS_COMPLETED) {
+            // Already transcribed, mark as completed and return
+            $asset->markCompleted();
+            Log::info('ProcessMediaAsset: transcription already completed, skipping', [
                 'media_asset_id' => $asset->id,
             ]);
 
             return;
         }
 
-        // Build extract_audio contract
-        $extractContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'extract_audio');
-        $extractContract->outputStorage = [
-            'disk' => $asset->storage_disk,
-            'key' => $this->buildOutputKey($asset),
-            'mime_type' => 'audio/wav',
+        // Create or update MediaTranscript
+        if ($existingTranscript === null) {
+            $transcript = MediaTranscript::create([
+                'media_asset_id' => $asset->id,
+                'derived_asset_id' => $existingDerived->id,
+                'status' => MediaTranscript::STATUS_PENDING,
+            ]);
+        } else {
+            $transcript = $existingTranscript;
+        }
+
+        // Build transcribe contract
+        $transcribeContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'transcribe');
+        $transcribeContract->derivedAssetId = $existingDerived->id;
+        $transcribeContract->storage = [
+            'disk' => $existingDerived->storage_disk,
+            'key' => $existingDerived->storage_key,
+            'mime_type' => $existingDerived->mime_type,
         ];
 
+        // Mark transcript as transcribing
+        $transcript->markTranscribing();
+
         try {
-            // Invoke extractAudio
-            $extractResult = $action->extractAudio($extractContract);
+            // Invoke transcribe
+            $transcribeResult = $action->transcribe($transcribeContract);
 
-            // Create DerivedAsset record
-            $extraction = $extractResult['extraction'] ?? [];
-            DerivedAsset::create([
-                'media_asset_id' => $asset->id,
-                'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
-                'storage_disk' => $asset->storage_disk,
-                'storage_key' => $extraction['output_path'] ?? '',
-                'mime_type' => 'audio/wav',
-                'size_bytes' => $extraction['output_size_bytes'] ?? 0,
-                'duration_ms' => $extraction['duration_ms'] ?? null,
-                'sample_rate' => $extraction['sample_rate'] ?? null,
-                'channels' => $extraction['channels'] ?? null,
-                'codec' => $extraction['codec'] ?? null,
-            ]);
+            // Extract transcription data
+            $transcription = $transcribeResult['transcription'] ?? [];
 
-            // Mark as completed
+            // Mark transcript as completed
+            $transcript->markCompleted(
+                $transcription['language'] ?? 'en',
+                $transcription['full_text'] ?? '',
+                $transcription['segments'] ?? [],
+                $transcription['engine'] ?? 'unknown',
+                $transcription['model'] ?? 'unknown',
+            );
+
+            // Mark asset as completed
             $asset->markCompleted();
 
-            Log::info('ProcessMediaAsset: audio extraction succeeded', [
+            Log::info('ProcessMediaAsset: transcription succeeded', [
                 'media_asset_id' => $asset->id,
             ]);
         } catch (\Throwable $e) {
-            $asset->markFailed($e->getMessage());
-            Log::error('ProcessMediaAsset: audio extraction failed', [
+            // Mark transcript as failed
+            $transcript->markFailed($e->getMessage());
+
+            // Mark asset as completed (audio extraction succeeded, transcription failed)
+            $asset->markCompleted();
+
+            Log::error('ProcessMediaAsset: transcription failed', [
                 'media_asset_id' => $asset->id,
                 'error' => $e->getMessage(),
             ]);

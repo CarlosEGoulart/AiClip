@@ -167,6 +167,43 @@ def sample_contract_video_no_audio() -> dict[str, Any]:
     }
 
 
+@pytest.fixture
+def sample_contract_transcribe() -> dict[str, Any]:
+    """Valid transcribe contract with derived_asset_id."""
+    return {
+        "version": "1.0.0",
+        "media_asset_id": 1,
+        "project_id": 1,
+        "storage": {
+            "disk": "media",
+            "key": str(FIXTURES_DIR / "normalized_audio.wav"),
+            "mime_type": "audio/wav",
+        },
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+        "created_at": "2026-09-17T10:00:00Z",
+        "action": "transcribe",
+        "derived_asset_id": 1,
+    }
+
+
+@pytest.fixture
+def sample_contract_transcribe_no_derived_asset() -> dict[str, Any]:
+    """Transcribe contract missing derived_asset_id."""
+    return {
+        "version": "1.0.0",
+        "media_asset_id": 1,
+        "project_id": 1,
+        "storage": {
+            "disk": "media",
+            "key": str(FIXTURES_DIR / "normalized_audio.wav"),
+            "mime_type": "audio/wav",
+        },
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+        "created_at": "2026-09-17T10:00:00Z",
+        "action": "transcribe",
+    }
+
+
 @pytest.fixture(scope="session", autouse=True)
 def create_test_fixtures() -> Generator[None, None, None]:
     """Create test fixture media files if they do not exist."""
@@ -252,6 +289,41 @@ def create_test_fixtures() -> Generator[None, None, None]:
                 b'\xff\xfb\x90\x00\x00\x00\x00\x00\x00\x00\x00\x00'
                 b'\x00\x00\x00\x00\x00\x00'
             )
+
+    # Create normalized_audio.wav fixture for transcription tests
+    normalized_audio_path = fixtures_dir / "normalized_audio.wav"
+    if not normalized_audio_path.exists():
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                    "-vn",
+                    "-acodec", "pcm_s16le",
+                    "-ar", "16000",
+                    "-ac", "1",
+                    str(normalized_audio_path),
+                ],
+                capture_output=True,
+                timeout=30,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            # Create minimal WAV header
+            with open(normalized_audio_path, "wb") as f:
+                f.write(b"RIFF")
+                f.write((36).to_bytes(4, "little"))
+                f.write(b"WAVE")
+                f.write(b"fmt ")
+                f.write((16).to_bytes(4, "little"))
+                f.write((1).to_bytes(2, "little"))
+                f.write((1).to_bytes(2, "little"))
+                f.write((16000).to_bytes(4, "little"))
+                f.write((32000).to_bytes(4, "little"))
+                f.write((2).to_bytes(2, "little"))
+                f.write((16).to_bytes(2, "little"))
+                f.write(b"data")
+                f.write((0).to_bytes(4, "little"))
 
     yield
 

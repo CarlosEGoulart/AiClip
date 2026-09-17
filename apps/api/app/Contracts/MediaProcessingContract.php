@@ -24,6 +24,8 @@ class MediaProcessingContract
     /** @var array{disk: string, key: string, mime_type: string}|null */
     public ?array $outputStorage = null;
 
+    public ?int $derivedAssetId = null;
+
     /**
      * Create a contract from a MediaAsset model.
      */
@@ -60,6 +62,7 @@ class MediaProcessingContract
         $contract->createdAt = $data['created_at'];
         $contract->action = $data['action'] ?? 'probe';
         $contract->outputStorage = $data['output_storage'] ?? null;
+        $contract->derivedAssetId = $data['derived_asset_id'] ?? null;
 
         return $contract;
     }
@@ -83,6 +86,10 @@ class MediaProcessingContract
 
         if ($this->outputStorage !== null) {
             $data['output_storage'] = $this->outputStorage;
+        }
+
+        if ($this->derivedAssetId !== null) {
+            $data['derived_asset_id'] = $this->derivedAssetId;
         }
 
         return $data;
@@ -119,13 +126,20 @@ class MediaProcessingContract
         }
 
         // Validate action is valid
-        if (! in_array($this->action, ['probe', 'extract_audio'], true)) {
+        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe'], true)) {
             return false;
         }
 
         // If action is extract_audio, output_storage must be present
         if ($this->action === 'extract_audio') {
             if (empty($this->outputStorage) || empty($this->outputStorage['disk']) || empty($this->outputStorage['key']) || empty($this->outputStorage['mime_type'])) {
+                return false;
+            }
+        }
+
+        // If action is transcribe, derived_asset_id must be present
+        if ($this->action === 'transcribe') {
+            if (! isset($this->derivedAssetId) || $this->derivedAssetId < 1) {
                 return false;
             }
         }
