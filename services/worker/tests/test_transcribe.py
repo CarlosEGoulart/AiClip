@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import subprocess
@@ -276,8 +275,8 @@ class TestTranscribeTimeout:
 
                 def communicate(self, input=None, timeout=None):
                     import time as _time
-                    _time.sleep(5)
-                    return (b"", b"")
+                    _time.sleep(timeout or 1)
+                    raise subprocess.TimeoutExpired(cmd=b"test", timeout=timeout or 1)
 
             return FakeProcess()
 
@@ -388,14 +387,21 @@ class TestSelfGroupDefense:
         """When child PGID == parent PGID, killpg must not be called (self-group defense)."""
         mock_process = MagicMock()
         mock_process.pid = 99999
-        mock_process.stdin = MagicMock()
-        mock_process.stdout = io.BytesIO(b"")
-        mock_process.stderr = io.BytesIO(b"")
-        mock_process.poll.return_value = None
+        mock_process.returncode = 0
+
+        valid_output = json.dumps({
+            "status": "success",
+            "transcription": {
+                "language": "en",
+                "full_text": "hello",
+                "segments": [{"start_ms": 0, "end_ms": 1000, "text": "hello"}],
+                "engine": "deterministic",
+                "model": "deterministic",
+            },
+        }).encode()
 
         def instant_communicate(input=None, timeout=None):
-            mock_process.returncode = 0
-            return (b"", b"")
+            return (valid_output, b"")
 
         mock_process.communicate.side_effect = instant_communicate
 
@@ -409,10 +415,8 @@ class TestSelfGroupDefense:
                         with patch("aiclip_worker.actions.transcribe.os.kill") as mock_kill:
                             result = transcribe(sample_contract_transcribe)
 
-        assert result["status"] == "error"
-        assert not mock_killpg.called, (
-            "os.killpg must NOT be called when child PGID == parent PGID"
-        )
+        assert result["status"] == "success"
+        assert not mock_killpg.called, "killpg must NOT be called when child PGID == parent PGID"
 
 
 class TestLargeStdout:
@@ -423,22 +427,14 @@ class TestLargeStdout:
         import sys as _sys
         original_popen = subprocess.Popen
 
-        large_payload = json.dumps({
-            "status": "success",
-            "transcription": {
-                "language": "en",
-                "full_text": "x" * (256 * 1024),
-                "segments": [],
-                "engine": "deterministic",
-                "model": "deterministic",
-            },
-        })
-        # Child: read stdin, then write large payload to stdout, then exit
+        # Child script generates large payload internally (no inline 256KB string)
         child_script = (
             "import sys, json; "
-            "contract = json.loads(sys.stdin.read()); "
-            f"sys.stdout.write({json.dumps(large_payload)!r}); "
-            "sys.stdout.flush()"
+            "payload = 'x' * (256 * 1024); "
+            "result = json.dumps({'status': 'success', 'transcription': {"
+            "'language': 'en', 'full_text': payload, 'segments': [], "
+            "'engine': 'deterministic', 'model': 'deterministic'}}); "
+            "sys.stdout.write(result); sys.stdout.flush()"
         )
 
         def large_stdout_popen(cmd, **kwargs):
@@ -460,4 +456,5 @@ class TestLargeStdout:
                 elapsed = time.monotonic() - start
 
         assert result["status"] == "success"
-        assert elapsed < 5.0, f"Took {elapsed:.1f}s, should be fast"
+        assert result["transcription"]["full_text"] == "x" * (256 * 1024)
+        assert elapsed < 5.0, f"Large stdout took {elapsed:.1f}s, expected < 5.0s"
