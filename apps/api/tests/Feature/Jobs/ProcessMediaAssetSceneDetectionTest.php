@@ -927,7 +927,7 @@ it('propagates duration from probe to scene detection contract', function () {
 
     $probeResult = [
         'duration_ms' => 7500,
-        'audio_codec' => 'aac',
+        'audio_codec' => null,
         'video_codec' => 'h264',
     ];
 
