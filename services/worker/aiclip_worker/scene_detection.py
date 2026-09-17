@@ -128,7 +128,7 @@ def get_scene_detector(name: str | None = None) -> SceneDetector:
         ImportError: If pyscenedetect is requested but not installed.
     """
     if name is None:
-        name = os.environ.get("SCENE_DETECTION_ENGINE", "deterministic")
+        name = os.environ.get("SCENE_DETECTION_ENGINE", "pyscenedetect")
 
     if name == "deterministic":
         return DeterministicSceneDetector()
