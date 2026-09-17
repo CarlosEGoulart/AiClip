@@ -581,3 +581,150 @@ it('rejects worker success response with invalid segment timing', function () {
     expect($transcript->status)->toBe(MediaTranscript::STATUS_FAILED);
     expect($transcript->error)->toContain('start_ms');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Segment Text Validation Edge Cases
+|--------------------------------------------------------------------------
+*/
+
+it('accepts segment text "0" as valid', function () {
+    $asset = MediaAsset::factory()->create(['processing_status' => 'stored']);
+
+    $probeResult = ['duration_ms' => 5000, 'audio_codec' => 'aac'];
+    $extractionResult = [
+        'status' => 'success',
+        'extraction' => [
+            'output_path' => '/tmp/audio.wav',
+            'output_size_bytes' => 160000,
+            'duration_ms' => 5000,
+            'sample_rate' => 16000,
+            'channels' => 1,
+            'codec' => 'pcm_s16le',
+        ],
+    ];
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Count: 0',
+            'segments' => [
+                ['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Count:'],
+                ['start_ms' => 1000, 'end_ms' => 2000, 'text' => '0'],
+            ],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
+    $actionMock = Mockery::mock(ProcessMediaAction::class);
+    $actionMock->shouldReceive('probe')->once()->andReturn(['status' => 'success', 'probe' => $probeResult]);
+    $actionMock->shouldReceive('extractAudio')->once()->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
+
+    app()->instance(ProcessMediaAction::class, $actionMock);
+
+    $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? 'test-key');
+    $job->handle();
+
+    $transcript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+    expect($transcript)->not->toBeNull();
+    expect($transcript->status)->toBe(MediaTranscript::STATUS_COMPLETED);
+    expect($transcript->segments[1]['text'])->toBe('0');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Cross-Segment Validation (ordering and overlap)
+|--------------------------------------------------------------------------
+*/
+
+it('rejects unordered segments from worker', function () {
+    $asset = MediaAsset::factory()->create(['processing_status' => 'stored']);
+
+    $probeResult = ['duration_ms' => 5000, 'audio_codec' => 'aac'];
+    $extractionResult = [
+        'status' => 'success',
+        'extraction' => [
+            'output_path' => '/tmp/audio.wav',
+            'output_size_bytes' => 160000,
+            'duration_ms' => 5000,
+            'sample_rate' => 16000,
+            'channels' => 1,
+            'codec' => 'pcm_s16le',
+        ],
+    ];
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Hello world',
+            'segments' => [
+                ['start_ms' => 1000, 'end_ms' => 2000, 'text' => 'world'],
+                ['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Hello'],
+            ],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
+    $actionMock = Mockery::mock(ProcessMediaAction::class);
+    $actionMock->shouldReceive('probe')->once()->andReturn(['status' => 'success', 'probe' => $probeResult]);
+    $actionMock->shouldReceive('extractAudio')->once()->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
+
+    app()->instance(ProcessMediaAction::class, $actionMock);
+
+    $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? 'test-key');
+    $job->handle();
+
+    $transcript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+    expect($transcript)->not->toBeNull();
+    expect($transcript->status)->toBe(MediaTranscript::STATUS_FAILED);
+    expect($transcript->error)->toContain('ordered');
+});
+
+it('rejects overlapping segments from worker', function () {
+    $asset = MediaAsset::factory()->create(['processing_status' => 'stored']);
+
+    $probeResult = ['duration_ms' => 5000, 'audio_codec' => 'aac'];
+    $extractionResult = [
+        'status' => 'success',
+        'extraction' => [
+            'output_path' => '/tmp/audio.wav',
+            'output_size_bytes' => 160000,
+            'duration_ms' => 5000,
+            'sample_rate' => 16000,
+            'channels' => 1,
+            'codec' => 'pcm_s16le',
+        ],
+    ];
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Hello world',
+            'segments' => [
+                ['start_ms' => 0, 'end_ms' => 1500, 'text' => 'Hello'],
+                ['start_ms' => 1000, 'end_ms' => 2000, 'text' => 'world'],
+            ],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
+    $actionMock = Mockery::mock(ProcessMediaAction::class);
+    $actionMock->shouldReceive('probe')->once()->andReturn(['status' => 'success', 'probe' => $probeResult]);
+    $actionMock->shouldReceive('extractAudio')->once()->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
+
+    app()->instance(ProcessMediaAction::class, $actionMock);
+
+    $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? 'test-key');
+    $job->handle();
+
+    $transcript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+    expect($transcript)->not->toBeNull();
+    expect($transcript->status)->toBe(MediaTranscript::STATUS_FAILED);
+    expect($transcript->error)->toContain('overlap');
+});

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -255,3 +258,89 @@ class TestTranscribeEngineSelection:
 
         assert result["transcription"]["engine"] == "deterministic"
         assert result["transcription"]["model"] == "deterministic"
+
+
+class TestTranscribeTimeout:
+    """Tests proving subprocess-level timeout kills child and returns in bounded time.
+
+    These tests verify that the transcribe action uses subprocess isolation
+    (not ThreadPoolExecutor) and enforces a real wall-clock timeout on the child
+    process, killing it via process group signal when the deadline expires.
+    """
+
+    def test_transcribe_timeout_is_real_wall_clock(
+        self, sample_contract_transcribe: dict[str, Any]
+    ) -> None:
+        """Proves timeout kills child and returns in bounded time.
+
+        Elapsed wall-clock must be substantially less than the slow operation.
+        """
+
+        def mock_popen_slow(*args, **kwargs):
+            """Mock Popen that simulates a slow child."""
+
+            class FakeProcess:
+                pid = 99999
+                stdin = io.BytesIO()
+                stdout = io.BytesIO(b'')
+                stderr = io.BytesIO(b'')
+                returncode = None
+
+                def poll(self):
+                    return None
+
+                def wait(self, timeout=None):
+                    time.sleep(5)  # Simulate slow inference
+                    self.returncode = 0
+                    return 0
+
+                def communicate(self, timeout=None):
+                    time.sleep(5)
+                    return (b'', b'')
+
+            return FakeProcess()
+
+        start = time.monotonic()
+
+        with patch.dict(os.environ, {
+            "TRANSCRIPTION_ENGINE": "deterministic",
+            "TRANSCRIBE_TIMEOUT_SECONDS": "1",
+        }):
+            with patch("aiclip_worker.actions.transcribe.subprocess.Popen", side_effect=mock_popen_slow):
+                result = transcribe(sample_contract_transcribe)
+
+        elapsed = time.monotonic() - start
+
+        assert result["status"] == "error"
+        assert "timeout" in result["error"].lower() or "timed out" in result["error"].lower()
+        assert elapsed < 3.0, f"Timeout took {elapsed:.1f}s, expected < 3.0s for 1s configured timeout"
+
+    def test_transcribe_timeout_kills_child(
+        self, sample_contract_transcribe: dict[str, Any]
+    ) -> None:
+        """Verify child process is terminated, not orphaned."""
+        mock_process = MagicMock()
+        mock_process.pid = 99999
+        mock_process.stdin = MagicMock()
+        mock_process.stdout = io.BytesIO(b'')
+        mock_process.stderr = io.BytesIO(b'')
+        mock_process.poll.return_value = None  # Still running
+
+        def slow_wait(timeout=None):
+            time.sleep(5)
+            mock_process.returncode = 0
+            return 0
+
+        mock_process.wait.side_effect = slow_wait
+
+        with patch.dict(os.environ, {
+            "TRANSCRIPTION_ENGINE": "deterministic",
+            "TRANSCRIBE_TIMEOUT_SECONDS": "1",
+        }):
+            with patch("aiclip_worker.actions.transcribe.subprocess.Popen", return_value=mock_process):
+                with patch("aiclip_worker.actions.transcribe.os.killpg") as mock_kill:
+                    result = transcribe(sample_contract_transcribe)
+
+        assert result["status"] == "error"
+        # Verify kill was attempted
+        assert mock_kill.called, "Process group should be killed on timeout"

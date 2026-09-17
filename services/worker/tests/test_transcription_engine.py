@@ -280,6 +280,19 @@ class TestFasterWhisperTranscriber:
         with pytest.raises(RuntimeError, match="Model inference failed"):
             transcriber.transcribe("/tmp/test.wav", {})
 
+    def test_faster_whisper_missing_language_raises_error(self) -> None:
+        """FasterWhisperTranscriber raises when language is None/empty."""
+        transcriber = FasterWhisperTranscriber()
+
+        mock_model = MagicMock()
+        mock_info = MagicMock()
+        mock_info.language = None  # Simulate missing language
+        mock_model.transcribe.return_value = (iter([]), mock_info)
+        transcriber._model = mock_model
+
+        with pytest.raises((ValueError, TypeError)):
+            transcriber.transcribe("/fake/audio.wav", {})
+
 
 class TestGetTranscriber:
     """Test get_transcriber factory function."""

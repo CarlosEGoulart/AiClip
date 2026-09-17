@@ -6,10 +6,85 @@
 - **Title**: feat(media): add deterministic transcription worker stage
 - **Branch**: @carlosegoulart/51/feat/transcription-worker
 - **Milestone**: M4 Video Understanding (first slice)
+- **PR**: #52
+- **Recovery baseline**: `389110971698383c055ac950e235dadf7715e835` (Orchestrator-supplied)
 
 ## Goal
 
 Add the first slice of video understanding: deterministic transcription of normalized audio. This stage takes the mono 16 kHz PCM WAV derivative produced by the audio extraction worker (Issue #49) and generates structured transcript metadata with timestamps and segments. The transcription must be deterministic in CI (no model downloads) while supporting a real runtime engine (faster-whisper) for production.
+
+## Recovery Reconciliation — Normative
+
+This revision replaces the rejected correction advice, not the approved feature scope. All 30 acceptance criteria and the original test obligations remain required. The active issue was read from GitHub; it is open and still contains the erroneous `Closes #0`. Prior approval is withdrawn; backend CI and PR enforcement are failing per the Orchestrator. Nothing here certifies implementation, historical RED, Tester approval, or merge readiness.
+
+### Defects versus architectural clarifications
+
+- **Defects**: incomplete validation, thread-pool timeout that waits on shutdown, unsafe exception/payload handling, missing or misleading tests, and inaccurate completion claims.
+- **Clarifications**: retry semantics already required by the original plan/test plan; valid empty transcripts; which boundary validates; killable inference isolation and bounded teardown; runtime dependency compatibility and supported platform. The original spec did **not** declare `failed` terminal. `completed` alone is terminal.
+- **Unchanged architecture**: Laravel queue job owns database writes and asset/derivative ownership; Python returns metadata over the existing CLI contract. Redis/SQS consumers and word-level timestamps in the long-term architecture are not introduced by this segment-level M4 slice. No new API, UI, scene detection, or storage redesign is authorized.
+
+### R1. Retry and ownership
+
+- Legal retry is `failed → transcribing → completed/failed`, reusing the same transcript ID and normalized derivative. Clear the previous `error` when entering `transcribing`; successful completion has `error = null`.
+- On re-failure, replace the previous error with the new **safe** failure category; never persist partial result metadata. No duplicate transcript, derivative, or repeat extraction. Keep MediaAsset `completed` after successful extraction even when transcription fails.
+- Completed transcripts are unchanged on rerun and cannot transition back to `transcribing` or `failed`. Recovery of an interrupted `transcribing` attempt remains supported; no new automatic retry scheduler or concurrency system is introduced.
+- Select the derivative through the current MediaAsset and require matching transcript/derivative ownership. Worker-returned data cannot change IDs or storage references.
+
+### R2. Common transcript validation and untrusted returns
+
+`transcription.py` owns the Python rules. `Segment.__post_init__` enforces individual fields; `TranscriptResult.__post_init__` calls `validate_transcript_result(result)`, which validates the **whole result**, not just a segment list. The engine-return boundary must call the same validator independently before serialization, including for mutated or constructor-bypassing results. The supervisor also validates the decoded child response before returning success.
+
+| Field | Required rule at the boundaries |
+|---|---|
+| Result | A `TranscriptResult` at the Python engine interface; a JSON object on the wire. Reject null, scalars, lists, missing attributes, and unrelated/malformed objects without an uncaught attribute/type error. |
+| `language`, `engine`, `model` | Present, trimmed nonblank strings; fit existing column lengths of 8, 32, 32 characters respectively. Do not invent defaults such as `en` or `unknown`. |
+| `full_text` | Present string; **empty string is valid**. No non-empty restriction. |
+| `segments` | Present list (JSON array), possibly empty. Reject null, strings, objects/maps, and malformed members. |
+| `start_ms`, `end_ms` | Strict integers, excluding booleans, numeric strings, and floats; `start_ms >= 0`, `end_ms >= start_ms`. |
+| Segment `text` | String, trimmed and nonempty; `"0"` is valid. Construction/adapters may trim strings; untrusted boundary validation must reject noncanonical text rather than silently repair it. |
+| Sequence | In supplied order, each start is at least the previous end; adjacent and zero-duration segments are valid. Never sort, drop, or clamp invalid segments into success. |
+
+Empty `full_text` and `segments = []` represent a valid no-speech result, not missing fields. Both bundled adapters generate full text by joining canonical segment texts with spaces; boundary validation does not add an unsupported nonempty/equality requirement. Validation failure produces a safe structured processing error, never a fabricated success or raw object representation.
+
+### R3. Killable worker timeout and parent termination
+
+The public CLI/action acts as a supervisor; engine import/construction, model loading/download, WAV validation, inference **including lazy segment iteration**, result validation, and serialization execute in a fresh child process. Use explicit argument-list subprocess/process isolation and JSON IPC, not an executor context, detached inference thread, pickle of engine results, `threading.Timer`, or an `os._exit` watchdog. Only the supervisor emits the public JSON response.
+
+- `T = TRANSCRIBE_TIMEOUT_SECONDS` remains a positive integer processing budget, default **300 seconds**. Invalid/zero/negative configuration fails safely before engine execution. Start a monotonic deadline before launching the child; startup is not granted a separate inference budget. Every wait/read is deadline-bounded; no unbounded `join`, `wait`, `communicate`, or context-manager shutdown on any path.
+- At deadline, discard any late success, terminate the owned process group, wait at most **1 second**, then kill remaining processes and wait/reap for at most **1 further second**. Close IPC resources on every path. Normal success also requires child exit/reaping within the original deadline. A cleanup failure is a safe infrastructure error, never success or an unlimited wait.
+- The living supervisor returns one JSON error envelope with `status = error`, safe `error` and `stderr` strings, and CLI exit **1** on timeout. For example: `{"status":"error","error":"Transcription timed out","stderr":""}`. Structured failure and bounded completion are separate mandatory assertions.
+- Supported execution baseline: **Linux CLI, Python 3.10+ (CI 3.12), CPU**. A new interpreter avoids inheriting loaded native inference state. Use a dedicated child process group. Handle supervisor SIGTERM/SIGINT with the same bounded teardown; restore any installed handlers. Child bootstrap must establish a Linux parent-death SIGKILL guard before importing the engine and check the expected parent PID around guard setup to close the early-parent-death race. Launch from the supervisor's main thread; no privilege changes or detached inference descendants. Native inference threads belong to the killable child.
+- A supervisor killed with SIGKILL cannot emit JSON or run `finally`. Its guarded child must die; the host/container init or test subreaper must reap that orphan. Laravel converts missing/truncated output or abnormal exit into a safe failure. Runtime deployment must provide a reaping init and cleanup of any parent-owned staging directory after abrupt death; no new deployment scaffolding is part of #51. Unsupported platforms or unavailable parent-death protection fail closed, not a thread-based fallback.
+- The existing Laravel `media.transcribe_timeout_seconds` remains the configured **processing budget**, default 300, explicitly passed to the worker. Symfony Process is the independent outer boundary with **T + 5 seconds** total: at most 2 seconds of worker teardown plus 3 seconds for CLI startup/response overhead. This is an explicit timeout-layer clarification, not 5 extra seconds of inference. Catch Symfony timeouts/process failures and map them to `ProcessMediaException` without raw command/exception leakage. Queue-worker timeout/retry settings must accommodate the complete probe/extraction/transcription chain; infrastructure verification is gated, not presumed.
+- Read-only normalized input is never deleted or modified by inference. Parent owns any job-local IPC/staging files and removes them on success, failure, timeout, and handled cancellation. Prefer pipes/no new temporary files; the persistent model cache is not a job temporary file.
+
+### R4. Laravel trust boundaries and safe errors
+
+- `ProcessMediaAction::transcribe()` validates the request, process exit, JSON envelope, exact `status = success`, and all R2 wire fields before returning. A shared transcription validator is invoked again in the job immediately before `markCompleted()` so a mocked/replaced action cannot bypass persistence validation. JSON object/array distinctions must be checked before associative decoding loses them (notably `{}` versus `[]`).
+- Reject invalid/truncated JSON; null/scalar/list envelopes; missing/invalid status or transcription object; every missing/null/wrong-type metadata field; non-list segments; missing/wrong-type segment fields; invalid timing/order/overlap/text. No null-coalescing success defaults, PHP truthiness checks such as `empty("0")`, or type coercion.
+- Every invalid response, unexpected exception, timeout, or nonzero/abnormal exit becomes a safe `ProcessMediaException` at the action boundary. Before persistence, the job fails only the transcript and stores a safe current error; it never passes arbitrary throwable messages through to database/logs.
+- Capture exit status/stderr for classification, but expose only fixed allowlisted diagnostic categories and safe field names/indexes. Do not attach raw JSON, stdout/stderr, transcript text, audio, paths, credentials, raw exception messages, command strings, or unsafe chained exceptions to errors/logs. Worker-provided error text is untrusted even on exit 1. Test synthetic sensitive markers across all error surfaces. This preserves stderr capture while clarifying safe disclosure.
+
+### R5. Runtime adapter and dependency
+
+Add/update `transcription = ["faster-whisper>=1.2.1,<1.3.0"]` in the **existing** optional-dependencies table; retain `dev` and the lightweight base install. The lower bound matches the official published version inspected; the upper bound intentionally excludes unreviewed minor releases. Install the local runtime extra with `python -m pip install '.[transcription]'` from `services/worker`; no claim that AiClip itself is published on PyPI. Production records resolved versions. Package installation must not load a model.
+
+Construction and factory selection do not import/load `WhisperModel`. First transcription loads it with configured model/device/compute type/cache directory; subsequent calls on the same adapter reuse it. In-memory reuse is within one process, not across short-lived CLI invocations; the configured disk cache persists across invocations. Forward language and beam size (default 5); convert finite, nonnegative seconds to integer milliseconds by truncating `seconds * 1000`, reject malformed timings before conversion, trim text, consume the lazy iterator, and validate the result. Missing detected language fails rather than defaulting to English.
+
+Official sources inspected on 2026-09-17:
+- [SYSTRAN faster-whisper documentation](https://github.com/SYSTRAN/faster-whisper#readme): CPU/int8 usage, installation, lazy segment generator, runtime download behavior.
+- [Publisher package metadata](https://pypi.org/pypi/faster-whisper/json): version 1.2.1, Python >=3.9 (compatible with this project's >=3.10), CTranslate2/PyAV dependencies.
+- [Linux parent-death signal documentation](https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html): Linux-only behavior, parent-thread semantics, setup race and fork/credential caveats.
+
+CI uses deterministic providers and mocked `WhisperModel`, never a model download, credentialed provider, or GPU requirement. Runtime install/import smoke and an actual CPU transcription in an authorized separate environment remain required runtime verification, not substituted by mocks or silently reported as complete.
+
+### R6. Retained missing coverage, documentation, and gates
+
+- Corrupt audio rejection remains required, including the deterministic worker path: validate normalized PCM WAV structure/format and truncated frame data before engine execution. Random bytes, missing files, malformed contracts, and engine failures are distinct scenarios; invalid contract exits 2, processing failure exits 1. No fake successful corrupt-audio transcript.
+- Retain schema tests (conditional required `derived_asset_id` for transcribe, strict positive integer), PHP contract serialization/validation tests, action service tests, original unit/feature/E2E obligations, coverage thresholds, and at least 20 worker unit tests from the issue. See the recovery matrix in `test-plan.md`.
+- Future authorized documentation edits must keep exactly the six existing state headings. Wording: **“M4 Video Understanding (in progress): Issue #51 is the first transcription slice; correction and independent verification are pending.”** Next goal: **“Next narrow M4 slice: scene detection; planning and implementation require separate authorization after #51 closes.”** No semantic-scene implementation or completed-#51 claim. Roadmap lists #51 as in progress, not under completed slices. Only `failed` has a retry arrow.
+- Planner edits only this planning bundle. Builder implements only after the staged tests-first gate. Tester performs a fresh independent review **before** any future completion/merge decision; existing evidence/approval is not authoritative. Orchestrator owns authorized evidence/metadata reconciliation, including removal of `Closes #0`, not Planner.
+- **Human-maintainer blocker**: the published invalid commit/PR-enforcement failure is not resolved by changing governance, rewriting history, or fabricating evidence. No commits, pushes, merge, branch changes, new issue, or permission broadening are authorized by this recovery plan. Denied permissions stop the affected phase and are reported without a workaround. These operational gates do not authorize weakened acceptance criteria.
 
 ## Architecture Invariants
 

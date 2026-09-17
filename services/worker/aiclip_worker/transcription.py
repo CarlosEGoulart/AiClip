@@ -169,8 +169,11 @@ class FasterWhisperTranscriber(Transcriber):
 
         full_text = " ".join(full_text_parts)
 
+        if not info.language or not isinstance(info.language, str) or not info.language.strip():
+            raise ValueError("Transcription engine did not detect language")
+        language = info.language.strip()
         result = TranscriptResult(
-            language=info.language or "en",
+            language=language,
             full_text=full_text,
             segments=segments,
             engine="faster_whisper",
