@@ -272,11 +272,15 @@ class TestTranscribeTimeout:
         def mock_popen_slow(*args, **kwargs):
             class FakeProcess:
                 pid = 99999
+                returncode = 0
 
                 def communicate(self, input=None, timeout=None):
                     import time as _time
                     _time.sleep(timeout or 1)
                     raise subprocess.TimeoutExpired(cmd=b"test", timeout=timeout or 1)
+
+                def wait(self, timeout=None):
+                    return 0
 
             return FakeProcess()
 
