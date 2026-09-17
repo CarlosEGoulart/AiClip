@@ -55,15 +55,14 @@
           "type": "integer",
           "minimum": 1
         }
-      },
-      "required": ["duration_ms"]
+      }
     }
   },
   "additionalProperties": false,
   "allOf": [
     {
       "if": { "properties": { "action": { "const": "detect_scenes" } } },
-      "then": { "required": ["media"] }
+      "then": { "required": ["media", "media.duration_ms"] }
     }
   ]
 }
