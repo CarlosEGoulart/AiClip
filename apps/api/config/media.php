@@ -32,6 +32,8 @@ return [
 
     'transcribe_timeout_seconds' => (int) env('MEDIA_TRANSCRIBE_TIMEOUT_SECONDS', 300),
 
+    'scene_detect_timeout_seconds' => (int) env('MEDIA_SCENE_DETECT_TIMEOUT_SECONDS', 120),
+
     'worker_command' => env('MEDIA_WORKER_COMMAND', 'python -m aiclip_worker.cli'),
 
 ];

@@ -20,7 +20,7 @@
     "created_at": { "type": "string", "format": "date-time" },
     "action": {
       "type": "string",
-      "enum": ["probe", "extract_audio", "transcribe"],
+      "enum": ["probe", "extract_audio", "transcribe", "detect_scenes"],
       "default": "probe"
     },
     "output_storage": {
@@ -47,6 +47,15 @@
       "type": "integer",
       "minimum": 1,
       "description": "Required for transcribe action. References DerivedAsset containing normalized audio."
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   },
   "additionalProperties": false

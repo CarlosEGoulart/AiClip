@@ -10,6 +10,7 @@ from typing import Any
 from aiclip_worker.actions.extract_audio import extract_audio
 from aiclip_worker.actions.probe import probe_media
 from aiclip_worker.actions.transcribe import transcribe
+from aiclip_worker.actions.detect_scenes import detect_scenes as detect_scenes_action
 from aiclip_worker.contracts import validate_contract
 
 
@@ -179,6 +180,50 @@ def _handle_transcribe(args: argparse.Namespace) -> int:
     return 1
 
 
+def _handle_detect_scenes(args: argparse.Namespace) -> int:
+    """Handle the detect-scenes subcommand. Returns exit code."""
+    contract = _read_contract_json(args)
+
+    if contract is None:
+        error_output = {
+            "status": "error",
+            "error": "Invalid or missing contract JSON",
+            "stderr": "",
+        }
+        json.dump(error_output, sys.stdout)
+        return 2
+
+    # Validate contract
+    is_valid, error_msg = validate_contract(contract)
+    if not is_valid:
+        error_output = {
+            "status": "error",
+            "error": error_msg,
+            "stderr": "",
+        }
+        json.dump(error_output, sys.stdout)
+        return 2
+
+    # Check that action is detect_scenes
+    action = contract.get("action", "probe")
+    if action != "detect_scenes":
+        error_output = {
+            "status": "error",
+            "error": f"Expected action 'detect_scenes', got '{action}'",
+            "stderr": "",
+        }
+        json.dump(error_output, sys.stdout)
+        return 2
+
+    # Detect scenes
+    result = detect_scenes_action(contract)
+    json.dump(result, sys.stdout)
+
+    if result["status"] == "success":
+        return 0
+    return 1
+
+
 def _handle_transcribe_child() -> int:
     """Handle --transcribe-child mode. Reads contract from stdin, writes JSON to stdout."""
     from aiclip_worker.actions.transcribe import _run_transcribe_child
@@ -203,6 +248,30 @@ def _handle_transcribe_child() -> int:
     return 1
 
 
+def _handle_detect_scenes_child() -> int:
+    """Handle --detect-scenes-child mode. Reads contract from stdin, writes JSON to stdout."""
+    from aiclip_worker.actions.detect_scenes import _run_detect_scenes_child
+
+    try:
+        raw = sys.stdin.read()
+        contract = json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as e:
+        error_output = {
+            "status": "error",
+            "error": f"Invalid contract JSON on stdin: {e}",
+            "stderr": "",
+        }
+        json.dump(error_output, sys.stdout)
+        return 1
+
+    result = _run_detect_scenes_child(contract)
+    json.dump(result, sys.stdout)
+
+    if result.get("status") == "success":
+        return 0
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point. Returns exit code."""
     parser = argparse.ArgumentParser(
@@ -211,6 +280,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--transcribe-child",
+        action="store_true",
+        default=False,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--detect-scenes-child",
         action="store_true",
         default=False,
         help=argparse.SUPPRESS,
@@ -253,11 +328,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to contract JSON file",
     )
 
+    detect_scenes_parser = subparsers.add_parser("detect-scenes", help="Detect scenes in video")
+    detect_scenes_parser.add_argument(
+        "--contract-json",
+        type=str,
+        help="Contract JSON string",
+    )
+    detect_scenes_parser.add_argument(
+        "--contract-file",
+        type=str,
+        help="Path to contract JSON file",
+    )
+
     args = parser.parse_args(argv)
 
     # Handle --transcribe-child mode (spawned by supervisor, before subcommand dispatch)
     if args.transcribe_child:
         return _handle_transcribe_child()
+
+    if args.detect_scenes_child:
+        return _handle_detect_scenes_child()
 
     if args.command == "probe":
         return _handle_probe(args)
@@ -265,6 +355,8 @@ def main(argv: list[str] | None = None) -> int:
         return _handle_extract_audio(args)
     elif args.command == "transcribe":
         return _handle_transcribe(args)
+    elif args.command == "detect-scenes":
+        return _handle_detect_scenes(args)
 
     parser.print_help()
     return 2

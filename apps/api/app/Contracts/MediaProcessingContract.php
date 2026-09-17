@@ -26,6 +26,8 @@ class MediaProcessingContract
 
     public ?int $derivedAssetId = null;
 
+    public ?int $durationMs = null;
+
     /**
      * Create a contract from a MediaAsset model.
      */
@@ -42,6 +44,7 @@ class MediaProcessingContract
         $contract->idempotencyKey = $idempotencyKey;
         $contract->createdAt = now()->toIso8601String();
         $contract->action = $action;
+        $contract->durationMs = $asset->duration_ms ?? null;
 
         return $contract;
     }
@@ -63,6 +66,7 @@ class MediaProcessingContract
         $contract->action = $data['action'] ?? 'probe';
         $contract->outputStorage = $data['output_storage'] ?? null;
         $contract->derivedAssetId = $data['derived_asset_id'] ?? null;
+        $contract->durationMs = $data['media']['duration_ms'] ?? null;
 
         return $contract;
     }
@@ -90,6 +94,10 @@ class MediaProcessingContract
 
         if ($this->derivedAssetId !== null) {
             $data['derived_asset_id'] = $this->derivedAssetId;
+        }
+
+        if ($this->durationMs !== null) {
+            $data['media'] = ['duration_ms' => $this->durationMs];
         }
 
         return $data;
@@ -126,7 +134,7 @@ class MediaProcessingContract
         }
 
         // Validate action is valid
-        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe'], true)) {
+        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes'], true)) {
             return false;
         }
 
@@ -140,6 +148,13 @@ class MediaProcessingContract
         // If action is transcribe, derived_asset_id must be present
         if ($this->action === 'transcribe') {
             if (! isset($this->derivedAssetId) || $this->derivedAssetId < 1) {
+                return false;
+            }
+        }
+
+        // If action is detect_scenes, durationMs must be present and > 0
+        if ($this->action === 'detect_scenes') {
+            if (! isset($this->durationMs) || ! is_int($this->durationMs) || $this->durationMs <= 0) {
                 return false;
             }
         }

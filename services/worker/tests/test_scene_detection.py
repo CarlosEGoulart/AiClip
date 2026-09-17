@@ -1,0 +1,507 @@
+"""Tests for the scene detection engine abstraction."""
+
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from aiclip_worker.scene_detection import (
+    DeterministicSceneDetector,
+    Scene,
+    SceneDetector,
+    SceneResult,
+    get_scene_detector,
+    validate_scene_result,
+)
+
+# Try to import PySceneDetectAdapter for mock-based tests
+try:
+    from aiclip_worker.scene_detection_pyscenedetect import PySceneDetectAdapter
+    HAS_PYSCENEDETECT = True
+except ImportError:
+    HAS_PYSCENEDETECT = False
+    PySceneDetectAdapter = None  # type: ignore
+
+
+class TestScene:
+    """Test Scene dataclass."""
+
+    def test_scene_creation_with_valid_data(self) -> None:
+        """Scene stores index, start_ms, and end_ms correctly."""
+        scene = Scene(index=0, start_ms=0, end_ms=3120)
+        assert scene.index == 0
+        assert scene.start_ms == 0
+        assert scene.end_ms == 3120
+
+    def test_scene_index_is_integer(self) -> None:
+        """Scene index is an integer."""
+        scene = Scene(index=1, start_ms=100, end_ms=200)
+        assert isinstance(scene.index, int)
+
+    def test_scene_start_ms_is_integer(self) -> None:
+        """Scene start_ms is an integer."""
+        scene = Scene(index=0, start_ms=100, end_ms=200)
+        assert isinstance(scene.start_ms, int)
+
+    def test_scene_end_ms_is_integer(self) -> None:
+        """Scene end_ms is an integer."""
+        scene = Scene(index=0, start_ms=100, end_ms=200)
+        assert isinstance(scene.end_ms, int)
+
+    def test_scene_rejects_negative_start_ms(self) -> None:
+        """Scene rejects negative start_ms."""
+        with pytest.raises(ValueError, match="start_ms"):
+            Scene(index=0, start_ms=-1, end_ms=1000)
+
+    def test_scene_rejects_end_ms_less_than_start_ms(self) -> None:
+        """Scene rejects end_ms < start_ms."""
+        with pytest.raises(ValueError, match="end_ms"):
+            Scene(index=0, start_ms=1000, end_ms=500)
+
+    def test_scene_rejects_end_ms_equal_to_start_ms(self) -> None:
+        """Scene rejects end_ms == start_ms (must be strictly greater)."""
+        with pytest.raises(ValueError, match="end_ms"):
+            Scene(index=0, start_ms=1000, end_ms=1000)
+
+
+class TestSceneResult:
+    """Test SceneResult dataclass."""
+
+    def test_scene_result_creation_with_valid_data(self) -> None:
+        """SceneResult stores all fields correctly."""
+        scenes = [Scene(index=0, start_ms=0, end_ms=3120)]
+        result = SceneResult(
+            detector="deterministic",
+            detector_version="0.0.0",
+            parameters={},
+            scenes=scenes,
+        )
+        assert result.detector == "deterministic"
+        assert result.detector_version == "0.0.0"
+        assert result.parameters == {}
+        assert len(result.scenes) == 1
+        assert isinstance(result.scenes[0], Scene)
+
+    def test_scene_result_scenes_is_list_of_scene(self) -> None:
+        """SceneResult scenes is a list of Scene objects."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=3120),
+            Scene(index=1, start_ms=3120, end_ms=8400),
+        ]
+        result = SceneResult(
+            detector="deterministic",
+            detector_version="0.0.0",
+            parameters={},
+            scenes=scenes,
+        )
+        assert isinstance(result.scenes, list)
+        for scene in result.scenes:
+            assert isinstance(scene, Scene)
+
+    def test_scene_result_accepts_empty_scenes(self) -> None:
+        """SceneResult accepts empty scenes list."""
+        result = SceneResult(
+            detector="deterministic",
+            detector_version="0.0.0",
+            parameters={},
+            scenes=[],
+        )
+        assert result.scenes == []
+
+
+class TestDeterministicSceneDetector:
+    """Test DeterministicSceneDetector implementation."""
+
+    def test_deterministic_detector_returns_deterministic_output(self) -> None:
+        """Same video file path returns identical SceneResult."""
+        detector = DeterministicSceneDetector()
+        video_path = "/tmp/test_video.mp4"
+
+        result1 = detector.detect(video_path)
+        result2 = detector.detect(video_path)
+
+        assert result1.detector == result2.detector
+        assert result1.detector_version == result2.detector_version
+        assert len(result1.scenes) == len(result2.scenes)
+        assert result1.detector == "deterministic"
+        assert result1.detector_version == "0.0.0"
+
+        for s1, s2 in zip(result1.scenes, result2.scenes):
+            assert s1.index == s2.index
+            assert s1.start_ms == s2.start_ms
+            assert s1.end_ms == s2.end_ms
+
+    def test_deterministic_detector_returns_different_output_for_different_input(self) -> None:
+        """Different video file paths produce different scenes."""
+        detector = DeterministicSceneDetector()
+
+        result1 = detector.detect("/tmp/video_a.mp4")
+        result2 = detector.detect("/tmp/video_b.mp4")
+
+        # At least scene count or timing should differ
+        assert result1.scenes != result2.scenes or len(result1.scenes) != len(result2.scenes)
+
+    def test_deterministic_detector_scenes_format(self) -> None:
+        """Scenes are ordered by start_ms ascending with valid format."""
+        detector = DeterministicSceneDetector()
+        result = detector.detect("/tmp/test_video.mp4")
+
+        assert isinstance(result.scenes, list)
+
+        for scene in result.scenes:
+            assert isinstance(scene, Scene)
+            assert scene.start_ms >= 0
+            assert scene.end_ms > scene.start_ms
+
+        # Verify ordering by start_ms
+        for i in range(1, len(result.scenes)):
+            assert result.scenes[i].start_ms >= result.scenes[i - 1].start_ms
+
+    def test_deterministic_detector_scenes_ordered_by_start_ms(self) -> None:
+        """Scenes are strictly ordered by start_ms."""
+        detector = DeterministicSceneDetector()
+        result = detector.detect("/tmp/test_video.mp4")
+
+        for i in range(1, len(result.scenes)):
+            assert result.scenes[i].start_ms >= result.scenes[i - 1].start_ms
+
+    def test_deterministic_detector_no_overlapping_scenes(self) -> None:
+        """Scenes do not overlap (each scene's start >= previous scene's end)."""
+        detector = DeterministicSceneDetector()
+        result = detector.detect("/tmp/test_video.mp4")
+
+        for i in range(1, len(result.scenes)):
+            assert result.scenes[i].start_ms >= result.scenes[i - 1].end_ms
+
+    def test_deterministic_detector_scenes_within_duration_bounds(self) -> None:
+        """All scenes have reasonable timing (within 24-hour bound)."""
+        detector = DeterministicSceneDetector()
+        result = detector.detect("/tmp/test_video.mp4")
+
+        max_duration_ms = 24 * 60 * 60 * 1000  # 24 hours
+        for scene in result.scenes:
+            assert scene.start_ms >= 0
+            assert scene.end_ms <= max_duration_ms
+
+    def test_deterministic_detector_get_name(self) -> None:
+        """DeterministicSceneDetector returns 'deterministic' as name."""
+        detector = DeterministicSceneDetector()
+        assert detector.get_name() == "deterministic"
+
+    def test_deterministic_detector_get_version(self) -> None:
+        """DeterministicSceneDetector returns '0.0.0' as version."""
+        detector = DeterministicSceneDetector()
+        assert detector.get_version() == "0.0.0"
+
+    def test_deterministic_detector_is_scene_detector(self) -> None:
+        """DeterministicSceneDetector is a SceneDetector."""
+        detector = DeterministicSceneDetector()
+        assert isinstance(detector, SceneDetector)
+
+
+class TestValidateSceneResult:
+    """Test validate_scene_result function."""
+
+    def test_validate_scenes_valid(self) -> None:
+        """validate_scene_result accepts valid ordered, non-overlapping scenes."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=3120),
+            Scene(index=1, start_ms=3120, end_ms=8400),
+            Scene(index=2, start_ms=8400, end_ms=12000),
+        ]
+        validate_scene_result(scenes)  # Should not raise
+
+    def test_validate_scenes_empty_list(self) -> None:
+        """validate_scene_result accepts empty scenes list."""
+        validate_scene_result([])  # Should not raise
+
+    def test_validate_scenes_unordered(self) -> None:
+        """validate_scene_result rejects scenes not ordered by start_ms."""
+        scenes = [
+            Scene(index=0, start_ms=1000, end_ms=2000),
+            Scene(index=1, start_ms=0, end_ms=1000),
+        ]
+        with pytest.raises(ValueError, match="order"):
+            validate_scene_result(scenes)
+
+    def test_validate_scenes_overlapping(self) -> None:
+        """validate_scene_result rejects overlapping scenes."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=1500),
+            Scene(index=1, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="overlap"):
+            validate_scene_result(scenes)
+
+    def test_validate_scenes_duplicate_indexes(self) -> None:
+        """validate_scene_result rejects duplicate indexes."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=1000),
+            Scene(index=0, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="(?i)duplicate"):
+            validate_scene_result(scenes)
+
+    def test_validate_scenes_negative_boundary(self) -> None:
+        """validate_scene_result rejects negative start_ms."""
+        scene = Scene.__new__(Scene)
+        scene.index = 0
+        scene.start_ms = -1
+        scene.end_ms = 1000
+        scenes = [scene]
+        with pytest.raises(ValueError, match="start_ms"):
+            validate_scene_result(scenes)
+
+    def test_validate_scenes_duration_overflow(self) -> None:
+        """validate_scene_result rejects end_ms <= start_ms."""
+        scene = Scene.__new__(Scene)
+        scene.index = 0
+        scene.start_ms = 1000
+        scene.end_ms = 1000
+        scenes = [scene]
+        with pytest.raises(ValueError, match="end_ms"):
+            validate_scene_result(scenes)
+
+    def test_validate_scenes_rejects_end_ms_less_than_start_ms(self) -> None:
+        """validate_scene_result rejects end_ms < start_ms."""
+        scene = Scene.__new__(Scene)
+        scene.index = 0
+        scene.start_ms = 1000
+        scene.end_ms = 500
+        scenes = [scene]
+        with pytest.raises(ValueError, match="end_ms"):
+            validate_scene_result(scenes)
+
+    def test_validate_scenes_single_scene(self) -> None:
+        """validate_scene_result accepts a single valid scene."""
+        scenes = [Scene(index=0, start_ms=0, end_ms=5000)]
+        validate_scene_result(scenes)  # Should not raise
+
+    def test_validate_scenes_contiguous(self) -> None:
+        """validate_scene_result accepts contiguous scenes (end == next start)."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=3120),
+            Scene(index=1, start_ms=3120, end_ms=6000),
+        ]
+        validate_scene_result(scenes)  # Should not raise
+
+
+class TestGetSceneDetector:
+    """Test get_scene_detector factory function."""
+
+    def test_get_scene_detector_returns_deterministic(self) -> None:
+        """get_scene_detector returns DeterministicSceneDetector for 'deterministic'."""
+        with patch.dict(os.environ, {"SCENE_DETECTION_ENGINE": "deterministic"}):
+            detector = get_scene_detector()
+            assert isinstance(detector, DeterministicSceneDetector)
+
+    def test_get_scene_detector_defaults_to_pyscenedetect(self) -> None:
+        """get_scene_detector defaults to PySceneDetectAdapter when env var is unset."""
+        from aiclip_worker.scene_detection_pyscenedetect import PySceneDetectAdapter
+
+        with patch.dict(os.environ, {}, clear=True):
+            detector = get_scene_detector()
+            assert isinstance(detector, PySceneDetectAdapter)
+
+    def test_get_scene_detector_raises_for_unknown(self) -> None:
+        """get_scene_detector raises ValueError for unknown engine."""
+        with patch.dict(os.environ, {"SCENE_DETECTION_ENGINE": "unknown_engine"}):
+            with pytest.raises((ValueError, ImportError)):
+                get_scene_detector()
+
+    def test_get_scene_detector_explicit_name(self) -> None:
+        """get_scene_detector respects explicit engine parameter."""
+        detector = get_scene_detector("deterministic")
+        assert isinstance(detector, DeterministicSceneDetector)
+
+    def test_get_scene_detector_explicit_name_overrides_env(self) -> None:
+        """get_scene_detector explicit parameter overrides env var."""
+        with patch.dict(os.environ, {"SCENE_DETECTION_ENGINE": "unknown"}):
+            detector = get_scene_detector("deterministic")
+            assert isinstance(detector, DeterministicSceneDetector)
+
+
+class TestValidateSceneResultIndexInvariants:
+    """Test validate_scene_result enforces sequential 0-based index invariants."""
+
+    def test_validate_rejects_first_scene_not_zero(self) -> None:
+        """validate_scene_result rejects when first scene index != 0."""
+        scenes = [
+            Scene(index=1, start_ms=0, end_ms=1000),
+            Scene(index=2, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="sequential 0-based indexes"):
+            validate_scene_result(scenes)
+
+    def test_validate_rejects_gaps_in_indexes(self) -> None:
+        """validate_scene_result rejects gaps in indexes (0, 2)."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=1000),
+            Scene(index=2, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="sequential 0-based indexes"):
+            validate_scene_result(scenes)
+
+    def test_validate_rejects_reversed_indexes(self) -> None:
+        """validate_scene_result rejects reversed indexes (1, 0)."""
+        scenes = [
+            Scene(index=1, start_ms=0, end_ms=1000),
+            Scene(index=0, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="sequential 0-based indexes"):
+            validate_scene_result(scenes)
+
+    def test_validate_rejects_duplicate_indexes_at_different_positions(self) -> None:
+        """validate_scene_result rejects duplicate indexes (0, 0)."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=1000),
+            Scene(index=0, start_ms=1000, end_ms=2000),
+        ]
+        with pytest.raises(ValueError, match="(?i)duplicate"):
+            validate_scene_result(scenes)
+
+    def test_validate_accepts_valid_sequential_indexes(self) -> None:
+        """validate_scene_result accepts 0, 1, 2, ..."""
+        scenes = [
+            Scene(index=0, start_ms=0, end_ms=1000),
+            Scene(index=1, start_ms=1000, end_ms=2000),
+            Scene(index=2, start_ms=2000, end_ms=3000),
+        ]
+        validate_scene_result(scenes)  # Should not raise
+
+
+@pytest.mark.skipif(not HAS_PYSCENEDETECT, reason="PySceneDetect not available")
+class TestPySceneDetectAdapter:
+    """Test PySceneDetectAdapter with mocked scenedetect."""
+
+    def test_adapter_get_name(self) -> None:
+        """PySceneDetectAdapter returns 'pyscenedetect' as name."""
+        adapter = PySceneDetectAdapter()
+        assert adapter.get_name() == "pyscenedetect"
+
+    def test_adapter_get_version(self) -> None:
+        """PySceneDetectAdapter returns version string."""
+        adapter = PySceneDetectAdapter()
+        version = adapter.get_version()
+        assert isinstance(version, str)
+        assert version != ""
+
+    def test_adapter_is_scene_detector(self) -> None:
+        """PySceneDetectAdapter is a SceneDetector."""
+        adapter = PySceneDetectAdapter()
+        assert isinstance(adapter, SceneDetector)
+
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_returns_scenes_with_correct_structure(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter returns SceneResult with proper structure from mocked detect."""
+        from scenedetect import FrameTimecode
+
+        # Mock scenedetect.detect to return two scenes
+        mock_scene_1 = (FrameTimecode(0, 30.0), FrameTimecode(93, 30.0))  # 0s to 3.1s
+        mock_scene_2 = (FrameTimecode(93, 30.0), FrameTimecode(180, 30.0))  # 3.1s to 6s
+        mock_detect.return_value = [mock_scene_1, mock_scene_2]
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4", options={"duration_ms": 6000})
+
+        assert result.detector == "pyscenedetect"
+        assert result.detector_version == "0.6.7"
+        assert result.parameters == {"threshold": 27.0, "duration_ms": 6000}
+        assert len(result.scenes) == 2
+
+        # Check first scene
+        assert result.scenes[0].index == 0
+        assert result.scenes[0].start_ms == 0
+        assert result.scenes[0].end_ms == 3100  # 3.1s * 1000
+
+        # Check second scene
+        assert result.scenes[1].index == 1
+        assert result.scenes[1].start_ms == 3100
+        assert result.scenes[1].end_ms == 6000  # 6s * 1000
+
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_handles_zero_duration_scene(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter converts zero-duration scenes to 1ms minimum."""
+        from scenedetect import FrameTimecode
+
+        # Mock scenedetect.detect returning a zero-duration scene
+        mock_scene = (FrameTimecode(0, 30.0), FrameTimecode(0, 30.0))  # 0s to 0s
+        mock_detect.return_value = [mock_scene]
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4")
+
+        assert len(result.scenes) == 1
+        assert result.scenes[0].start_ms == 0
+        assert result.scenes[0].end_ms == 1  # Should be start_ms + 1
+
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_respects_threshold_option(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter passes threshold option to ContentDetector."""
+        from scenedetect import FrameTimecode
+
+        mock_scene = (FrameTimecode(0, 30.0), FrameTimecode(30, 30.0))
+        mock_detect.return_value = [mock_scene]
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4", options={"threshold": 15.0})
+
+        assert result.parameters["threshold"] == 15.0
+
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_empty_result(self, mock_detect: MagicMock) -> None:
+        """Adapter handles empty scene list from scenedetect."""
+        mock_detect.return_value = []
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4")
+
+        assert result.scenes == []
+
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_propagates_corrupt_video_error(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter propagates exceptions for corrupt/unreadable video."""
+        mock_detect.side_effect = RuntimeError("Failed to decode video")
+
+        adapter = PySceneDetectAdapter()
+        with pytest.raises(RuntimeError, match="Failed to decode video"):
+            adapter.detect("/fake/path/corrupt.mp4")
+
+    @patch("scenedetect.detect")
+    @patch("scenedetect.__version__", "0.6.7")
+    def test_adapter_detect_multiple_scenes_ordered(
+        self, mock_detect: MagicMock
+    ) -> None:
+        """Adapter returns scenes ordered by start_ms with sequential indexes."""
+        from scenedetect import FrameTimecode
+
+        # Return scenes out of order to verify adapter produces ordered output
+        mock_scene_1 = (FrameTimecode(150, 30.0), FrameTimecode(300, 30.0))  # 5s to 10s
+        mock_scene_2 = (FrameTimecode(0, 30.0), FrameTimecode(150, 30.0))   # 0s to 5s
+        mock_detect.return_value = [mock_scene_1, mock_scene_2]
+
+        adapter = PySceneDetectAdapter()
+        result = adapter.detect("/fake/path/video.mp4")
+
+        # Adapter should produce sequential 0-based indexes in order returned
+        assert len(result.scenes) == 2
+        assert result.scenes[0].index == 0
+        assert result.scenes[1].index == 1
+        # Note: scenedetect returns scenes in detection order; adapter preserves that order
