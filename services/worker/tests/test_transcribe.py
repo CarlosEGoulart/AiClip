@@ -212,25 +212,33 @@ class TestTranscribeError:
     def test_transcribe_timeout_returns_error(
         self, sample_contract_transcribe: dict[str, Any]
     ) -> None:
-        """Transcription that exceeds timeout returns error."""
-        import time
-        from aiclip_worker.transcription import TranscriptResult
+        """Transcription that exceeds timeout returns error.
 
-        def slow_transcribe(audio_path: str, options: dict) -> TranscriptResult:
-            time.sleep(5)
-            return TranscriptResult(
-                language="en", full_text="should not reach",
-                segments=[], engine="test", model="test",
-            )
+        Mocks subprocess.Popen to return a child process whose poll() always
+        returns None (never exits). The supervisor loop detects the deadline
+        expiry, kills the child, and returns a timeout error.
+        """
+        mock_process = MagicMock()
+        mock_process.pid = 99999
+        mock_process.stdin = MagicMock()
+        mock_process.stdout = io.BytesIO(b"")
+        mock_process.stderr = io.BytesIO(b"")
+        mock_process.poll.return_value = None  # Child never exits
+
+        def instant_wait(timeout=None):
+            mock_process.returncode = 0
+            return 0
+
+        mock_process.wait.side_effect = instant_wait
 
         with patch.dict(os.environ, {
             "TRANSCRIPTION_ENGINE": "deterministic",
             "TRANSCRIBE_TIMEOUT_SECONDS": "1",
         }):
-            with patch("aiclip_worker.actions.transcribe.get_transcriber") as mock_factory:
-                mock_transcriber = MagicMock()
-                mock_transcriber.transcribe = slow_transcribe
-                mock_factory.return_value = mock_transcriber
+            with patch(
+                "aiclip_worker.actions.transcribe.subprocess.Popen",
+                return_value=mock_process,
+            ):
                 result = transcribe(sample_contract_transcribe)
 
         assert result["status"] == "error"
@@ -274,29 +282,30 @@ class TestTranscribeTimeout:
         """Proves timeout kills child and returns in bounded time.
 
         Elapsed wall-clock must be substantially less than the slow operation.
+        The FakeProcess.wait() returns immediately so _kill_process_group
+        does not block, and the supervisor's poll-loop detects deadline expiry.
         """
 
         def mock_popen_slow(*args, **kwargs):
-            """Mock Popen that simulates a slow child."""
+            """Mock Popen that simulates a child that never exits."""
 
             class FakeProcess:
                 pid = 99999
                 stdin = io.BytesIO()
-                stdout = io.BytesIO(b'')
-                stderr = io.BytesIO(b'')
+                stdout = io.BytesIO(b"")
+                stderr = io.BytesIO(b"")
                 returncode = None
 
                 def poll(self):
-                    return None
+                    return None  # Never exits
 
                 def wait(self, timeout=None):
-                    time.sleep(5)  # Simulate slow inference
+                    # Must return immediately so _kill_process_group is not blocked
                     self.returncode = 0
                     return 0
 
                 def communicate(self, timeout=None):
-                    time.sleep(5)
-                    return (b'', b'')
+                    return (b"", b"")
 
             return FakeProcess()
 
@@ -318,29 +327,37 @@ class TestTranscribeTimeout:
     def test_transcribe_timeout_kills_child(
         self, sample_contract_transcribe: dict[str, Any]
     ) -> None:
-        """Verify child process is terminated, not orphaned."""
+        """Verify child process is terminated, not orphaned.
+
+        Mocks subprocess.Popen, os.getpgid, and os.killpg. The process
+        poll() always returns None so the supervisor detects timeout.
+        wait() returns immediately so _kill_process_group is not blocked.
+        os.getpgid is mocked because PID 99999 does not exist on the real
+        system and would raise ProcessLookupError before os.killpg is reached.
+        """
         mock_process = MagicMock()
         mock_process.pid = 99999
         mock_process.stdin = MagicMock()
-        mock_process.stdout = io.BytesIO(b'')
-        mock_process.stderr = io.BytesIO(b'')
+        mock_process.stdout = io.BytesIO(b"")
+        mock_process.stderr = io.BytesIO(b"")
         mock_process.poll.return_value = None  # Still running
 
-        def slow_wait(timeout=None):
-            time.sleep(5)
+        def instant_wait(timeout=None):
             mock_process.returncode = 0
             return 0
 
-        mock_process.wait.side_effect = slow_wait
+        mock_process.wait.side_effect = instant_wait
 
         with patch.dict(os.environ, {
             "TRANSCRIPTION_ENGINE": "deterministic",
             "TRANSCRIBE_TIMEOUT_SECONDS": "1",
         }):
             with patch("aiclip_worker.actions.transcribe.subprocess.Popen", return_value=mock_process):
-                with patch("aiclip_worker.actions.transcribe.os.killpg") as mock_kill:
-                    result = transcribe(sample_contract_transcribe)
+                with patch("aiclip_worker.actions.transcribe.os.getpgid", return_value=99999):
+                    with patch("aiclip_worker.actions.transcribe.os.killpg") as mock_kill:
+                        result = transcribe(sample_contract_transcribe)
 
         assert result["status"] == "error"
+        assert "timeout" in result["error"].lower() or "timed out" in result["error"].lower()
         # Verify kill was attempted
         assert mock_kill.called, "Process group should be killed on timeout"
