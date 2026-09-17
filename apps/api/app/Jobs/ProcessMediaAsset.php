@@ -200,16 +200,89 @@ class ProcessMediaAsset implements ShouldQueue
             // Invoke transcribe
             $transcribeResult = $action->transcribe($transcribeContract);
 
-            // Extract transcription data
-            $transcription = $transcribeResult['transcription'] ?? [];
+            // Extract and validate transcription data
+            $transcription = $transcribeResult['transcription'] ?? null;
+
+            if (! is_array($transcription)) {
+                throw new ProcessMediaException(
+                    'Worker returned success but transcription data is missing or malformed',
+                    1,
+                    json_encode($transcribeResult),
+                );
+            }
+
+            $language = $transcription['language'] ?? null;
+            $fullText = $transcription['full_text'] ?? null;
+            $segments = $transcription['segments'] ?? null;
+            $engine = $transcription['engine'] ?? null;
+            $model = $transcription['model'] ?? null;
+
+            // Validate required fields
+            $missingFields = [];
+            if (empty($language) || ! is_string($language)) {
+                $missingFields[] = 'language';
+            }
+            if (empty($fullText) || ! is_string($fullText)) {
+                $missingFields[] = 'full_text';
+            }
+            if (! is_array($segments) || count($segments) === 0) {
+                $missingFields[] = 'segments';
+            }
+            if (empty($engine) || ! is_string($engine)) {
+                $missingFields[] = 'engine';
+            }
+            if (empty($model) || ! is_string($model)) {
+                $missingFields[] = 'model';
+            }
+
+            if (count($missingFields) > 0) {
+                throw new ProcessMediaException(
+                    'Worker returned success but transcription is missing required fields: '
+                    .implode(', ', $missingFields),
+                    1,
+                    json_encode($transcribeResult),
+                );
+            }
+
+            // Validate segments
+            foreach ($segments as $idx => $seg) {
+                if (! is_array($seg) || ! isset($seg['start_ms'], $seg['end_ms'], $seg['text'])) {
+                    throw new ProcessMediaException(
+                        "Worker returned success but segment {$idx} is malformed",
+                        1,
+                        json_encode($seg),
+                    );
+                }
+                if (! is_int($seg['start_ms']) || $seg['start_ms'] < 0) {
+                    throw new ProcessMediaException(
+                        "Worker returned success but segment {$idx} has invalid start_ms",
+                        1,
+                        json_encode($seg),
+                    );
+                }
+                if (! is_int($seg['end_ms']) || $seg['end_ms'] < $seg['start_ms']) {
+                    throw new ProcessMediaException(
+                        "Worker returned success but segment {$idx} has invalid end_ms",
+                        1,
+                        json_encode($seg),
+                    );
+                }
+                if (empty(trim($seg['text']))) {
+                    throw new ProcessMediaException(
+                        "Worker returned success but segment {$idx} has empty text",
+                        1,
+                        json_encode($seg),
+                    );
+                }
+            }
 
             // Mark transcript as completed
             $transcript->markCompleted(
-                $transcription['language'] ?? 'en',
-                $transcription['full_text'] ?? '',
-                $transcription['segments'] ?? [],
-                $transcription['engine'] ?? 'unknown',
-                $transcription['model'] ?? 'unknown',
+                $language,
+                $fullText,
+                $segments,
+                $engine,
+                $model,
             );
 
             // Mark asset as completed

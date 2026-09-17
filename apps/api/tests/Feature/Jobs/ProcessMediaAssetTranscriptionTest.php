@@ -346,6 +346,73 @@ it('marks MediaTranscript failed on transcription error', function () {
     expect($asset->processing_status)->toBe('completed');
 });
 
+it('retries failed transcription on rerun', function () {
+    $asset = MediaAsset::factory()->create([
+        'processing_status' => 'stored',
+    ]);
+
+    $probeResult = [
+        'duration_ms' => 5000,
+        'audio_codec' => 'aac',
+    ];
+
+    // Create existing DerivedAsset
+    $derivedAsset = DerivedAsset::create([
+        'media_asset_id' => $asset->id,
+        'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
+        'storage_disk' => 'media',
+        'storage_key' => '/tmp/audio_normalized.wav',
+        'mime_type' => 'audio/wav',
+        'size_bytes' => 160000,
+    ]);
+
+    // Create existing FAILED MediaTranscript
+    $transcript = MediaTranscript::create([
+        'media_asset_id' => $asset->id,
+        'derived_asset_id' => $derivedAsset->id,
+        'status' => MediaTranscript::STATUS_FAILED,
+        'error' => 'Previous transcription failed',
+    ]);
+
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Retry succeeded',
+            'segments' => [
+                ['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Retry'],
+                ['start_ms' => 1000, 'end_ms' => 2000, 'text' => 'succeeded'],
+            ],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
+    $actionMock = Mockery::mock(ProcessMediaAction::class);
+    $actionMock->shouldReceive('probe')
+        ->once()
+        ->andReturn([
+            'status' => 'success',
+            'probe' => $probeResult,
+        ]);
+    $actionMock->shouldNotReceive('extractAudio');
+    $actionMock->shouldReceive('transcribe')
+        ->once()
+        ->andReturn($transcribeResult);
+
+    app()->instance(ProcessMediaAction::class, $actionMock);
+
+    $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? '550e8400-e29b-41d4-a716-446655440000');
+    $job->handle();
+
+    $transcript->refresh();
+    expect($transcript->status)->toBe(MediaTranscript::STATUS_COMPLETED);
+    expect($transcript->full_text)->toBe('Retry succeeded');
+    expect($transcript->language)->toBe('en');
+    expect($transcript->engine)->toBe('deterministic');
+    expect($transcript->model)->toBe('deterministic');
+});
+
 it('does not create MediaTranscript when audio extraction fails', function () {
     $asset = MediaAsset::factory()->create([
         'processing_status' => 'stored',
@@ -383,4 +450,134 @@ it('does not create MediaTranscript when audio extraction fails', function () {
 
     $asset->refresh();
     expect($asset->processing_status)->toBe('failed');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Response Validation (BLOCKER 6)
+|--------------------------------------------------------------------------
+*/
+
+it('rejects malformed worker success response missing transcription object', function () {
+    $asset = MediaAsset::factory()->create(['processing_status' => 'stored']);
+
+    $probeResult = ['duration_ms' => 5000, 'audio_codec' => 'aac'];
+    $extractionResult = [
+        'status' => 'success',
+        'extraction' => [
+            'output_path' => '/tmp/audio.wav',
+            'output_size_bytes' => 160000,
+            'duration_ms' => 5000,
+            'sample_rate' => 16000,
+            'channels' => 1,
+            'codec' => 'pcm_s16le',
+        ],
+    ];
+    // Missing transcription object entirely
+    $transcribeResult = ['status' => 'success'];
+
+    $actionMock = Mockery::mock(ProcessMediaAction::class);
+    $actionMock->shouldReceive('probe')->once()->andReturn([
+        'status' => 'success', 'probe' => $probeResult,
+    ]);
+    $actionMock->shouldReceive('extractAudio')->once()->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
+
+    app()->instance(ProcessMediaAction::class, $actionMock);
+
+    $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? 'test-key');
+    $job->handle();
+
+    $transcript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+    expect($transcript)->not->toBeNull();
+    expect($transcript->status)->toBe(MediaTranscript::STATUS_FAILED);
+    expect($transcript->error)->toContain('missing or malformed');
+});
+
+it('rejects worker success response with missing language', function () {
+    $asset = MediaAsset::factory()->create(['processing_status' => 'stored']);
+
+    $probeResult = ['duration_ms' => 5000, 'audio_codec' => 'aac'];
+    $extractionResult = [
+        'status' => 'success',
+        'extraction' => [
+            'output_path' => '/tmp/audio.wav',
+            'output_size_bytes' => 160000,
+            'duration_ms' => 5000,
+            'sample_rate' => 16000,
+            'channels' => 1,
+            'codec' => 'pcm_s16le',
+        ],
+    ];
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            // language missing
+            'full_text' => 'Hello',
+            'segments' => [['start_ms' => 0, 'end_ms' => 1000, 'text' => 'Hello']],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
+    $actionMock = Mockery::mock(ProcessMediaAction::class);
+    $actionMock->shouldReceive('probe')->once()->andReturn([
+        'status' => 'success', 'probe' => $probeResult,
+    ]);
+    $actionMock->shouldReceive('extractAudio')->once()->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
+
+    app()->instance(ProcessMediaAction::class, $actionMock);
+
+    $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? 'test-key');
+    $job->handle();
+
+    $transcript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+    expect($transcript)->not->toBeNull();
+    expect($transcript->status)->toBe(MediaTranscript::STATUS_FAILED);
+    expect($transcript->error)->toContain('language');
+});
+
+it('rejects worker success response with invalid segment timing', function () {
+    $asset = MediaAsset::factory()->create(['processing_status' => 'stored']);
+
+    $probeResult = ['duration_ms' => 5000, 'audio_codec' => 'aac'];
+    $extractionResult = [
+        'status' => 'success',
+        'extraction' => [
+            'output_path' => '/tmp/audio.wav',
+            'output_size_bytes' => 160000,
+            'duration_ms' => 5000,
+            'sample_rate' => 16000,
+            'channels' => 1,
+            'codec' => 'pcm_s16le',
+        ],
+    ];
+    $transcribeResult = [
+        'status' => 'success',
+        'transcription' => [
+            'language' => 'en',
+            'full_text' => 'Hello',
+            'segments' => [['start_ms' => -1, 'end_ms' => 1000, 'text' => 'Hello']],
+            'engine' => 'deterministic',
+            'model' => 'deterministic',
+        ],
+    ];
+
+    $actionMock = Mockery::mock(ProcessMediaAction::class);
+    $actionMock->shouldReceive('probe')->once()->andReturn([
+        'status' => 'success', 'probe' => $probeResult,
+    ]);
+    $actionMock->shouldReceive('extractAudio')->once()->andReturn($extractionResult);
+    $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
+
+    app()->instance(ProcessMediaAction::class, $actionMock);
+
+    $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? 'test-key');
+    $job->handle();
+
+    $transcript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+    expect($transcript)->not->toBeNull();
+    expect($transcript->status)->toBe(MediaTranscript::STATUS_FAILED);
+    expect($transcript->error)->toContain('start_ms');
 });
