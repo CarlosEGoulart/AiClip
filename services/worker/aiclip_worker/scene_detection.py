@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List
@@ -57,9 +59,90 @@ class SceneDetector(ABC):
         ...
 
 
+class DeterministicSceneDetector(SceneDetector):
+    """Deterministic scene detector for CI/testing. No model downloads."""
+
+    def get_name(self) -> str:
+        return "deterministic"
+
+    def get_version(self) -> str:
+        return "0.0.0"
+
+    def detect(self, video_path: str, options: dict | None = None) -> SceneResult:
+        """Return deterministic scenes based on video file path hash."""
+        path_hash = hashlib.sha256(video_path.encode()).hexdigest()[:16]
+
+        # Generate 2-5 deterministic scenes based on hash
+        num_scenes = 2 + (int(path_hash[:4], 16) % 4)  # 2-5 scenes
+
+        duration_ms = 30000  # default 30s bound
+        if options and "duration_ms" in options:
+            duration_ms = options["duration_ms"]
+
+        # Divide duration evenly across scenes with some variance
+        base_scene_duration = max(duration_ms // num_scenes, 100)
+
+        scenes: list[Scene] = []
+        current_ms = 0
+        for i in range(num_scenes):
+            # Deterministic variance per scene
+            variance = int(path_hash[i * 4 : i * 4 + 4], 16) % 2000 - 1000
+            scene_duration = max(100, base_scene_duration + variance)
+
+            end_ms = min(current_ms + scene_duration, duration_ms)
+            if i == num_scenes - 1:
+                end_ms = duration_ms  # last scene extends to duration
+
+            scenes.append(Scene(
+                index=i,
+                start_ms=current_ms,
+                end_ms=end_ms,
+            ))
+            current_ms = end_ms
+
+        result = SceneResult(
+            detector="deterministic",
+            detector_version="0.0.0",
+            parameters={},
+            scenes=scenes,
+        )
+
+        validate_scene_result(result.scenes)
+
+        return result
+
+
 def get_scene_detector(name: str | None = None) -> SceneDetector:
-    """Factory function to get a scene detector by name."""
-    raise NotImplementedError("get_scene_detector not yet implemented")
+    """Factory function to get a scene detector by name.
+
+    Args:
+        name: Detector name ('deterministic' or 'pyscenedetect').
+              If None, uses SCENE_DETECTION_ENGINE env var.
+              Defaults to 'deterministic'.
+
+    Returns:
+        SceneDetector instance.
+
+    Raises:
+        ValueError: If detector name is unknown.
+        ImportError: If pyscenedetect is requested but not installed.
+    """
+    if name is None:
+        name = os.environ.get("SCENE_DETECTION_ENGINE", "deterministic")
+
+    if name == "deterministic":
+        return DeterministicSceneDetector()
+    elif name == "pyscenedetect":
+        try:
+            from aiclip_worker.scene_detection_pyscenedetect import PySceneDetectAdapter
+            return PySceneDetectAdapter()
+        except ImportError as e:
+            raise ImportError(
+                "pyscenedetect is required for PySceneDetectAdapter. "
+                "Install it with: pip install pyscenedetect opencv-python-headless"
+            ) from e
+    else:
+        raise ValueError(f"Unknown scene detection engine: {name}")
 
 
 def validate_scene_result(scenes: list[Scene]) -> None:
@@ -69,6 +152,42 @@ def validate_scene_result(scenes: list[Scene]) -> None:
         scenes: List of Scene objects to validate.
 
     Raises:
-        ValueError: If scenes are not ordered, overlap, or have invalid timing.
+        ValueError: If scenes are not ordered, overlap, have invalid timing,
+                    or contain duplicate indexes.
     """
-    raise NotImplementedError("validate_scene_result not yet implemented")
+    if not scenes:
+        return
+
+    seen_indexes: set[int] = set()
+
+    for i, scene in enumerate(scenes):
+        # Validate individual scene fields
+        if scene.start_ms < 0:
+            raise ValueError(
+                f"Scene {i} has negative start_ms: {scene.start_ms}"
+            )
+        if scene.end_ms <= scene.start_ms:
+            raise ValueError(
+                f"Scene {i} has end_ms ({scene.end_ms}) <= start_ms ({scene.start_ms})"
+            )
+
+        # Check ordering
+        if i > 0 and scene.start_ms < scenes[i - 1].start_ms:
+            raise ValueError(
+                f"Scenes not ordered: scene {i} start_ms={scene.start_ms} < "
+                f"scene {i - 1} start_ms={scenes[i - 1].start_ms}"
+            )
+
+        # Check overlap
+        if i > 0 and scene.start_ms < scenes[i - 1].end_ms:
+            raise ValueError(
+                f"Scenes overlap: scene {i} start_ms={scene.start_ms} < "
+                f"scene {i - 1} end_ms={scenes[i - 1].end_ms}"
+            )
+
+        # Check duplicate indexes
+        if scene.index in seen_indexes:
+            raise ValueError(
+                f"Duplicate scene index: {scene.index}"
+            )
+        seen_indexes.add(scene.index)

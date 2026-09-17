@@ -77,7 +77,14 @@ class MediaSceneAnalysis extends Model
      */
     public function markDetecting(): void
     {
-        throw new \RuntimeException('markDetecting not yet implemented');
+        if (! self::isValidTransition($this->status, self::STATUS_DETECTING)) {
+            return;
+        }
+
+        $this->update([
+            'status' => self::STATUS_DETECTING,
+            'error' => null,
+        ]);
     }
 
     /**
@@ -89,7 +96,18 @@ class MediaSceneAnalysis extends Model
         array $parameters,
         array $scenes,
     ): void {
-        throw new \RuntimeException('markCompleted not yet implemented');
+        if (! self::isValidTransition($this->status, self::STATUS_COMPLETED)) {
+            return;
+        }
+
+        $this->update([
+            'status' => self::STATUS_COMPLETED,
+            'detector' => $detector,
+            'detector_version' => $detectorVersion,
+            'parameters' => $parameters,
+            'scenes' => $scenes,
+            'error' => null,
+        ]);
     }
 
     /**
@@ -97,7 +115,14 @@ class MediaSceneAnalysis extends Model
      */
     public function markFailed(string $error): void
     {
-        throw new \RuntimeException('markFailed not yet implemented');
+        if (! self::isValidTransition($this->status, self::STATUS_FAILED)) {
+            return;
+        }
+
+        $this->update([
+            'status' => self::STATUS_FAILED,
+            'error' => $error,
+        ]);
     }
 
     /**
@@ -107,7 +132,63 @@ class MediaSceneAnalysis extends Model
      */
     public static function validateScenes(array $scenes): void
     {
-        throw new \RuntimeException('validateScenes not yet implemented');
+        if (empty($scenes)) {
+            return;
+        }
+
+        $seenIndexes = [];
+
+        foreach ($scenes as $i => $scene) {
+            // Validate required keys
+            if (! isset($scene['index'], $scene['start_ms'], $scene['end_ms'])) {
+                throw new \InvalidArgumentException("Scene {$i} is missing required keys (index, start_ms, end_ms)");
+            }
+
+            $index = $scene['index'];
+            $startMs = $scene['start_ms'];
+            $endMs = $scene['end_ms'];
+
+            // Validate types
+            if (! is_int($index)) {
+                throw new \InvalidArgumentException("Scene {$i} index must be an integer");
+            }
+            if (! is_int($startMs)) {
+                throw new \InvalidArgumentException("Scene {$i} start_ms must be an integer");
+            }
+            if (! is_int($endMs)) {
+                throw new \InvalidArgumentException("Scene {$i} end_ms must be an integer");
+            }
+
+            // Validate start_ms >= 0
+            if ($startMs < 0) {
+                throw new \InvalidArgumentException("Scene {$i} start_ms must be >= 0, got {$startMs}");
+            }
+
+            // Validate end_ms > start_ms
+            if ($endMs <= $startMs) {
+                throw new \InvalidArgumentException("Scene {$i} end_ms ({$endMs}) must be > start_ms ({$startMs})");
+            }
+
+            // Validate ordering
+            if ($i > 0 && $startMs < $scenes[$i - 1]['start_ms']) {
+                throw new \InvalidArgumentException(
+                    "Scenes not ordered: scene {$i} start_ms={$startMs} < scene " . ($i - 1) . " start_ms={$scenes[$i - 1]['start_ms']}"
+                );
+            }
+
+            // Validate no overlap
+            if ($i > 0 && $startMs < $scenes[$i - 1]['end_ms']) {
+                throw new \InvalidArgumentException(
+                    "Scenes overlap: scene {$i} start_ms={$startMs} < scene " . ($i - 1) . " end_ms={$scenes[$i - 1]['end_ms']}"
+                );
+            }
+
+            // Validate duplicate indexes
+            if (in_array($index, $seenIndexes, true)) {
+                throw new \InvalidArgumentException("Duplicate scene index: {$index}");
+            }
+            $seenIndexes[] = $index;
+        }
     }
 
     /*
