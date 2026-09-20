@@ -195,9 +195,17 @@ No refactoring needed.
 4. **createProcess preflight false-positive** — Replaced array copy-on-write pattern with `throw new \RuntimeException` guard in anonymous class. Test now genuinely fails if `createProcess()` is invoked before contract validation.
 5. **Stale evidence metadata** — Updated PR to #57. Prior 205/3-skipped totals and APPROVE decision superseded.
 
-### Remaining Verification (Pending CI)
+### Remaining Verification (PENDING → COMPLETE)
 
-Worker and Laravel test totals to be recorded after CI completes on the corrected HEAD.
+Worker and Laravel test totals recorded after CI on corrected HEAD `afc1f8e`:
+
+**Worker (CI): 208 collected, 208 passed, 0 skipped, 0 failed**
+- Missing dependency tests: PASSED (not skipped)
+- Lazy import test: PASSED (not skipped)
+- Real PySceneDetect integration (3 tests): ALL PASSED
+
+**Laravel (CI): 316 passed, 1762 assertions, 0 risky, 0 failed**
+- ProcessMediaActionTest: 10 passed (corrected createProcess guard verified)
 
 ## Final Verification Results (SUPERSEDED — recorded before test-integrity correction)
 
