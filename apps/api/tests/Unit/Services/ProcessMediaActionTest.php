@@ -320,29 +320,23 @@ it('allows valid positive durationMs for detect_scenes', function () {
 it('does not call createProcess when contract is invalid for detect_scenes', function () {
     $contract = createContract(['action' => 'detect_scenes', 'media' => ['duration_ms' => 0]]);
 
-    $processCreated = [false];
-    $action = new class($processCreated) extends ProcessMediaAction
+    $action = new class extends ProcessMediaAction
     {
-        private array $processCreated;
-
-        public function __construct(array $processCreated)
-        {
-            $this->processCreated = $processCreated;
-        }
+        public bool $processCreated = false;
 
         protected function createProcess(array $command): Process
         {
-            $this->processCreated[0] = true;
-
-            return parent::createProcess($command);
+            throw new \RuntimeException(
+                'createProcess must not be called for invalid contract'
+            );
         }
     };
 
     try {
         $action->detectScenes($contract);
     } catch (ProcessMediaException $e) {
-        // Expected
+        // Expected — contract validation rejects before any process creation
     }
 
-    expect($processCreated[0])->toBeFalse();
+    expect($action->processCreated)->toBeFalse();
 });
