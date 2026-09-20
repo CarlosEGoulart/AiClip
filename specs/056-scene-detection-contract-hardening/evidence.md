@@ -5,7 +5,7 @@
 - **Issue**: #56
 - **Title**: fix(media): harden scene detection contract and verification
 - **Branch**: `@carlosegoulart/56/fix/scene-detection-contract-hardening`
-- **PR**: To be created
+- **PR**: #57
 - **Date**: 2026-09-18
 - **Base Commit**: 2104f1467cc1a457c1e2b51bfbbbb30ee903bc1f (master after PR #55 merge)
 
@@ -182,29 +182,41 @@ After wrapping lazy import in try/except with actionable error message:
 #### REFACTOR
 No refactoring needed.
 
-## Final Verification Results
+## Test-Integrity Correction (Supersedes Prior APPROVE)
 
-### Worker Tests
-- Final exact total: 205 passed, 3 skipped (full suite on CI)
-- Skipped: 3 (missing dependency tests skipped when scenedetect is installed)
-- Contract regression tests: 10 new tests in `test_contract_detect_scenes.py` — ALL PASS
-- Missing dependency test: 2 tests in `test_missing_dependency.py` — SKIPPED when scenedetect installed (verified locally)
-- Real PySceneDetect integration tests: 3 tests in `test_pyscenedetect_integration.py` — ALL PASS
+**Date**: 2026-09-20
+**Context**: Independent review after prior APPROVE found 5 test-integrity blockers.
 
-### Laravel Tests
-- Final exact total: 316 passed
-- Exact assertions: 1762
-- Risky count: 0 (was 4)
-- Failed count: 0
+### Blockers Fixed
+
+1. **Missing-dependency tests skipped in CI** — Rewrote `test_missing_dependency.py` using `monkeypatch` on `builtins.__import__` to block scenedetect in-process. No subprocess, no skipif. Tests execute regardless of whether scenedetect is installed.
+2. **Hard-coded Cloud Shell path** — Removed `/home/goulartoliveiracarloseduardo/AiClip/services/worker` from test file. Tests now run in-process with no subprocess.
+3. **Tracked .pyc files** — Created `services/worker/.gitignore` with `__pycache__/`, `*.py[cod]`, `.pytest_cache/`. Pyc files were already deleted relative to master; gitignore prevents future tracking.
+4. **createProcess preflight false-positive** — Replaced array copy-on-write pattern with `throw new \RuntimeException` guard in anonymous class. Test now genuinely fails if `createProcess()` is invoked before contract validation.
+5. **Stale evidence metadata** — Updated PR to #57. Prior 205/3-skipped totals and APPROVE decision superseded.
+
+### Remaining Verification (Pending CI)
+
+Worker and Laravel test totals to be recorded after CI completes on the corrected HEAD.
+
+## Final Verification Results (SUPERSEDED — recorded before test-integrity correction)
+
+> **NOTE**: The following results are from the PREVIOUS commit (b845de2) and are superseded by the test-integrity correction. Updated results will be recorded after CI completes on the new HEAD.
+
+### Worker Tests (superseded)
+- Previous exact total: 205 passed, 3 skipped
+- The 3 skipped tests were the missing-dependency tests — now rewritten to execute
+
+### Laravel Tests (superseded)
+- Previous exact total: 316 passed, 1762 assertions, 0 risky
+- ProcessMediaActionTest: 10 passed, 16 assertions (verified locally)
 
 ### MinIO Integration
-- Health: PASS (MinIO service container healthy in CI)
-- Real integration tests: PASS (MinIO integration tests passed)
+- Health: PASS
+- Real integration tests: PASS
 
 ### Frontend
 - Total: 187 passed
-- Lint: PASS
-- Build: PASS
 
 ### E2E
 - Total: 75 passed
@@ -215,9 +227,11 @@ No refactoring needed.
 ### PR Enforcement
 - Status: PASS
 
-## Independent Tester Verification
+## Independent Tester Verification (SUPERSEDED)
 
-### Verification Items
+> The previous APPROVE was superseded by the test-integrity correction cycle. Updated verification will be recorded after CI completes on the corrected HEAD.
+
+### Previous Verification Items (superseded)
 - [x] JSON Schema conditional actually exists in current branch
 - [x] Missing media for detect_scenes fails
 - [x] Missing duration_ms fails
@@ -237,15 +251,12 @@ No refactoring needed.
 - [x] No control-plane modifications
 - [x] No clip-ranking implementation
 
-### Tester Decision
-**APPROVE** — All 12 blockers resolved. All verification items confirmed. TDD evidence recorded. CI green with 0 risky tests.
+### Previous Tester Decision (superseded)
+**APPROVE** — superseded by test-integrity review on 2026-09-20.
 
-Decision: APPROVE
+## Evidence Decision (SUPERSEDED)
 
-## Evidence Decision
-
-### Final State
-**APPROVED** — All 12 blockers resolved. Maintenance issue #56 complete.
+> Previous APPROVED state superseded by test-integrity correction. Updated decision pending CI verification.
 
 **Summary of Changes:**
 1. **Worker JSON Schema**: Added Draft-07 `allOf`/`if`/`then` conditional requiring `media.duration_ms` for `detect_scenes`
