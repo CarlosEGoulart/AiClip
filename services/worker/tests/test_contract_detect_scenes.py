@@ -137,3 +137,191 @@ class TestContractDetectScenesValidation:
         is_valid, error_msg = validate_contract(valid_contract_detect_scenes)
         assert is_valid is True
         assert error_msg == ""
+
+    # RED tests for Blocker 1: JSON Schema conditional requiring media.duration_ms for detect_scenes
+    def test_contract_detect_scenes_missing_media_invalid(self) -> None:
+        """detect_scenes contract without media object is INVALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "detect_scenes",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is False
+        assert "media" in error_msg.lower() or "duration" in error_msg.lower()
+
+    def test_contract_detect_scenes_media_empty_object_invalid(self) -> None:
+        """detect_scenes contract with empty media object is INVALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "media": {},
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "detect_scenes",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is False
+        assert "duration" in error_msg.lower()
+
+    def test_contract_detect_scenes_missing_duration_ms_invalid(self) -> None:
+        """detect_scenes contract with media but missing duration_ms is INVALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "media": {
+                "some_other_field": "value"
+            },
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "detect_scenes",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is False
+        assert "duration" in error_msg.lower()
+
+    def test_contract_detect_scenes_duration_zero_invalid(self) -> None:
+        """detect_scenes contract with duration_ms = 0 is INVALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "media": {
+                "duration_ms": 0
+            },
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "detect_scenes",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is False
+        assert "duration" in error_msg.lower() or "minimum" in error_msg.lower()
+
+    def test_contract_detect_scenes_duration_negative_invalid(self) -> None:
+        """detect_scenes contract with duration_ms = -1 is INVALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "media": {
+                "duration_ms": -1
+            },
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "detect_scenes",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is False
+        assert "duration" in error_msg.lower() or "minimum" in error_msg.lower()
+
+    def test_contract_detect_scenes_duration_non_integer_invalid(self) -> None:
+        """detect_scenes contract with non-integer duration_ms is INVALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "media": {
+                "duration_ms": 6000.5
+            },
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "detect_scenes",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is False
+        assert "duration" in error_msg.lower() or "integer" in error_msg.lower() or "type" in error_msg.lower()
+
+    def test_contract_probe_without_media_valid(self) -> None:
+        """probe contract without media object is VALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "probe",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is True
+
+    def test_contract_extract_audio_without_media_valid(self) -> None:
+        """extract_audio contract without media object is VALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "output_storage": {
+                "disk": "media",
+                "key": "output/audio.wav",
+                "mime_type": "audio/wav",
+            },
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "extract_audio",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is True
+
+    def test_contract_transcribe_without_media_valid(self) -> None:
+        """transcribe contract without media object is VALID."""
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": str(FIXTURES_DIR / "valid_sample.mp4"),
+                "mime_type": "video/mp4",
+            },
+            "derived_asset_id": 1,
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-17T10:00:00Z",
+            "action": "transcribe",
+        }
+        is_valid, error_msg = validate_contract(contract)
+        assert is_valid is True

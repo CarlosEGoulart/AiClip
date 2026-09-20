@@ -38,12 +38,18 @@ class PySceneDetectAdapter(SceneDetector):
             SceneResult with detected scenes.
 
         Raises:
-            ImportError: If scenedetect is not installed.
+            ImportError: If scenedetect is not installed (with actionable install guidance).
             FileNotFoundError: If video_path does not exist.
             Exception: If video is corrupt/unreadable (exceptions propagate).
         """
-        import scenedetect
-        from scenedetect import ContentDetector
+        try:
+            import scenedetect
+            from scenedetect import ContentDetector
+        except ImportError as exc:
+            raise ImportError(
+                "scenedetect is required for PySceneDetectAdapter; "
+                "install the worker scene_detection extra with: pip install -e \".[scene_detection]\""
+            ) from exc
 
         # Determine threshold: explicit option > env var > default 27.0
         threshold = 27.0

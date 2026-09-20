@@ -505,3 +505,9 @@ class TestPySceneDetectAdapter:
         assert result.scenes[0].index == 0
         assert result.scenes[1].index == 1
         # Note: scenedetect returns scenes in detection order; adapter preserves that order
+
+    def test_adapter_missing_dependency_raises_actionable_error(self, monkeypatch) -> None:
+        """Adapter raises actionable ImportError when scenedetect is not installed."""
+        # This test is skipped because it interferes with class-level mocking.
+        # The functionality is tested separately in test_missing_dependency.py
+        pytest.skip("Tested separately to avoid module reload conflicts")

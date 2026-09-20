@@ -245,3 +245,104 @@ it('enforces timeout on process', function () {
 
     expect($result['status'])->toBe('success');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Detect Scenes Contract Preflight
+|--------------------------------------------------------------------------
+*/
+
+it('throws ProcessMediaException when durationMs is null for detect_scenes', function () {
+    $contract = createContract(['action' => 'detect_scenes', 'media' => ['duration_ms' => null]]);
+
+    $action = createMockableAction([
+        [
+            'exitCode' => 0,
+            'stdout' => json_encode(['status' => 'success', 'scene_detection' => ['detector' => 'test', 'detector_version' => '1.0', 'parameters' => [], 'scenes' => []]]),
+            'stderr' => '',
+        ],
+    ]);
+
+    $this->expectException(ProcessMediaException::class);
+    $this->expectExceptionMessage('Invalid detect_scenes media processing contract');
+    $action->detectScenes($contract);
+});
+
+it('throws ProcessMediaException when durationMs is 0 for detect_scenes', function () {
+    $contract = createContract(['action' => 'detect_scenes', 'media' => ['duration_ms' => 0]]);
+
+    $action = createMockableAction([
+        [
+            'exitCode' => 0,
+            'stdout' => json_encode(['status' => 'success', 'scene_detection' => ['detector' => 'test', 'detector_version' => '1.0', 'parameters' => [], 'scenes' => []]]),
+            'stderr' => '',
+        ],
+    ]);
+
+    $this->expectException(ProcessMediaException::class);
+    $this->expectExceptionMessage('Invalid detect_scenes media processing contract');
+    $action->detectScenes($contract);
+});
+
+it('throws ProcessMediaException when durationMs is negative for detect_scenes', function () {
+    $contract = createContract(['action' => 'detect_scenes', 'media' => ['duration_ms' => -1]]);
+
+    $action = createMockableAction([
+        [
+            'exitCode' => 0,
+            'stdout' => json_encode(['status' => 'success', 'scene_detection' => ['detector' => 'test', 'detector_version' => '1.0', 'parameters' => [], 'scenes' => []]]),
+            'stderr' => '',
+        ],
+    ]);
+
+    $this->expectException(ProcessMediaException::class);
+    $this->expectExceptionMessage('Invalid detect_scenes media processing contract');
+    $action->detectScenes($contract);
+});
+
+it('allows valid positive durationMs for detect_scenes', function () {
+    $contract = createContract(['action' => 'detect_scenes', 'media' => ['duration_ms' => 6000]]);
+
+    $action = createMockableAction([
+        [
+            'exitCode' => 0,
+            'stdout' => json_encode(['status' => 'success', 'scene_detection' => ['detector' => 'pyscenedetect', 'detector_version' => '0.6.7', 'parameters' => ['threshold' => 27.0], 'scenes' => [['index' => 0, 'start_ms' => 0, 'end_ms' => 3000]]]]),
+            'stderr' => '',
+        ],
+    ]);
+
+    $result = $action->detectScenes($contract);
+
+    expect($result['status'])->toBe('success');
+    expect($result['scene_detection']['detector'])->toBe('pyscenedetect');
+});
+
+it('does not call createProcess when contract is invalid for detect_scenes', function () {
+    $contract = createContract(['action' => 'detect_scenes', 'media' => ['duration_ms' => 0]]);
+
+    $processCreated = [false];
+    $action = new class($processCreated) extends ProcessMediaAction
+    {
+        private array $processCreated;
+
+        public function __construct(array $processCreated)
+        {
+            $this->processCreated = $processCreated;
+        }
+
+        protected function createProcess(array $command): Process
+        {
+            $this->processCreated[0] = true;
+
+            return parent::createProcess($command);
+        }
+    };
+
+    try {
+        $action->detectScenes($contract);
+    } catch (ProcessMediaException $e) {
+        // Expected
+    }
+
+    expect($processCreated[0])->toBeFalse();
+});

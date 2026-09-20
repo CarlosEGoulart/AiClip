@@ -72,6 +72,30 @@ Decision: APPROVE
 > All 13 blockers verified as resolved.
 > CI: governance PASS, test PASS, tests PASS, e2e PASS.
 
+## Post-Merge Maintenance (Issue #56)
+
+After PR #55 merge (commit 2104f14), post-merge CI revealed verification gaps requiring correction:
+
+**Actual Post-Merge Master Verification:**
+- Worker: 196 passed, 0 failed, 0 skipped
+- Laravel: 305 passed, 1735 assertions, 4 risky
+- Frontend: 187 passed
+- E2E: 75 passed
+- Governance: 170 passed
+
+**Gaps Identified and Corrected in Issue #56:**
+1. **Worker JSON Schema**: `media.duration_ms` not conditionally required for `detect_scenes` — fixed with Draft-07 `if`/`then` conditional
+2. **Laravel Empty-Scenes Duration**: `validateScenes([], 0)` incorrectly succeeded — fixed by moving duration validation before early return
+3. **Risky Tests**: 4 risky (no-assertion) tests — fixed with meaningful postconditions
+4. **PHP Contract Preflight**: `ProcessMediaAction::detectScenes()` didn't validate contract before subprocess — fixed with preflight check
+5. **Missing Dependency Error**: Raw `ImportError` instead of actionable guidance — fixed with install instructions
+6. **Historical Evidence**: This document contained conflicting test counts and stale decision status — corrected factually
+
+**Maintenance PR**: #57 (to be created)
+**Maintenance Branch**: `@carlosegoulart/56/fix/scene-detection-contract-hardening`
+
+The original PR #55 GREEN table (179 worker, ~279 Laravel) reflected pre-merge state. Post-merge actuals are recorded above. This maintenance issue resolves the 4 risky tests and contract enforcement gaps without implementing new features.
+
 ## Requirements-Compliance Blockers Resolution
 
 ### Blocker 1: Real PySceneDetect Adapter
@@ -141,9 +165,17 @@ Decision: APPROVE
   cd services/worker && python -c "import os; os.environ.pop('SCENE_DETECTION_ENGINE', None); from aiclip_worker.scene_detection import get_scene_detector; d = get_scene_detector(); print(f'Default engine: {d.get_name()}')"
   ```
 
+## Post-Merge Verification (Actual)
+
+- **Worker**: 196 passed, 0 failed, 0 skipped (includes 3 real PySceneDetect integration tests)
+- **Laravel**: 305 passed, 1735 assertions, 4 risky (resolved in Issue #56)
+- **Frontend**: 187 passed
+- **E2E**: 75 passed
+- **Governance**: 170 passed
+
 ## Known Issues
 
-None. All requirements-compliance blockers resolved.
+Post-merge verification revealed contract enforcement gaps (Issue #56). See "Post-Merge Maintenance" section above.
 
 ## Additional Blocker Fixes (Issue #53 - Follow-up)
 
