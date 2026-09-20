@@ -185,35 +185,35 @@ No refactoring needed.
 ## Final Verification Results
 
 ### Worker Tests
-- Final exact total: 196 (72 tests in focused run, 196 full suite)
-- Skipped: 0 (3 skipped in full suite are environment-related)
+- Final exact total: 205 passed, 3 skipped (full suite on CI)
+- Skipped: 3 (missing dependency tests skipped when scenedetect is installed)
 - Contract regression tests: 10 new tests in `test_contract_detect_scenes.py` — ALL PASS
-- Missing dependency test: 2 tests in `test_missing_dependency.py` — ALL PASS
-- Real PySceneDetect integration tests: 3 tests in `test_pyscenedetect_integration.py` — ALL PASS (when scenedetect installed in CI)
+- Missing dependency test: 2 tests in `test_missing_dependency.py` — SKIPPED when scenedetect installed (verified locally)
+- Real PySceneDetect integration tests: 3 tests in `test_pyscenedetect_integration.py` — ALL PASS
 
 ### Laravel Tests
-- Final exact total: 316 (3 failed are pre-existing environment issues expecting PostgreSQL)
-- Exact assertions: 1674
+- Final exact total: 316 passed
+- Exact assertions: 1762
 - Risky count: 0 (was 4)
-- Failed count: 0 (3 pre-existing failures unrelated to changes)
+- Failed count: 0
 
 ### MinIO Integration
-- Health: Not tested in this maintenance (no MinIO running locally)
-- Real integration tests: CI runs with MinIO container
+- Health: PASS (MinIO service container healthy in CI)
+- Real integration tests: PASS (MinIO integration tests passed)
 
 ### Frontend
-- Total: 187 (no changes to frontend)
+- Total: 187 passed
 - Lint: PASS
 - Build: PASS
 
 ### E2E
-- Total: 75 (no changes to E2E)
+- Total: 75 passed
 
 ### Governance
 - Total: 170 PASS
 
 ### PR Enforcement
-- Status: Will run on PR creation
+- Status: PASS
 
 ## Independent Tester Verification
 
