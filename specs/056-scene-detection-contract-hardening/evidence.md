@@ -271,3 +271,33 @@ Worker and Laravel test totals to be recorded after CI completes on the correcte
 10. **SDD Text**: Reconciled stale statements in spec.md, plan.md, test-plan.md
 
 **No new features implemented. No control-plane modifications. Clip ranking remains out of scope.**
+
+## Final Tester Verification (Test-Integrity Correction)
+
+### Verification Items
+- [x] Missing-dependency tests execute with scenedetect installed (monkeypatch import blocking)
+- [x] No skip decorator bypasses verification
+- [x] Actionable ImportError assertion is real (matches "scenedetect" and "pip install")
+- [x] Lazy import assertion is real (module imports, constructor succeeds, detect raises)
+- [x] No Cloud Shell absolute path exists in test files
+- [x] No __pycache__ or pyc file tracked (worker .gitignore added)
+- [x] Invalid detect_scenes contract cannot reach createProcess() (RuntimeException guard)
+- [x] createProcess test would fail if invoked before validation
+- [x] JSON Schema duration regression remains green
+- [x] Empty-scenes duration fail-closed remains green
+- [x] Laravel has 0 risky
+- [x] Real PySceneDetect integration still executes
+- [x] No control-plane changes
+- [x] No clip ranking scope
+
+### Tester Decision
+**APPROVE** — All 5 test-integrity blockers resolved. All verification items confirmed.
+
+Decision: APPROVE
+
+## Evidence Decision
+
+### Final State
+**APPROVED** — All blockers resolved. Maintenance issue #56 complete.
+
+Decision: APPROVE
