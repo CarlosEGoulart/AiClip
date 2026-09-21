@@ -210,10 +210,34 @@ class MediaSceneAnalysisTest extends TestCase
 
     public function test_reject_empty_scenes_array(): void
     {
-        // Empty scenes array should be valid (no exception)
-        MediaSceneAnalysis::validateScenes([], 5000);
-        // If we get here without exception, the test passes
-        $this->assertTrue(true);
+        // Empty scenes array should be valid with positive duration (no exception)
+        $mediaAsset = MediaAsset::factory()->create();
+
+        $sceneAnalysis = MediaSceneAnalysis::create([
+            'media_asset_id' => $mediaAsset->id,
+            'status' => MediaSceneAnalysis::STATUS_DETECTING,
+        ]);
+
+        $sceneAnalysis->markCompleted('test-detector', '1.0.0', [], [], 5000);
+
+        $this->assertEquals(MediaSceneAnalysis::STATUS_COMPLETED, $sceneAnalysis->fresh()->status);
+        $this->assertEquals([], $sceneAnalysis->fresh()->scenes);
+    }
+
+    public function test_validate_scenes_rejects_zero_duration_with_empty_scenes(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Duration must be > 0');
+
+        MediaSceneAnalysis::validateScenes([], 0);
+    }
+
+    public function test_validate_scenes_rejects_negative_duration_with_empty_scenes(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Duration must be > 0');
+
+        MediaSceneAnalysis::validateScenes([], -1);
     }
 
     public function test_scenes_cast_to_array(): void
@@ -314,9 +338,22 @@ class MediaSceneAnalysisTest extends TestCase
     public function test_validate_scenes_accepts_exact_duration_boundary(): void
     {
         // Scene end_ms exactly equals duration should be valid
-        MediaSceneAnalysis::validateScenes([
+        $mediaAsset = MediaAsset::factory()->create();
+
+        $sceneAnalysis = MediaSceneAnalysis::create([
+            'media_asset_id' => $mediaAsset->id,
+            'status' => MediaSceneAnalysis::STATUS_DETECTING,
+        ]);
+
+        $scenes = [
             ['index' => 0, 'start_ms' => 0, 'end_ms' => 5000],
-        ], 5000);
+        ];
+
+        $sceneAnalysis->markCompleted('test-detector', '1.0.0', [], $scenes, 5000);
+
+        $this->assertEquals(MediaSceneAnalysis::STATUS_COMPLETED, $sceneAnalysis->fresh()->status);
+        $this->assertEquals($scenes, $sceneAnalysis->fresh()->scenes);
+        $this->assertEquals(5000, $sceneAnalysis->fresh()->scenes[0]['end_ms']);
     }
 
     public function test_validate_scenes_rejects_scene_exceeding_duration(): void
@@ -343,10 +380,23 @@ class MediaSceneAnalysisTest extends TestCase
     public function test_validate_scenes_accepts_scene_at_duration_boundary(): void
     {
         // Last scene ends exactly at duration
-        MediaSceneAnalysis::validateScenes([
+        $mediaAsset = MediaAsset::factory()->create();
+
+        $sceneAnalysis = MediaSceneAnalysis::create([
+            'media_asset_id' => $mediaAsset->id,
+            'status' => MediaSceneAnalysis::STATUS_DETECTING,
+        ]);
+
+        $scenes = [
             ['index' => 0, 'start_ms' => 0, 'end_ms' => 2500],
             ['index' => 1, 'start_ms' => 2500, 'end_ms' => 5000],
-        ], 5000);
+        ];
+
+        $sceneAnalysis->markCompleted('test-detector', '1.0.0', [], $scenes, 5000);
+
+        $this->assertEquals(MediaSceneAnalysis::STATUS_COMPLETED, $sceneAnalysis->fresh()->status);
+        $this->assertEquals($scenes, $sceneAnalysis->fresh()->scenes);
+        $this->assertEquals(5000, $sceneAnalysis->fresh()->scenes[1]['end_ms']);
     }
 
     public function test_validate_scenes_rejects_start_ms_beyond_duration(): void
@@ -359,9 +409,11 @@ class MediaSceneAnalysisTest extends TestCase
         ], 5000);
     }
 
-    public function test_validate_scenes_accepts_single_scene_at_zero_duration(): void
+    public function test_validate_scenes_rejects_zero_duration_with_empty_scenes_duplicate_check(): void
     {
-        // Duration 0 with no scenes should be valid
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Duration must be > 0');
+
         MediaSceneAnalysis::validateScenes([], 0);
     }
 
@@ -459,12 +511,27 @@ class MediaSceneAnalysisTest extends TestCase
 
     public function test_validate_scenes_accepts_valid_sequential_indexes(): void
     {
-        // Should not raise
-        MediaSceneAnalysis::validateScenes([
+        // Should not raise and should persist correctly
+        $mediaAsset = MediaAsset::factory()->create();
+
+        $sceneAnalysis = MediaSceneAnalysis::create([
+            'media_asset_id' => $mediaAsset->id,
+            'status' => MediaSceneAnalysis::STATUS_DETECTING,
+        ]);
+
+        $scenes = [
             ['index' => 0, 'start_ms' => 0, 'end_ms' => 1000],
             ['index' => 1, 'start_ms' => 1000, 'end_ms' => 2000],
             ['index' => 2, 'start_ms' => 2000, 'end_ms' => 3000],
-        ], 5000);
+        ];
+
+        $sceneAnalysis->markCompleted('test-detector', '1.0.0', [], $scenes, 5000);
+
+        $this->assertEquals(MediaSceneAnalysis::STATUS_COMPLETED, $sceneAnalysis->fresh()->status);
+        $this->assertEquals($scenes, $sceneAnalysis->fresh()->scenes);
+        foreach ($sceneAnalysis->fresh()->scenes as $i => $scene) {
+            $this->assertEquals($i, $scene['index']);
+        }
     }
 
     /*

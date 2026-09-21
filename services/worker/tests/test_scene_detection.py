@@ -505,3 +505,27 @@ class TestPySceneDetectAdapter:
         assert result.scenes[0].index == 0
         assert result.scenes[1].index == 1
         # Note: scenedetect returns scenes in detection order; adapter preserves that order
+
+    def test_adapter_missing_dependency_raises_actionable_error(self, monkeypatch) -> None:
+        """Adapter raises actionable ImportError when scenedetect is blocked at import time."""
+        import builtins
+        import sys
+
+        real_import = builtins.__import__
+
+        def blocked_import(name, *args, **kwargs):
+            if name == "scenedetect" or name.startswith("scenedetect."):
+                raise ImportError("simulated missing scenedetect")
+            return real_import(name, *args, **kwargs)
+
+        # Clear cached scenedetect modules
+        for mod_name in list(sys.modules):
+            if mod_name == "scenedetect" or mod_name.startswith("scenedetect."):
+                del sys.modules[mod_name]
+
+        monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+        adapter = PySceneDetectAdapter()
+
+        with pytest.raises(ImportError, match="scenedetect"):
+            adapter.detect("/fake/path/video.mp4")

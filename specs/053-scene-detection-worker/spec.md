@@ -264,7 +264,7 @@ PySceneDetect is selected as the runtime scene detection engine based on:
 1. **Deterministic Foundation**: ContentDetector produces consistent results for same video input
 2. **No GPU Required**: CPU-only processing suitable for server-side
 3. **Well-Maintained**: Active project with stable API
-4. **CI Constraints**: CI uses deterministic fake, not real engine
+4. **CI Strategy**: CI runs deterministic fake for fast unit tests AND real PySceneDetect integration tests with FFmpeg-generated video for mandatory Backend CI coverage
 5. **opencv-python-headless**: No GUI dependency needed
 6. **Pinned Version**: Intentionally excludes unreviewed releases
 
@@ -318,7 +318,8 @@ PySceneDetect is selected as the runtime scene detection engine based on:
 - Generate test video: `ffmpeg -f lavfi -i testsrc=duration=10:size=320x240:rate=30 -c:v libx264 -pix_fmt yuv420p test_video.mp4` (solid A→B→C color changes)
 - Run real `PySceneDetectAdapter.detect()` on generated video
 - Verify: real scenedetect invoked, real video decode, real `ContentDetector`, ordered boundaries, non-overlapping, integer ms timestamps, final scene end_ms within actual media duration
-- Runs in CI only when `[scene_detection]` extra installed (optional, not required for core CI gate)
+- Runs in CI as MANDATORY Backend CI coverage when `[scene_detection]` extra installed
+- The `[scene_detection]` extra is installed in CI via `pip install -e ".[scene_detection,dev]"`
 
 ## Worker CLI Interface Specification
 
@@ -716,7 +717,7 @@ Do NOT use `?? []` or `?? ''` — missing required fields are errors.
 
 2. **Timeout tuning**: 120s default may be insufficient for very long videos. Make configurable via environment variable.
 
-3. **OpenCV dependency size**: opencv-python-headless adds significant package size. Acceptable for production; CI uses deterministic engine without it.
+3. **OpenCV dependency size**: opencv-python-headless adds significant package size. Acceptable for production; CI installs it via `[scene_detection]` extra for real integration tests.
 
 4. **Scene boundary precision**: Different detectors may disagree on exact cut frame. Document 1-frame rounding tolerance.
 

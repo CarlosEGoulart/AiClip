@@ -913,7 +913,7 @@ For each test file:
    - `test_detect_scenes.py`
    - `test_cli_detect_scenes.py`
 
-2. **Python Worker Integration Tests** (optional, requires `[scene_detection]` extra)
+2. **Python Worker Integration Tests** (mandatory Backend CI coverage, requires `[scene_detection]` extra)
    - `test_pyscenedetect_integration.py` (Blocker #3)
 
 3. **Laravel Unit Tests**

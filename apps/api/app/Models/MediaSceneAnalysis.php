@@ -135,6 +135,10 @@ class MediaSceneAnalysis extends Model
      */
     public static function validateScenes(array $scenes, int $durationMs): void
     {
+        if ($durationMs <= 0) {
+            throw new \InvalidArgumentException("Duration must be > 0, got {$durationMs}");
+        }
+
         if (empty($scenes)) {
             return;
         }
@@ -197,7 +201,7 @@ class MediaSceneAnalysis extends Model
         foreach ($scenes as $i => $scene) {
             if ($scene['index'] !== $i) {
                 throw new \InvalidArgumentException(
-                    "Scenes must have sequential 0-based indexes: "
+                    'Scenes must have sequential 0-based indexes: '
                     ."scene at position {$i} has index {$scene['index']}, expected {$i}"
                 );
             }

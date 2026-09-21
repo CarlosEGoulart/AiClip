@@ -207,6 +207,10 @@ class ProcessMediaAction
      */
     public function detectScenes(MediaProcessingContract $contract): array
     {
+        if (! $contract->validate()) {
+            throw new ProcessMediaException('Invalid detect_scenes media processing contract');
+        }
+
         $timeout = config('media.scene_detect_timeout_seconds', 120);
         $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
 

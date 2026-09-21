@@ -40,15 +40,18 @@ E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
 5173/8000. Email verification not implemented. No project update/edit endpoint
 yet (out of scope for #30). Real runtime transcription model requires the
 faster-whisper optional dependency and model download. Real runtime scene
-detection requires the pyscenedetect optional dependency and opencv. Mandatory
-CI uses deterministic engines. Semantic clip analysis/ranking,
-rendering, and social features do not exist yet.
+detection requires the scenedetect[opencv-headless] optional dependency.
+Mandatory CI contains deterministic worker/unit coverage, mocked PySceneDetect
+adapter coverage, AND real FFmpeg-generated video + real PySceneDetect
+integration coverage. Semantic clip analysis/ranking, rendering, and social
+features do not exist yet.
 
 # Current Milestone
 
 M4 Video Understanding (in progress):
-- Deterministic transcription worker stage (Issue #51).
-- Deterministic scene detection worker stage (Issue #53).
+- Deterministic transcription worker stage (Issue #51) — MERGED.
+- Deterministic scene detection worker stage (Issue #53) — MERGED (PR #55).
+- Post-merge contract hardening for scene detection (Issue #56) — IN PROGRESS.
 - Transcription engine abstraction (DeterministicTranscriber for CI,
   FasterWhisperTranscriber for runtime).
 - Scene detection engine abstraction (DeterministicSceneDetector for CI,

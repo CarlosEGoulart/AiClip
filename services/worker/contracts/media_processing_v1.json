@@ -58,5 +58,32 @@
       }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "detect_scenes"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["media"],
+        "properties": {
+          "media": {
+            "type": "object",
+            "required": ["duration_ms"],
+            "properties": {
+              "duration_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
