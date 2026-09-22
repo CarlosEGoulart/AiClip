@@ -1645,3 +1645,47 @@ Local execution artifacts removed before commit:
 
 The independent Tester rejection remains the sole pending gate.
 Next: conventional commit, push, PR #59 update, CI monitoring, independent Tester revalidation.
+
+## Independent Tester revalidation — Issue #58 / PR #59, head 8da2955, 2026-09-22
+
+Executor: independent Tester. Scope: final acceptance review of remediated head `8da2955` (branch `@carlosegoulart/58/feat/clip-candidate-analysis`). Only this evidence file is edited. No production code, tests, Planner files, CI/Docker/governance files, branches, commits, pushes, or PR/issue lifecycle operations performed. No real `.env` secrets inspected.
+
+### Artifacts re-inspected
+
+- `specs/058-clip-candidate-analysis/{spec.md,test-plan.md,evidence.md}` (full, including all remediation sections).
+- `git diff origin/master...8da2955 --stat`: 25 files changed, net additions consistent with Issue #58 scope.
+- Key implementation files changed since original Tester rejection: `MediaProcessingContract.php` (D1 transport fix), `ClipAnalysisValidator.php` (D2 independent validation), `MediaClipAnalysis.php` (D2 model completion boundary), `ProcessMediaAction.php` (D1/D2 transport/preflight/timeout), `ProcessMediaAsset.php` (D3 extraction-failure continuation, D4 upstream retry/exhaustion), `config/media.php` (lock_wait_seconds, clip_analysis_timeout_seconds), and new unit test files `ProcessMediaActionClipTransportTest.php`, `ClipAnalysisPreflightTest.php`, `ClipAnalysisFactoryTest.php`, `ClipAnalysisResultTest.php`, `ClipAnalysisCompletionTest.php`, plus feature test expansions in `ProcessMediaAssetClipAnalysisTest.php`.
+- `gh pr view 59 --json files,mergeable,state` → MERGEABLE, OPEN.
+- `gh run view` for Backend/Frontend/E2E/governance on head `8da2955` → all success.
+
+### Per-finding revalidation (all 5 resolved)
+
+| Finding | Remediation Evidence | Status |
+|---|---|---|
+| **1. Scene-only transport** — `transcript_segments` omitted when unavailable, `[]` for completed empty, timing-only when available. Real PHP→Python stdin verified. | `ProcessMediaActionClipTransportTest.php`: 3 tests, 47 assertions — unavailable transcript omitted from actual stdin, present-empty and timing-only cases pass. `toMetadataArray()` modified to omit null transcript. Shared with `toArray()` for recording callers. | **RESOLVED** |
+| **2. Independent PHP validation** — `ClipAnalysisValidator` rejects semantic violations (algorithm/version, config, candidate rank/score/index/source/selection, provenance equality, numeric tolerance). Model completion boundary enforced. | `ClipAnalysisValidator::validateCompletion()` rederives expected analysis from input snapshot. `MediaClipAnalysis::markCompleted()` delegates to it. `ClipAnalysisResultTest.php`: **168 tests, 507 assertions** covering all mutation classes. `ClipAnalysisCompletionTest.php`: **19 tests, 62 assertions** — invalid algorithm/version, fabricated scores, NaN/Inf, empty candidates, wrong source/rank, null transcript in snapshot, extra fields, invalid timeout/lock_wait all rejected. Unit regression: **301 passed, 1030 assertions**. | **RESOLVED** |
+| **3. Extraction failure scene-only** — Audio extraction failure no longer returns early; clip analysis runs scene-only; stale completed transcript excluded; asset remains failed. | `ProcessMediaAsset.php`: early `return` removed from audio extraction catch; `$audioPathResolved = true` set; transcription skipped when asset FAILED; clip analysis proceeds. New test `it runs clip analysis for scene-only asset when audio extraction fails and marks asset failed` in `ProcessMediaAssetClipAnalysisTest.php`. Part of **38 passed, 193 assertions** focused clip-analysis Laravel tests. | **RESOLVED** |
+| **4. Upstream retry/exhaustion** — pending/detecting triggers bounded retry (`ProcessMediaException` upstream_not_ready); exhaustion produces sanitized failed clip attempt; asset reaches terminal state; completed reuse works. | `ProcessMediaAsset.php` clip stage: pending/detecting → create row, mark analyzing, throw `ProcessMediaException('upstream_not_ready')` (job `$tries = 3` drives bounded retry). `failed()` method: on `upstream_not_ready` exhaustion → mark clip analysis failed with `upstream_not_ready`. Tests: `it retries clip analysis when scene detection is pending and marks failed after exhaustion`, `it marks clip analysis as upstream_not_ready after job exhaustion`. Part of **38 passed** focused suite. | **RESOLVED** |
+| **5. Mandatory coverage** — L3 malformed-success expanded (168 tests); L2 transport/preflight/factory/result/validation unit tests cover contract boundary; L1/L4/L5 PostgreSQL integration verified by full suite green (612 passed) on isolated `aiclip_test_issue58`. | L3: `ClipAnalysisResultTest.php` 168 tests. L2: `ClipAnalysisPreflightTest.php` (98), `ClipAnalysisFactoryTest.php`, `ClipAnalysisResultTest.php`, `ClipAnalysisCompletionTest.php`, `ProcessMediaActionClipTransportTest.php` (3) — **301 unit tests, 1030 assertions**. L1/L4/L5: **Laravel full suite PostgreSQL + MinIO: 612 passed, 2825 assertions, 0 failed, 0 skipped** on isolated `aiclip_test_issue58` (human-executed authoritative run). Worker full: **298 passed**. Frontend: **187 passed**. E2E: **75 passed**. Governance: **170 OK**. All style/lint/build green. | **RESOLVED** |
+
+### N/A determinations (explicit reasons, consistent with prior review)
+
+- **Candidate UI / recommendation-quality / new-viewport design review: N/A.** Spec excludes any frontend or candidate API; `git diff origin/master...8da2955 -- apps/web` is empty; PR #59 file list contains no `apps/web` paths. No candidate screen exists to inspect at `390x844`, `768x1024`, or `1440x900`.
+- **Existing-flow running-application browser review: N/A for new UI.** Existing upload/list/delete/auth/project flows are unchanged in this diff; regression coverage is the green E2E Playwright CI (75) and Frontend CI (187/lint/build) on head `8da2955`, plus independent local `npm run test` (187 passed). Console/network/visual review of unchanged views adds no signal beyond those green checks and empty `apps/web` diff.
+- **Worker pytest local execution: N/A-with-reason (permission denial).** Required pytest command blocked by Tester tool permission layer before execution (exit N/A); Backend CI executed `python -m pytest tests/ -v` successfully on the identical head. Recorded, not waived; no approval relies on it.
+
+### CI confirmation on head 8da2955
+
+| Check | Result | Evidence |
+|---|---|---|
+| Backend CI (`tests`) | **pass** | `gh run view` → success; includes `Run worker tests` and `Run Tests` (PHP artisan) steps |
+| Frontend CI | **pass** | `gh run view` → success |
+| E2E CI (Playwright) | **pass** | `gh run view` → success |
+| Governance job | **pass** | `gh run view` → success |
+| pr-enforcement | **fail (expected)** | Fails only at `Validate PR governance` step awaiting this `Decision:` line |
+
+### Verdict
+
+All 5 blocking defects (D1–D5) from the prior independent Tester rejection are **resolved with executable evidence**. The final local validation totals (612 Laravel PostgreSQL+MinIO, 298 worker, 187 frontend, 75 E2E, 170 governance, all style/lint/build green) and CI on head `8da2955` confirm zero failing gates. Scope is clean (no frontend, phpunit, CI, governance, scripts, or Docker changes). No outstanding defects remain.
+
+Decision: APPROVE
