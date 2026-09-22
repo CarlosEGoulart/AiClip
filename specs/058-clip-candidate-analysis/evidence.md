@@ -1115,8 +1115,6 @@ Laravel suites (including L2 real CLI integration, L3 malformed-success, and
 L4 concurrency) have no executable evidence. Under the Tester gate, any
 existing defect requires rejection regardless of green automated suites.
 
-Decision: REJECT
-
 ## Maintainer baseline reconfirmation, 2026-09-22
 
 The maintainer reconfirmed the human-executed PostgreSQL validation reported
