@@ -28,6 +28,15 @@ def validate_contract(contract: dict[str, Any]) -> tuple[bool, str]:
     Returns:
         Tuple of (is_valid, error_message). If valid, error_message is empty.
     """
+    if isinstance(contract, dict) and contract.get("action") == "analyze_clips":
+        from aiclip_worker.clip_analysis import ClipAnalysisInput, ClipValidationError
+
+        try:
+            ClipAnalysisInput.from_contract(contract)
+        except (ClipValidationError, ValueError, TypeError, RecursionError):
+            return False, "Invalid clip analysis contract"
+        return True, ""
+
     # Check that version is present and is 1.x
     version = contract.get("version", "")
     if not version:

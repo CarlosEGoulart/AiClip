@@ -116,6 +116,21 @@ class TestSceneResult:
 class TestDeterministicSceneDetector:
     """Test DeterministicSceneDetector implementation."""
 
+    @pytest.mark.parametrize("duration_ms", [1, 6000])
+    def test_early_duration_exhaustion_preserves_scene_invariants(self, duration_ms: int) -> None:
+        """Exhausting the duration must not append a zero-length scene."""
+        detector = DeterministicSceneDetector()
+        video_path = "/tmp/test_video_5.mp4"
+        result = detector.detect(video_path, options={"duration_ms": duration_ms})
+
+        assert result == detector.detect(video_path, options={"duration_ms": duration_ms})
+        assert result.scenes
+        for index, scene in enumerate(result.scenes):
+            assert scene.index == index
+            assert 0 <= scene.start_ms < scene.end_ms <= duration_ms
+            if index:
+                assert scene.start_ms >= result.scenes[index - 1].end_ms
+
     def test_deterministic_detector_returns_deterministic_output(self) -> None:
         """Same video file path returns identical SceneResult."""
         detector = DeterministicSceneDetector()

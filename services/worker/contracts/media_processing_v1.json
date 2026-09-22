@@ -20,7 +20,7 @@
     "created_at": { "type": "string", "format": "date-time" },
     "action": {
       "type": "string",
-      "enum": ["probe", "extract_audio", "transcribe", "detect_scenes"],
+      "enum": ["probe", "extract_audio", "transcribe", "detect_scenes", "analyze_clips"],
       "default": "probe"
     },
     "output_storage": {
@@ -56,6 +56,51 @@
           "minimum": 1
         }
       }
+    },
+    "scenes": {
+      "type": "array",
+      "description": "Scene boundaries for clip analysis. Required for analyze_clips action.",
+      "items": {
+        "type": "object",
+        "required": ["index", "start_ms", "end_ms"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "start_ms": { "type": "integer", "minimum": 0 },
+          "end_ms": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "transcript_segments": {
+      "type": "array",
+      "description": "Transcript timing segments for clip analysis. Optional for analyze_clips action.",
+      "items": {
+        "type": "object",
+        "required": ["start_ms", "end_ms"],
+        "properties": {
+          "start_ms": { "type": "integer", "minimum": 0 },
+          "end_ms": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "description": "Clip analysis configuration. Required for analyze_clips action.",
+      "required": ["min_duration_ms", "target_duration_ms", "max_duration_ms", "max_candidates", "weights"],
+      "properties": {
+        "min_duration_ms": { "type": "integer", "minimum": 1 },
+        "target_duration_ms": { "type": "integer", "minimum": 1 },
+        "max_duration_ms": { "type": "integer", "minimum": 1 },
+        "max_candidates": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "weights": {
+          "type": "object",
+          "required": ["duration_fit", "speech_coverage", "boundary_alignment"],
+          "properties": {
+            "duration_fit": { "type": "integer", "minimum": 1, "maximum": 10000 },
+            "speech_coverage": { "type": "integer", "minimum": 0, "maximum": 10000 },
+            "boundary_alignment": { "type": "integer", "minimum": 0, "maximum": 10000 }
+          }
+        }
+      }
     }
   },
   "additionalProperties": false,
@@ -71,6 +116,31 @@
       },
       "then": {
         "required": ["media"],
+        "properties": {
+          "media": {
+            "type": "object",
+            "required": ["duration_ms"],
+            "properties": {
+              "duration_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "analyze_clips"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["media", "scenes", "configuration"],
         "properties": {
           "media": {
             "type": "object",

@@ -51,7 +51,11 @@ features do not exist yet.
 M4 Video Understanding (in progress):
 - Deterministic transcription worker stage (Issue #51) — MERGED.
 - Deterministic scene detection worker stage (Issue #53) — MERGED (PR #55).
-- Post-merge contract hardening for scene detection (Issue #56) — IN PROGRESS.
+- Post-merge contract hardening for scene detection (Issue #56, PR #57) — MERGED.
+- Deterministic clip candidate analysis (Issue #58) — IN PROGRESS; implementation
+  and full verification baselines are GREEN (worker 298, Laravel/PostgreSQL 318,
+  frontend 187, Playwright 75, governance 170). Awaiting PR, required CI, and
+  independent Tester; not merged and not closed.
 - Transcription engine abstraction (DeterministicTranscriber for CI,
   FasterWhisperTranscriber for runtime).
 - Scene detection engine abstraction (DeterministicSceneDetector for CI,
@@ -67,5 +71,10 @@ M4 Video Understanding (in progress):
 
 # Next Architectural Goal
 
-M4 Video Understanding — next narrow slice: clip ranking/analysis.
-Determine which segments are most interesting for clip extraction.
+Land Issue #58's M4 candidate-analysis foundation through PR, required CI, and
+independent Tester (currently in flight). After verified merge and closure,
+M4's pre-recommendation pipeline (transcription, scene detection, contract
+hardening, validated candidate metadata) can be recorded complete. M5 retains
+AI/model-backed recommendation and semantic relevance; Planner recommends M5
+as the next goal only after that closeout. Human merge authorization and
+authorization for any subsequent lifecycle remain required.

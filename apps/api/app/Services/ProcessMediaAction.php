@@ -266,6 +266,53 @@ class ProcessMediaAction
     }
 
     /**
+     * Analyze clip candidates using the Python worker CLI.
+     *
+     * Contract travels via stdin, not command-line arguments.
+     *
+     * @return array{status: string, analysis: array<string, mixed>}
+     *
+     * @throws ProcessMediaException
+     */
+    public function analyzeClips(MediaProcessingContract $contract): array
+    {
+        if (! $contract->validate()) {
+            throw new ProcessMediaException('Invalid analyze_clips media processing contract');
+        }
+
+        // Validate operational timeout before process creation
+        $timeout = config('media.clip_analysis_timeout_seconds', 30);
+        if (! is_int($timeout) || $timeout <= 0 || $timeout > 120) {
+            throw new ProcessMediaException('Invalid clip analysis timeout configuration');
+        }
+
+        try {
+            $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
+            $request = $contract->toMetadataArray();
+            $contractJson = json_encode($request, JSON_THROW_ON_ERROR);
+            $process = $this->createProcess([
+                ...explode(' ', $workerCommand),
+                'analyze-clips',
+            ]);
+            $process->setTimeout($timeout);
+            $process->setInput($contractJson);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                throw new ProcessMediaException('Clip analysis failed');
+            }
+
+            // Keep JSON objects distinct from lists until strict validation completes.
+            $output = json_decode($process->getOutput(), false, 512, JSON_THROW_ON_ERROR);
+
+            return ClipAnalysisValidator::result($output, $request);
+        } catch (\Throwable) {
+            // Never retain a sensitive process/JSON/worker exception as previous.
+            throw new ProcessMediaException('Clip analysis failed', 1, '');
+        }
+    }
+
+    /**
      * Create a process instance. Overridable for testing.
      *
      * @param  list<string>  $command

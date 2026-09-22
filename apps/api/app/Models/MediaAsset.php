@@ -204,4 +204,12 @@ class MediaAsset extends Model
     {
         return $this->hasOne(MediaSceneAnalysis::class);
     }
+
+    /**
+     * Get the clip analysis for this media asset.
+     */
+    public function clipAnalysis(): HasOne
+    {
+        return $this->hasOne(MediaClipAnalysis::class);
+    }
 }
