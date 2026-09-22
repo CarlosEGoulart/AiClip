@@ -280,52 +280,36 @@ class ProcessMediaAction
             throw new ProcessMediaException('Invalid analyze_clips media processing contract');
         }
 
+        // Validate operational timeout before process creation
         $timeout = config('media.clip_analysis_timeout_seconds', 30);
-        $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
-
-        $contractJson = json_encode($contract->toMetadataArray(), JSON_THROW_ON_ERROR);
-
-        Log::info('ProcessMediaAction: invoking worker analyze-clips', [
-            'media_asset_id' => $contract->mediaAssetId,
-            'timeout' => $timeout,
-        ]);
-
-        $process = $this->createProcess([
-            ...explode(' ', $workerCommand),
-            'analyze-clips',
-        ]);
-
-        $process->setTimeout($timeout);
-        $process->setInput($contractJson);
-        $process->run();
-
-        if ($process->isSuccessful()) {
-            $rawOutput = $process->getOutput();
-            $output = json_decode($rawOutput, true, 512, JSON_THROW_ON_ERROR);
-
-            if (! is_array($output) || ($output['status'] ?? '') !== 'success') {
-                throw new ProcessMediaException(
-                    'Invalid clip analysis result',
-                    $process->getExitCode(),
-                    '',
-                );
-            }
-
-            Log::info('ProcessMediaAction: analyze-clips succeeded', [
-                'media_asset_id' => $contract->mediaAssetId,
-            ]);
-
-            return $output;
+        if (! is_int($timeout) || $timeout <= 0 || $timeout > 120) {
+            throw new ProcessMediaException('Invalid clip analysis timeout configuration');
         }
 
-        // Process failed — sanitize output, never leak raw worker text
-        $exitCode = $process->getExitCode();
+        try {
+            $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
+            $request = $contract->toMetadataArray();
+            $contractJson = json_encode($request, JSON_THROW_ON_ERROR);
+            $process = $this->createProcess([
+                ...explode(' ', $workerCommand),
+                'analyze-clips',
+            ]);
+            $process->setTimeout($timeout);
+            $process->setInput($contractJson);
+            $process->run();
 
-        throw new ProcessMediaException(
-            'Clip analysis failed',
-            $exitCode,
-            '',
-        );
+            if (! $process->isSuccessful()) {
+                throw new ProcessMediaException('Clip analysis failed');
+            }
+
+            // Keep JSON objects distinct from lists until strict validation completes.
+            $output = json_decode($process->getOutput(), false, 512, JSON_THROW_ON_ERROR);
+
+            return ClipAnalysisValidator::result($output, $request);
+        } catch (\Throwable) {
+            // Never retain a sensitive process/JSON/worker exception as previous.
+            throw new ProcessMediaException('Clip analysis failed', 1, '');
+        }
     }
 
     /**

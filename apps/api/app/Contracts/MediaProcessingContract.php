@@ -2,7 +2,9 @@
 
 namespace App\Contracts;
 
+use App\Exceptions\ProcessMediaException;
 use App\Models\MediaAsset;
+use App\Services\ClipAnalysisValidator;
 
 class MediaProcessingContract
 {
@@ -65,6 +67,18 @@ class MediaProcessingContract
      */
     public static function fromArray(array $data): self
     {
+        if (($data['action'] ?? null) === 'analyze_clips') {
+            $data = ClipAnalysisValidator::request($data);
+            $contract = new self;
+            $contract->action = 'analyze_clips';
+            $contract->durationMs = $data['media']['duration_ms'];
+            $contract->scenes = $data['scenes'];
+            $contract->configuration = $data['configuration'];
+            $contract->transcriptSegments = $data['transcript_segments'] ?? null;
+
+            return $contract;
+        }
+
         $contract = new self;
         $contract->version = $data['version'];
         $contract->mediaAssetId = $data['media_asset_id'];
@@ -92,19 +106,7 @@ class MediaProcessingContract
     {
         // For analyze_clips, return metadata-only shape (no legacy envelope).
         if ($this->action === 'analyze_clips') {
-            $data = [
-                'version' => $this->version,
-                'action' => $this->action,
-                'media' => ['duration_ms' => $this->durationMs],
-                'scenes' => $this->scenes ?? [],
-                'configuration' => $this->configuration ?? [],
-            ];
-
-            if ($this->transcriptSegments !== null) {
-                $data['transcript_segments'] = $this->transcriptSegments;
-            }
-
-            return $data;
+            return $this->toMetadataArray();
         }
 
         // Legacy envelope for probe, extract_audio, transcribe, detect_scenes.
@@ -143,14 +145,19 @@ class MediaProcessingContract
      */
     public function toMetadataArray(): array
     {
-        return [
+        $data = [
             'version' => $this->version,
             'action' => $this->action,
             'media' => ['duration_ms' => $this->durationMs],
-            'scenes' => $this->scenes ?? [],
-            'transcript_segments' => $this->transcriptSegments,
+            'scenes' => $this->scenes,
             'configuration' => $this->configuration,
         ];
+
+        if ($this->transcriptSegments !== null) {
+            $data['transcript_segments'] = $this->transcriptSegments;
+        }
+
+        return $data;
     }
 
     /**
@@ -170,13 +177,9 @@ class MediaProcessingContract
 
         // analyze_clips uses metadata-only shape — skip legacy field validation.
         if ($this->action === 'analyze_clips') {
-            if (! isset($this->durationMs) || ! is_int($this->durationMs) || $this->durationMs <= 0) {
-                return false;
-            }
-            if (! is_array($this->scenes)) {
-                return false;
-            }
-            if (! is_array($this->configuration)) {
+            try {
+                ClipAnalysisValidator::request($this->toMetadataArray());
+            } catch (ProcessMediaException) {
                 return false;
             }
 

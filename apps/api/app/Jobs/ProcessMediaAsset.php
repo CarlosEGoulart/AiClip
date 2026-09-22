@@ -115,8 +115,20 @@ class ProcessMediaAsset implements ShouldQueue
                 Log::info('ProcessMediaAsset: scene detection already completed, skipping', [
                     'media_asset_id' => $asset->id,
                 ]);
+            } elseif ($existingSceneAnalysis !== null && in_array($existingSceneAnalysis->status, [
+                MediaSceneAnalysis::STATUS_PENDING,
+                MediaSceneAnalysis::STATUS_DETECTING,
+            ], true)) {
+                // Scene detection in progress — do not re-run, leave unresolved for clip analysis to handle
+                $sceneAnalysis = $existingSceneAnalysis;
+                $sceneDetectionResolved = false;
+
+                Log::info('ProcessMediaAsset: scene detection in progress, deferring to clip analysis', [
+                    'media_asset_id' => $asset->id,
+                    'scene_status' => $existingSceneAnalysis->status,
+                ]);
             } else {
-                // Create or retry scene analysis
+                // Create or retry scene analysis (null or FAILED)
                 if ($existingSceneAnalysis === null) {
                     $sceneAnalysis = MediaSceneAnalysis::create([
                         'media_asset_id' => $asset->id,
@@ -262,13 +274,17 @@ class ProcessMediaAsset implements ShouldQueue
                         'media_asset_id' => $asset->id,
                     ]);
                 } catch (\Throwable $e) {
+                    // Audio extraction failed - mark asset as failed but continue to clip analysis
+                    // for scene-only assets (spec: removal of early return "only as needed to resolve clips")
                     $asset->markFailed($e->getMessage());
-                    Log::error('ProcessMediaAsset: audio extraction failed', [
+                    $audioPathResolved = true; // Audio path is resolved (as failed)
+
+                    Log::error('ProcessMediaAsset: audio extraction failed, continuing to clip analysis', [
                         'media_asset_id' => $asset->id,
                         'error' => $e->getMessage(),
                     ]);
 
-                    return;
+                    // Do NOT return here - continue to clip analysis stage for scene-only assets
                 }
             } else {
                 Log::info('ProcessMediaAsset: audio already extracted, skipping', [
@@ -276,167 +292,176 @@ class ProcessMediaAsset implements ShouldQueue
                 ]);
             }
 
-            // --- Transcription Stage ---
-            // Check for existing MediaTranscript (idempotency)
-            $existingTranscript = MediaTranscript::where('media_asset_id', $asset->id)->first();
-
-            if ($existingTranscript !== null && $existingTranscript->status === MediaTranscript::STATUS_COMPLETED) {
-                // Already transcribed, skip
+            // If audio extraction failed, no DerivedAsset exists - skip transcription
+            if ($asset->processing_status === MediaAsset::PROCESSING_FAILED) {
                 $audioPathResolved = true;
 
-                Log::info('ProcessMediaAsset: transcription already completed, skipping', [
+                Log::info('ProcessMediaAsset: audio extraction failed, skipping transcription', [
                     'media_asset_id' => $asset->id,
                 ]);
             } else {
-                // Create or update MediaTranscript
-                if ($existingTranscript === null) {
-                    $transcript = MediaTranscript::create([
+                // --- Transcription Stage ---
+                // Check for existing MediaTranscript (idempotency)
+                $existingTranscript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+
+                if ($existingTranscript !== null && $existingTranscript->status === MediaTranscript::STATUS_COMPLETED) {
+                    // Already transcribed, skip
+                    $audioPathResolved = true;
+
+                    Log::info('ProcessMediaAsset: transcription already completed, skipping', [
                         'media_asset_id' => $asset->id,
-                        'derived_asset_id' => $existingDerived->id,
-                        'status' => MediaTranscript::STATUS_PENDING,
                     ]);
                 } else {
-                    $transcript = $existingTranscript;
-                }
+                    // Create or update MediaTranscript
+                    if ($existingTranscript === null) {
+                        $transcript = MediaTranscript::create([
+                            'media_asset_id' => $asset->id,
+                            'derived_asset_id' => $existingDerived->id,
+                            'status' => MediaTranscript::STATUS_PENDING,
+                        ]);
+                    } else {
+                        $transcript = $existingTranscript;
+                    }
 
-                // Build transcribe contract
-                $transcribeContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'transcribe');
-                $transcribeContract->derivedAssetId = $existingDerived->id;
-                $transcribeContract->storage = [
-                    'disk' => $existingDerived->storage_disk,
-                    'key' => $existingDerived->storage_key,
-                    'mime_type' => $existingDerived->mime_type,
-                ];
+                    // Build transcribe contract
+                    $transcribeContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'transcribe');
+                    $transcribeContract->derivedAssetId = $existingDerived->id;
+                    $transcribeContract->storage = [
+                        'disk' => $existingDerived->storage_disk,
+                        'key' => $existingDerived->storage_key,
+                        'mime_type' => $existingDerived->mime_type,
+                    ];
 
-                // Mark transcript as transcribing
-                $transcript->markTranscribing();
+                    // Mark transcript as transcribing
+                    $transcript->markTranscribing();
 
-                try {
-                    // Invoke transcribe
-                    $transcribeResult = $action->transcribe($transcribeContract);
+                    try {
+                        // Invoke transcribe
+                        $transcribeResult = $action->transcribe($transcribeContract);
 
-                    // Extract and validate transcription data
-                    $transcription = $transcribeResult['transcription'] ?? null;
+                        // Extract and validate transcription data
+                        $transcription = $transcribeResult['transcription'] ?? null;
 
-                    if (! is_array($transcription)) {
-                        throw new ProcessMediaException(
-                            'Worker returned success but transcription data is missing or malformed',
-                            1,
-                            json_encode($transcribeResult),
+                        if (! is_array($transcription)) {
+                            throw new ProcessMediaException(
+                                'Worker returned success but transcription data is missing or malformed',
+                                1,
+                                json_encode($transcribeResult),
+                            );
+                        }
+
+                        $language = $transcription['language'] ?? null;
+                        $fullText = $transcription['full_text'] ?? null;
+                        $segments = $transcription['segments'] ?? null;
+                        $engine = $transcription['engine'] ?? null;
+                        $model = $transcription['model'] ?? null;
+
+                        // Validate required fields
+                        $missingFields = [];
+                        if (! is_string($language) || $language === '') {
+                            $missingFields[] = 'language';
+                        }
+                        if (! is_string($fullText)) {
+                            $missingFields[] = 'full_text';
+                        }
+                        if (! is_array($segments)) {
+                            $missingFields[] = 'segments';
+                        }
+                        if (! is_string($engine) || $engine === '') {
+                            $missingFields[] = 'engine';
+                        }
+                        if (! is_string($model) || $model === '') {
+                            $missingFields[] = 'model';
+                        }
+
+                        if (count($missingFields) > 0) {
+                            throw new ProcessMediaException(
+                                'Worker returned success but transcription is missing required fields: '
+                                .implode(', ', $missingFields),
+                                1,
+                                json_encode($transcribeResult),
+                            );
+                        }
+
+                        // Validate segments
+                        foreach ($segments as $idx => $seg) {
+                            if (! is_array($seg) || ! isset($seg['start_ms'], $seg['end_ms'], $seg['text'])) {
+                                throw new ProcessMediaException(
+                                    "Worker returned success but segment {$idx} is malformed",
+                                    1,
+                                    json_encode($seg),
+                                );
+                            }
+                            if (! is_int($seg['start_ms']) || $seg['start_ms'] < 0) {
+                                throw new ProcessMediaException(
+                                    "Worker returned success but segment {$idx} has invalid start_ms",
+                                    1,
+                                    json_encode($seg),
+                                );
+                            }
+                            if (! is_int($seg['end_ms']) || $seg['end_ms'] < $seg['start_ms']) {
+                                throw new ProcessMediaException(
+                                    "Worker returned success but segment {$idx} has invalid end_ms",
+                                    1,
+                                    json_encode($seg),
+                                );
+                            }
+                            if (! is_string($seg['text']) || trim($seg['text']) === '') {
+                                throw new ProcessMediaException(
+                                    "Worker returned success but segment {$idx} has empty text",
+                                    1,
+                                    json_encode($seg),
+                                );
+                            }
+                        }
+
+                        // Cross-segment ordering and overlap validation
+                        $prevEndMs = 0;
+                        foreach ($segments as $idx => $seg) {
+                            if ($idx > 0 && $seg['start_ms'] < $segments[$idx - 1]['start_ms']) {
+                                throw new ProcessMediaException(
+                                    "Worker returned success but segments are not ordered: segment {$idx} start_ms {$seg['start_ms']} < segment ".($idx - 1)." start_ms {$segments[$idx - 1]['start_ms']}",
+                                    1,
+                                    json_encode(['segment_index' => $idx]),
+                                );
+                            }
+                            if ($idx > 0 && $seg['start_ms'] < $prevEndMs) {
+                                throw new ProcessMediaException(
+                                    "Worker returned success but segments overlap: segment {$idx} start_ms {$seg['start_ms']} < previous end_ms {$prevEndMs}",
+                                    1,
+                                    json_encode(['segment_index' => $idx, 'segment' => $seg, 'prev_end_ms' => $prevEndMs]),
+                                );
+                            }
+                            $prevEndMs = $seg['end_ms'];
+                        }
+
+                        // Mark transcript as completed
+                        $transcript->markCompleted(
+                            $language,
+                            $fullText,
+                            $segments,
+                            $engine,
+                            $model,
                         );
-                    }
 
-                    $language = $transcription['language'] ?? null;
-                    $fullText = $transcription['full_text'] ?? null;
-                    $segments = $transcription['segments'] ?? null;
-                    $engine = $transcription['engine'] ?? null;
-                    $model = $transcription['model'] ?? null;
+                        $audioPathResolved = true;
 
-                    // Validate required fields
-                    $missingFields = [];
-                    if (! is_string($language) || $language === '') {
-                        $missingFields[] = 'language';
-                    }
-                    if (! is_string($fullText)) {
-                        $missingFields[] = 'full_text';
-                    }
-                    if (! is_array($segments)) {
-                        $missingFields[] = 'segments';
-                    }
-                    if (! is_string($engine) || $engine === '') {
-                        $missingFields[] = 'engine';
-                    }
-                    if (! is_string($model) || $model === '') {
-                        $missingFields[] = 'model';
-                    }
+                        Log::info('ProcessMediaAsset: transcription succeeded', [
+                            'media_asset_id' => $asset->id,
+                        ]);
+                    } catch (\Throwable $e) {
+                        // Mark transcript as failed
+                        $transcript->markFailed($e->getMessage());
+                        $audioPathResolved = true;
 
-                    if (count($missingFields) > 0) {
-                        throw new ProcessMediaException(
-                            'Worker returned success but transcription is missing required fields: '
-                            .implode(', ', $missingFields),
-                            1,
-                            json_encode($transcribeResult),
-                        );
+                        Log::error('ProcessMediaAsset: transcription failed', [
+                            'media_asset_id' => $asset->id,
+                            'error' => $e->getMessage(),
+                        ]);
                     }
-
-                    // Validate segments
-                    foreach ($segments as $idx => $seg) {
-                        if (! is_array($seg) || ! isset($seg['start_ms'], $seg['end_ms'], $seg['text'])) {
-                            throw new ProcessMediaException(
-                                "Worker returned success but segment {$idx} is malformed",
-                                1,
-                                json_encode($seg),
-                            );
-                        }
-                        if (! is_int($seg['start_ms']) || $seg['start_ms'] < 0) {
-                            throw new ProcessMediaException(
-                                "Worker returned success but segment {$idx} has invalid start_ms",
-                                1,
-                                json_encode($seg),
-                            );
-                        }
-                        if (! is_int($seg['end_ms']) || $seg['end_ms'] < $seg['start_ms']) {
-                            throw new ProcessMediaException(
-                                "Worker returned success but segment {$idx} has invalid end_ms",
-                                1,
-                                json_encode($seg),
-                            );
-                        }
-                        if (! is_string($seg['text']) || trim($seg['text']) === '') {
-                            throw new ProcessMediaException(
-                                "Worker returned success but segment {$idx} has empty text",
-                                1,
-                                json_encode($seg),
-                            );
-                        }
-                    }
-
-                    // Cross-segment ordering and overlap validation
-                    $prevEndMs = 0;
-                    foreach ($segments as $idx => $seg) {
-                        if ($idx > 0 && $seg['start_ms'] < $segments[$idx - 1]['start_ms']) {
-                            throw new ProcessMediaException(
-                                "Worker returned success but segments are not ordered: segment {$idx} start_ms {$seg['start_ms']} < segment ".($idx - 1)." start_ms {$segments[$idx - 1]['start_ms']}",
-                                1,
-                                json_encode(['segment_index' => $idx]),
-                            );
-                        }
-                        if ($idx > 0 && $seg['start_ms'] < $prevEndMs) {
-                            throw new ProcessMediaException(
-                                "Worker returned success but segments overlap: segment {$idx} start_ms {$seg['start_ms']} < previous end_ms {$prevEndMs}",
-                                1,
-                                json_encode(['segment_index' => $idx, 'segment' => $seg, 'prev_end_ms' => $prevEndMs]),
-                            );
-                        }
-                        $prevEndMs = $seg['end_ms'];
-                    }
-
-                    // Mark transcript as completed
-                    $transcript->markCompleted(
-                        $language,
-                        $fullText,
-                        $segments,
-                        $engine,
-                        $model,
-                    );
-
-                    $audioPathResolved = true;
-
-                    Log::info('ProcessMediaAsset: transcription succeeded', [
-                        'media_asset_id' => $asset->id,
-                    ]);
-                } catch (\Throwable $e) {
-                    // Mark transcript as failed
-                    $transcript->markFailed($e->getMessage());
-                    $audioPathResolved = true;
-
-                    Log::error('ProcessMediaAsset: transcription failed', [
-                        'media_asset_id' => $asset->id,
-                        'error' => $e->getMessage(),
-                    ]);
                 }
             }
-        }
+        }  // Close outer else (audio_codec !== null)
 
         // =====================================================================
         // Clip Analysis Stage (metadata-only, after upstream resolution)
@@ -498,9 +523,23 @@ class ProcessMediaAsset implements ShouldQueue
                     ]);
                 } else {
                     // Scene detection pending/detecting — not ready
-                    Log::info('ProcessMediaAsset: clip analysis not ready, scene detection pending', [
+                    // Create clip analysis row if needed and throw to trigger bounded retry (max 3 attempts)
+                    if ($clipAnalysis === null) {
+                        $clipAnalysis = MediaClipAnalysis::create([
+                            'media_asset_id' => $asset->id,
+                            'status' => MediaClipAnalysis::STATUS_PENDING,
+                        ]);
+                    }
+                    if ($clipAnalysis->status !== MediaClipAnalysis::STATUS_ANALYZING) {
+                        $clipAnalysis->markAnalyzing();
+                    }
+
+                    Log::info('ProcessMediaAsset: clip analysis not ready, scene detection pending, releasing for retry', [
                         'media_asset_id' => $asset->id,
+                        'attempt' => $this->attempts(),
                     ]);
+
+                    throw new ProcessMediaException('upstream_not_ready', 1);
                 }
             }
 
@@ -561,9 +600,11 @@ class ProcessMediaAsset implements ShouldQueue
                         $inputSnapshot = [
                             'duration_ms' => $clipContract->durationMs,
                             'scenes' => $clipContract->scenes,
-                            'transcript_segments' => $clipContract->transcriptSegments,
                             'configuration' => $clipContract->configuration,
                         ];
+                        if ($clipContract->transcriptSegments !== null) {
+                            $inputSnapshot['transcript_segments'] = $clipContract->transcriptSegments;
+                        }
 
                         $executionParams = [
                             'timeout_seconds' => config('media.clip_analysis_timeout_seconds', 30),
@@ -703,6 +744,25 @@ class ProcessMediaAsset implements ShouldQueue
             : $exception->getMessage();
 
         $asset->markFailed($error);
+
+        // If exhaustion due to upstream not ready, mark clip analysis as failed
+        if ($error === 'upstream_not_ready') {
+            $clipAnalysis = MediaClipAnalysis::where('media_asset_id', $asset->id)->first();
+            if ($clipAnalysis === null) {
+                // Create clip analysis row on exhaustion if it doesn't exist
+                $clipAnalysis = MediaClipAnalysis::create([
+                    'media_asset_id' => $asset->id,
+                    'status' => MediaClipAnalysis::STATUS_PENDING,
+                ]);
+            }
+            // Transition through analyzing to failed (PENDING -> ANALYZING -> FAILED)
+            if ($clipAnalysis->status === MediaClipAnalysis::STATUS_PENDING) {
+                $clipAnalysis->markAnalyzing();
+            }
+            if ($clipAnalysis->status === MediaClipAnalysis::STATUS_ANALYZING) {
+                $clipAnalysis->markFailed('upstream_not_ready');
+            }
+        }
 
         Log::error('ProcessMediaAsset: job failed', [
             'media_asset_id' => $asset->id,

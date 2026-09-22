@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Exceptions\ProcessMediaException;
+use App\Services\ClipAnalysisValidator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -93,6 +95,8 @@ class MediaClipAnalysis extends Model
 
     /**
      * Transition to the completed state.
+     *
+     * @throws ProcessMediaException If validation fails
      */
     public function markCompleted(
         string $algorithm,
@@ -103,8 +107,14 @@ class MediaClipAnalysis extends Model
         array $executionParameters,
     ): void {
         if (! self::isValidTransition($this->status, self::STATUS_COMPLETED)) {
-            return;
+            throw new ProcessMediaException('Invalid status transition to completed');
         }
+
+        ClipAnalysisValidator::validateCompletion(
+            ['algorithm' => $algorithm, 'algorithm_version' => $algorithmVersion, 'parameters' => $parameters, 'candidates' => $candidates],
+            $inputSnapshot,
+            $executionParameters
+        );
 
         $this->update([
             'status' => self::STATUS_COMPLETED,

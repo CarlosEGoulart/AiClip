@@ -62,4 +62,6 @@ return [
 
     'clip_analysis_weight_boundary_alignment' => (int) env('MEDIA_CLIP_ANALYSIS_WEIGHT_BOUNDARY_ALIGNMENT', 20),
 
+    'clip_analysis_lock_wait_seconds' => (int) env('MEDIA_CLIP_ANALYSIS_LOCK_WAIT_SECONDS', 35),
+
 ];
