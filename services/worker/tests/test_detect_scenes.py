@@ -157,12 +157,25 @@ class TestDetectScenesSuccess:
         self, sample_contract_detect_scenes: dict[str, Any]
     ) -> None:
         """Empty scenes list is valid (not an error)."""
-        with patch.dict(os.environ, {"SCENE_DETECTION_ENGINE": "deterministic"}):
+        output = {
+            "status": "success",
+            "scene_detection": {
+                "detector": "deterministic",
+                "detector_version": "0.0.0",
+                "parameters": {},
+                "scenes": [],
+            },
+        }
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (json.dumps(output).encode(), b"")
+        with patch("aiclip_worker.actions.detect_scenes.subprocess.Popen", return_value=mock_process):
             result = detect_scenes(sample_contract_detect_scenes)
 
-        # Even if scenes is empty, status should be success
+        mock_process.communicate.assert_called_once()
         assert result["status"] == "success"
-        assert isinstance(result["scene_detection"]["scenes"], list)
+        assert result["scene_detection"]["scenes"] == []
+        assert result == output
 
     def test_detect_scenes_detector_name_in_result(
         self, sample_contract_detect_scenes: dict[str, Any]

@@ -39,7 +39,19 @@ Completed slices:
 Completed slices:
 
 - Deterministic transcription worker stage (Issue #51)
-- Deterministic scene detection worker stage (Issue #53)
+- Deterministic scene detection worker stage (Issue #53, PR #55)
+- Scene detection contract hardening (Issue #56, PR #57 — merged)
+
+Active slice:
+
+- Deterministic clip candidate analysis (Issue #58 — in progress; implementation
+  complete and all full-verification baselines GREEN, awaiting PR/CI/Tester).
+
+M4 supplies validated candidate metadata, deterministic timing-based scores/ranks,
+and persistence/lifecycle infrastructure. M5 retains AI/model-backed recommendation
+and semantic relevance. Do not record #58 or M4 as completed before verified
+closeout. Planner's recommendation to advance to M5 is conditional on that
+closeout and does not authorize another lifecycle.
 
 ## Planned Milestones
 

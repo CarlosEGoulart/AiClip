@@ -85,6 +85,9 @@ class DeterministicSceneDetector(SceneDetector):
         scenes: list[Scene] = []
         current_ms = 0
         for i in range(num_scenes):
+            if current_ms >= duration_ms:
+                break
+
             # Deterministic variance per scene
             variance = int(path_hash[i * 4 : i * 4 + 4], 16) % 2000 - 1000
             scene_duration = max(100, base_scene_duration + variance)

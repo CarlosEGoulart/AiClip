@@ -274,6 +274,12 @@ def _handle_detect_scenes_child() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point. Returns exit code."""
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments and arguments[0] == "analyze-clips":
+        from aiclip_worker.actions.analyze_clips import run_cli
+
+        return run_cli(arguments[1:])
+
     parser = argparse.ArgumentParser(
         prog="aiclip_worker",
         description="AiClip media processing worker",

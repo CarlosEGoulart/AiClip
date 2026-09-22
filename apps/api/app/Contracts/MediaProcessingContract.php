@@ -28,6 +28,15 @@ class MediaProcessingContract
 
     public ?int $durationMs = null;
 
+    /** @var array<int, array{index: int, start_ms: int, end_ms: int}>|null */
+    public ?array $scenes = null;
+
+    /** @var array<int, array{start_ms: int, end_ms: int}>|null */
+    public ?array $transcriptSegments = null;
+
+    /** @var array{min_duration_ms: int, target_duration_ms: int, max_duration_ms: int, max_candidates: int, weights: array{duration_fit: int, speech_coverage: int, boundary_alignment: int}}|null */
+    public ?array $configuration = null;
+
     /**
      * Create a contract from a MediaAsset model.
      */
@@ -67,6 +76,9 @@ class MediaProcessingContract
         $contract->outputStorage = $data['output_storage'] ?? null;
         $contract->derivedAssetId = $data['derived_asset_id'] ?? null;
         $contract->durationMs = $data['media']['duration_ms'] ?? null;
+        $contract->scenes = $data['scenes'] ?? null;
+        $contract->transcriptSegments = $data['transcript_segments'] ?? null;
+        $contract->configuration = $data['configuration'] ?? null;
 
         return $contract;
     }
@@ -78,6 +90,24 @@ class MediaProcessingContract
      */
     public function toArray(): array
     {
+        // For analyze_clips, return metadata-only shape (no legacy envelope).
+        if ($this->action === 'analyze_clips') {
+            $data = [
+                'version' => $this->version,
+                'action' => $this->action,
+                'media' => ['duration_ms' => $this->durationMs],
+                'scenes' => $this->scenes ?? [],
+                'configuration' => $this->configuration ?? [],
+            ];
+
+            if ($this->transcriptSegments !== null) {
+                $data['transcript_segments'] = $this->transcriptSegments;
+            }
+
+            return $data;
+        }
+
+        // Legacy envelope for probe, extract_audio, transcribe, detect_scenes.
         $data = [
             'version' => $this->version,
             'media_asset_id' => $this->mediaAssetId,
@@ -104,6 +134,26 @@ class MediaProcessingContract
     }
 
     /**
+     * Serialize the contract for metadata-only (analyze_clips) transport.
+     *
+     * Produces a privacy-safe payload with only timing and configuration,
+     * omitting legacy storage/project/identity fields.
+     *
+     * @return array{version: string, action: string, media: array{duration_ms: int}, scenes: array, configuration: array}
+     */
+    public function toMetadataArray(): array
+    {
+        return [
+            'version' => $this->version,
+            'action' => $this->action,
+            'media' => ['duration_ms' => $this->durationMs],
+            'scenes' => $this->scenes ?? [],
+            'transcript_segments' => $this->transcriptSegments,
+            'configuration' => $this->configuration,
+        ];
+    }
+
+    /**
      * Validate the contract.
      */
     public function validate(): bool
@@ -112,6 +162,28 @@ class MediaProcessingContract
         if (! preg_match('/^\d+\.\d+\.\d+$/', $this->version)) {
             return false;
         }
+
+        // Validate action is valid
+        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes', 'analyze_clips'], true)) {
+            return false;
+        }
+
+        // analyze_clips uses metadata-only shape — skip legacy field validation.
+        if ($this->action === 'analyze_clips') {
+            if (! isset($this->durationMs) || ! is_int($this->durationMs) || $this->durationMs <= 0) {
+                return false;
+            }
+            if (! is_array($this->scenes)) {
+                return false;
+            }
+            if (! is_array($this->configuration)) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // Legacy actions (probe, extract_audio, transcribe, detect_scenes) require full envelope.
 
         // Validate required fields are present and non-empty
         if (! isset($this->mediaAssetId) || $this->mediaAssetId < 1 || ! isset($this->projectId) || $this->projectId < 1) {
@@ -130,11 +202,6 @@ class MediaProcessingContract
 
         // Validate created_at is present
         if (! isset($this->createdAt) || empty($this->createdAt)) {
-            return false;
-        }
-
-        // Validate action is valid
-        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes'], true)) {
             return false;
         }
 

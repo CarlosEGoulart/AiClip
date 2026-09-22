@@ -6,6 +6,7 @@ use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
+use App\Models\MediaClipAnalysis;
 use App\Models\MediaSceneAnalysis;
 use App\Models\MediaTranscript;
 use App\Services\ProcessMediaAction;
@@ -101,6 +102,7 @@ class ProcessMediaAsset implements ShouldQueue
         // Runs when video_codec key exists in probe result (even if null)
         // =====================================================================
         $sceneDetectionResolved = false;
+        $sceneAnalysis = null;
 
         if (array_key_exists('video_codec', $probeData)) {
             $existingSceneAnalysis = MediaSceneAnalysis::where('media_asset_id', $asset->id)->first();
@@ -108,6 +110,7 @@ class ProcessMediaAsset implements ShouldQueue
             if ($existingSceneAnalysis !== null && $existingSceneAnalysis->status === MediaSceneAnalysis::STATUS_COMPLETED) {
                 // Idempotent: skip scene detection
                 $sceneDetectionResolved = true;
+                $sceneAnalysis = $existingSceneAnalysis;
 
                 Log::info('ProcessMediaAsset: scene detection already completed, skipping', [
                     'media_asset_id' => $asset->id,
@@ -436,11 +439,239 @@ class ProcessMediaAsset implements ShouldQueue
         }
 
         // =====================================================================
+        // Clip Analysis Stage (metadata-only, after upstream resolution)
+        // =====================================================================
+        $clipAnalysisResolved = false;
+
+        $clipAnalysis = MediaClipAnalysis::where('media_asset_id', $asset->id)->first();
+
+        // Check if clip analysis is already completed (terminal reuse)
+        if ($clipAnalysis !== null && $clipAnalysis->status === MediaClipAnalysis::STATUS_COMPLETED) {
+            $clipAnalysisResolved = true;
+
+            Log::info('ProcessMediaAsset: clip analysis already completed, skipping', [
+                'media_asset_id' => $asset->id,
+            ]);
+        } else {
+            // Determine if upstream inputs are ready for clip analysis
+            $scenesReady = false;
+            $scenes = [];
+            $transcriptReady = false;
+            $transcriptSegments = null;
+
+            // Check scene readiness
+            if ($sceneAnalysis !== null && $sceneAnalysis->status === MediaSceneAnalysis::STATUS_COMPLETED) {
+                $scenesReady = true;
+                $scenes = $sceneAnalysis->scenes ?? [];
+            } elseif ($sceneAnalysis !== null && $sceneAnalysis->status === MediaSceneAnalysis::STATUS_FAILED) {
+                // Scene detection failed — claim analysis attempt, mark failed
+                if ($clipAnalysis === null) {
+                    $clipAnalysis = MediaClipAnalysis::create([
+                        'media_asset_id' => $asset->id,
+                        'status' => MediaClipAnalysis::STATUS_PENDING,
+                    ]);
+                }
+                $clipAnalysis->markAnalyzing();
+                $clipAnalysis->markFailed('upstream_scene_failed');
+
+                $clipAnalysisResolved = true;
+
+                Log::error('ProcessMediaAsset: clip analysis failed due to scene detection failure', [
+                    'media_asset_id' => $asset->id,
+                ]);
+            } else {
+                if ($sceneAnalysis === null) {
+                    // Scene stage resolved as not applicable (no video) — claim attempt, mark failed
+                    if ($clipAnalysis === null) {
+                        $clipAnalysis = MediaClipAnalysis::create([
+                            'media_asset_id' => $asset->id,
+                            'status' => MediaClipAnalysis::STATUS_PENDING,
+                        ]);
+                    }
+                    $clipAnalysis->markAnalyzing();
+                    $clipAnalysis->markFailed('upstream_scene_missing');
+
+                    $clipAnalysisResolved = true;
+
+                    Log::error('ProcessMediaAsset: clip analysis failed due to missing scene analysis', [
+                        'media_asset_id' => $asset->id,
+                    ]);
+                } else {
+                    // Scene detection pending/detecting — not ready
+                    Log::info('ProcessMediaAsset: clip analysis not ready, scene detection pending', [
+                        'media_asset_id' => $asset->id,
+                    ]);
+                }
+            }
+
+            // Check transcript readiness (only if audio path resolved and transcript exists)
+            if ($audioPathResolved) {
+                $existingTranscriptCheck = MediaTranscript::where('media_asset_id', $asset->id)->first();
+                if ($existingTranscriptCheck !== null && $existingTranscriptCheck->status === MediaTranscript::STATUS_COMPLETED) {
+                    $transcriptReady = true;
+                    // Project only timing segments
+                    $transcriptSegments = [];
+                    foreach (($existingTranscriptCheck->segments ?? []) as $seg) {
+                        $transcriptSegments[] = [
+                            'start_ms' => $seg['start_ms'],
+                            'end_ms' => $seg['end_ms'],
+                        ];
+                    }
+                }
+            }
+
+            // If scenes are ready, attempt clip analysis
+            if ($scenesReady && ! $clipAnalysisResolved) {
+                // Build the metadata-only contract for clip analysis
+                $clipContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'analyze_clips');
+                $clipContract->durationMs = $durationMs;
+                $clipContract->scenes = $scenes;
+                $clipContract->transcriptSegments = $transcriptSegments;
+                $clipContract->configuration = $this->buildClipAnalysisConfiguration();
+
+                // Establish or reuse the clip analysis row
+                if ($clipAnalysis === null) {
+                    $clipAnalysis = MediaClipAnalysis::create([
+                        'media_asset_id' => $asset->id,
+                        'status' => MediaClipAnalysis::STATUS_PENDING,
+                    ]);
+                }
+
+                // Use PostgreSQL transaction with FOR UPDATE lock for concurrency protection
+                try {
+                    \DB::transaction(function () use ($clipAnalysis, $clipContract, $action) {
+                        // Lock the row for update
+                        $locked = MediaClipAnalysis::where('id', $clipAnalysis->id)
+                            ->lockForUpdate()
+                            ->first();
+
+                        if ($locked === null) {
+                            return;
+                        }
+
+                        // Re-read status after locking
+                        if ($locked->status === MediaClipAnalysis::STATUS_COMPLETED) {
+                            return;
+                        }
+
+                        // Transition to analyzing
+                        $locked->markAnalyzing();
+
+                        // Capture input snapshot
+                        $inputSnapshot = [
+                            'duration_ms' => $clipContract->durationMs,
+                            'scenes' => $clipContract->scenes,
+                            'transcript_segments' => $clipContract->transcriptSegments,
+                            'configuration' => $clipContract->configuration,
+                        ];
+
+                        $executionParams = [
+                            'timeout_seconds' => config('media.clip_analysis_timeout_seconds', 30),
+                            'lock_wait_seconds' => config('media.clip_analysis_timeout_seconds', 30) + 5,
+                        ];
+
+                        try {
+                            // Invoke the worker
+                            $result = $action->analyzeClips($clipContract);
+
+                            $analysis = $result['analysis'] ?? null;
+
+                            if (! is_array($analysis)) {
+                                throw new ProcessMediaException(
+                                    'Worker returned success but analysis data is missing or malformed',
+                                    1,
+                                );
+                            }
+
+                            // Validate required fields
+                            $algorithm = $analysis['algorithm'] ?? null;
+                            $algorithmVersion = $analysis['algorithm_version'] ?? null;
+                            $parameters = $analysis['parameters'] ?? null;
+                            $candidates = $analysis['candidates'] ?? null;
+
+                            if (! is_string($algorithm) || $algorithm === '') {
+                                throw new ProcessMediaException('analysis_missing_algorithm', 1);
+                            }
+                            if (! is_string($algorithmVersion) || $algorithmVersion === '') {
+                                throw new ProcessMediaException('analysis_missing_algorithm_version', 1);
+                            }
+                            if (! is_array($parameters)) {
+                                throw new ProcessMediaException('analysis_missing_parameters', 1);
+                            }
+                            if (! is_array($candidates)) {
+                                throw new ProcessMediaException('analysis_missing_candidates', 1);
+                            }
+
+                            // Complete the analysis
+                            $locked->markCompleted(
+                                $algorithm,
+                                $algorithmVersion,
+                                $parameters,
+                                $candidates,
+                                $inputSnapshot,
+                                $executionParams,
+                            );
+                        } catch (\Throwable $e) {
+                            $locked->markFailed('analysis_failed');
+                        }
+                    });
+
+                    // Re-read to check result
+                    $clipAnalysis->refresh();
+                    $clipAnalysisResolved = true;
+
+                    if ($clipAnalysis->status === MediaClipAnalysis::STATUS_COMPLETED) {
+                        Log::info('ProcessMediaAsset: clip analysis succeeded', [
+                            'media_asset_id' => $asset->id,
+                            'candidates_count' => count($clipAnalysis->candidates ?? []),
+                        ]);
+                    } else {
+                        Log::error('ProcessMediaAsset: clip analysis failed', [
+                            'media_asset_id' => $asset->id,
+                            'error' => $clipAnalysis->error,
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    // Transaction-level failure
+                    if ($clipAnalysis->status === MediaClipAnalysis::STATUS_ANALYZING) {
+                        $clipAnalysis->markFailed('analysis_failed');
+                    }
+                    $clipAnalysisResolved = true;
+
+                    Log::error('ProcessMediaAsset: clip analysis transaction failed', [
+                        'media_asset_id' => $asset->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        // =====================================================================
         // Mark asset as completed when ALL applicable stages have resolved
         // =====================================================================
-        if ($sceneDetectionResolved && $audioPathResolved) {
+        if ($sceneDetectionResolved && $audioPathResolved && $clipAnalysisResolved) {
             $asset->markCompleted();
         }
+    }
+
+    /**
+     * Build default clip analysis configuration.
+     *
+     * @return array{min_duration_ms: int, target_duration_ms: int, max_duration_ms: int, max_candidates: int, weights: array{duration_fit: int, speech_coverage: int, boundary_alignment: int}}
+     */
+    private function buildClipAnalysisConfiguration(): array
+    {
+        return [
+            'min_duration_ms' => config('media.clip_analysis_min_duration_ms', 5000),
+            'target_duration_ms' => config('media.clip_analysis_target_duration_ms', 30000),
+            'max_duration_ms' => config('media.clip_analysis_max_duration_ms', 60000),
+            'max_candidates' => config('media.clip_analysis_max_candidates', 20),
+            'weights' => [
+                'duration_fit' => config('media.clip_analysis_weight_duration_fit', 50),
+                'speech_coverage' => config('media.clip_analysis_weight_speech_coverage', 30),
+                'boundary_alignment' => config('media.clip_analysis_weight_boundary_alignment', 20),
+            ],
+        ];
     }
 
     /**

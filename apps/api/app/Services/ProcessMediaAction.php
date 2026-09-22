@@ -266,6 +266,69 @@ class ProcessMediaAction
     }
 
     /**
+     * Analyze clip candidates using the Python worker CLI.
+     *
+     * Contract travels via stdin, not command-line arguments.
+     *
+     * @return array{status: string, analysis: array<string, mixed>}
+     *
+     * @throws ProcessMediaException
+     */
+    public function analyzeClips(MediaProcessingContract $contract): array
+    {
+        if (! $contract->validate()) {
+            throw new ProcessMediaException('Invalid analyze_clips media processing contract');
+        }
+
+        $timeout = config('media.clip_analysis_timeout_seconds', 30);
+        $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
+
+        $contractJson = json_encode($contract->toMetadataArray(), JSON_THROW_ON_ERROR);
+
+        Log::info('ProcessMediaAction: invoking worker analyze-clips', [
+            'media_asset_id' => $contract->mediaAssetId,
+            'timeout' => $timeout,
+        ]);
+
+        $process = $this->createProcess([
+            ...explode(' ', $workerCommand),
+            'analyze-clips',
+        ]);
+
+        $process->setTimeout($timeout);
+        $process->setInput($contractJson);
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            $rawOutput = $process->getOutput();
+            $output = json_decode($rawOutput, true, 512, JSON_THROW_ON_ERROR);
+
+            if (! is_array($output) || ($output['status'] ?? '') !== 'success') {
+                throw new ProcessMediaException(
+                    'Invalid clip analysis result',
+                    $process->getExitCode(),
+                    '',
+                );
+            }
+
+            Log::info('ProcessMediaAction: analyze-clips succeeded', [
+                'media_asset_id' => $contract->mediaAssetId,
+            ]);
+
+            return $output;
+        }
+
+        // Process failed — sanitize output, never leak raw worker text
+        $exitCode = $process->getExitCode();
+
+        throw new ProcessMediaException(
+            'Clip analysis failed',
+            $exitCode,
+            '',
+        );
+    }
+
+    /**
      * Create a process instance. Overridable for testing.
      *
      * @param  list<string>  $command
