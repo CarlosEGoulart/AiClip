@@ -46,11 +46,13 @@ Completed slices:
 
 M4 supplies validated candidate metadata, deterministic timing-based scores/ranks,
 and persistence/lifecycle infrastructure. The `scene_timing_baseline` algorithm
-is deterministic, not AI recommendation. Issue #60 is the active corrective
-closeout for concurrency, failure boundaries, validation and documentation;
-its new verification evidence is not attributed retrospectively to #58.
-M5 retains AI/model-backed recommendation and semantic relevance. It is the next
-architectural goal, not active or authorized by this milestone record.
+is deterministic, not AI recommendation. Issue #60 is closed as completed
+following the merge of PR #61, completing M4's corrective closeout for
+concurrency, failure boundaries, validation and documentation. Its verification
+evidence remains separate and is not attributed retrospectively to #58.
+M5 AI Clip Recommendation retains model-backed recommendation and semantic
+relevance. It is the next architectural goal: future, not active or implemented.
+Starting M5 requires separate explicit authorization.
 
 ## Planned Milestones
 
