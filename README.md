@@ -11,7 +11,7 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 | M2 — Media Storage | Completed |
 | M3 — Asynchronous Media Processing | Completed |
 | M4 — Video Understanding | Completed |
-| M5 — AI Clip Recommendation | Future; not active |
+| M5 — AI Clip Recommendation | Next; future, not active or implemented |
 
 M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization, Sanctum SPA authentication, and authenticated project management. M2 delivered: project-scoped video upload with S3-compatible storage (MinIO for development, AWS S3 in production).
 
@@ -19,7 +19,8 @@ M3 delivered queued processing, FFprobe probing, and FFmpeg audio extraction.
 M4 delivered transcription, scene detection, and deterministic candidate metadata
 (`scene_timing_baseline` v1.0.0); Issue #58 was merged in PR #59 and closed.
 Timing-based scores and ranks are not AI recommendations or semantic relevance.
-Issue #60 is the current corrective concurrency/validation closeout, not M5.
+Issue #60 is closed as completed following the merge of PR #61; M4's
+corrective concurrency/validation closeout is complete, not an M5 implementation.
 
 ## Architecture
 

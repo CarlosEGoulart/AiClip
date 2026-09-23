@@ -11,8 +11,9 @@ The platform follows a request-response pattern for user interactions and an eve
 M4 Video Understanding is completed, including Issue #58 / PR #59's merged
 deterministic candidate-analysis foundation. M5 AI Clip Recommendation is
 future and not active. `scene_timing_baseline` v1.0.0 scores/ranks timings;
-it is not an AI or semantic-relevance model. Issue #60 is a corrective closeout,
-not a new recommendation, rendering or UI capability.
+it is not an AI or semantic-relevance model. Issue #60 is closed as completed
+following the merge of PR #61, completing M4's corrective closeout without
+adding recommendation, rendering or UI capabilities.
 
 ```text
 React → Laravel API → Laravel queue → ProcessMediaAsset
@@ -38,7 +39,7 @@ transaction, unique asset authority and a transaction-local lock timeout derived
 from process timeout plus five seconds. Expected classified worker/protocol
 failures are sanitized durable failures; unexpected aborts roll back and signal
 a sanitized retryable error. These #60 corrections and their evidence remain
-distinct from historical #58 verification until #60 is merged.
+distinct from historical #58 implementation verification after merge as well.
 
 Python is invoked by the Laravel queue job; it does not directly consume that
 queue or write application database rows. The standalone worker, broader UI,

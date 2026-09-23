@@ -57,15 +57,16 @@ features do not exist yet.
 
 # Current Milestone
 
-M0–M4 foundations completed. Issue #60 is the active M4 corrective closeout
-for PostgreSQL concurrency, failure boundaries, empty-result completion and
-documentation. Its evidence is separate from the merged #58 artifacts; this
-state document does not claim #60 merged or closed.
+M0–M4 foundations and M4 corrective closeout completed. Issue #60 is closed
+as completed following the merge of PR #61, covering PostgreSQL concurrency,
+failure boundaries, empty-result completion and documentation. Its evidence
+remains separate from the merged #58 implementation artifacts.
 
 # Next Architectural Goal
 
-M5 AI Clip Recommendation: model-backed recommendation and semantic relevance,
-future and not active. A standalone queue-consuming Python service is also a
-future architectural evolution, not the current CLI execution topology.
-Complete #60's independent review, CI and human-authorized merge before any
-new lifecycle; starting M5 requires separate explicit authorization.
+M5 AI Clip Recommendation is next: model-backed recommendation and semantic
+relevance, future, not active and not implemented. A standalone queue-consuming
+Python service is also a future architectural evolution, not the current CLI
+execution topology.
+After this documentation lifecycle is merged and closed, return to
+NO_ACTIVE_ISSUE and stop. Starting M5 requires separate explicit authorization.
