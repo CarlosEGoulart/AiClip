@@ -12,6 +12,7 @@ use App\Models\MediaTranscript;
 use App\Services\ProcessMediaAction;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -25,6 +26,11 @@ class ProcessMediaAsset implements ShouldQueue
      * The number of times the job may be attempted.
      */
     public int $tries = 3;
+
+    /**
+     * Seconds to wait before retrying not-ready upstream stages.
+     */
+    public int $backoff = 5;
 
     /**
      * Create a new job instance.
@@ -568,19 +574,37 @@ class ProcessMediaAsset implements ShouldQueue
                 $clipContract->transcriptSegments = $transcriptSegments;
                 $clipContract->configuration = $this->buildClipAnalysisConfiguration();
 
-                // Establish or reuse the clip analysis row
-                if ($clipAnalysis === null) {
-                    $clipAnalysis = MediaClipAnalysis::create([
-                        'media_asset_id' => $asset->id,
-                        'status' => MediaClipAnalysis::STATUS_PENDING,
-                    ]);
+                // Single validated operational source: strict integer seconds.
+                $clipTimeoutSeconds = config('media.clip_analysis_timeout_seconds', 30);
+                if (! is_int($clipTimeoutSeconds) || $clipTimeoutSeconds < 1 || $clipTimeoutSeconds > 120) {
+                    throw new ProcessMediaException('invalid_configuration');
                 }
+                $clipLockWaitSeconds = $clipTimeoutSeconds + 5;
 
-                // Use PostgreSQL transaction with FOR UPDATE lock for concurrency protection
+                // Atomic claim: first insert, contention waits and the row
+                // lock all happen inside one bounded transaction, so an abort
+                // rolls everything back and never leaves a placeholder.
                 try {
-                    \DB::transaction(function () use ($clipAnalysis, $clipContract, $action) {
-                        // Lock the row for update
-                        $locked = MediaClipAnalysis::where('id', $clipAnalysis->id)
+                    \DB::transaction(function () use ($asset, $clipContract, $action, $clipTimeoutSeconds, $clipLockWaitSeconds) {
+                        if (\DB::connection()->getDriverName() === 'pgsql') {
+                            // Bound every contended statement in this claim,
+                            // including the insert/unique-conflict wait below.
+                            // Other drivers have no lock_timeout semantics.
+                            \DB::select("SELECT set_config('lock_timeout', ?, true)", [$clipLockWaitSeconds.'s']);
+                        }
+
+                        // Conflict-safe first insert: concurrent creators
+                        // arbitrate on the unique constraint; the loser waits
+                        // within the bound, then rereads the winner below.
+                        \DB::table('media_clip_analyses')->insertOrIgnore([
+                            'media_asset_id' => $asset->id,
+                            'status' => MediaClipAnalysis::STATUS_PENDING,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+
+                        // Fresh locked reread of the unique winner.
+                        $locked = MediaClipAnalysis::where('media_asset_id', $asset->id)
                             ->lockForUpdate()
                             ->first();
 
@@ -607,8 +631,8 @@ class ProcessMediaAsset implements ShouldQueue
                         }
 
                         $executionParams = [
-                            'timeout_seconds' => config('media.clip_analysis_timeout_seconds', 30),
-                            'lock_wait_seconds' => config('media.clip_analysis_timeout_seconds', 30) + 5,
+                            'timeout_seconds' => $clipTimeoutSeconds,
+                            'lock_wait_seconds' => $clipLockWaitSeconds,
                         ];
 
                         try {
@@ -652,13 +676,27 @@ class ProcessMediaAsset implements ShouldQueue
                                 $inputSnapshot,
                                 $executionParams,
                             );
-                        } catch (\Throwable $e) {
+                        } catch (ProcessMediaException $e) {
+                            if ($e->getMessage() === 'clip_analysis_aborted' && $e->getPrevious() === null) {
+                                // Sanitized abort: roll back, never convert to analysis_failed.
+                                throw $e;
+                            }
+                            // Expected worker/validation failure: sanitized
+                            // failed attempt. Anything else propagates so the
+                            // transaction rolls back and durable state
+                            // survives for a later claim.
                             $locked->markFailed('analysis_failed');
                         }
                     });
 
-                    // Re-read to check result
-                    $clipAnalysis->refresh();
+                    // Fresh reread: no row may have existed before the claim.
+                    $clipAnalysis = MediaClipAnalysis::where('media_asset_id', $asset->id)->first();
+
+                    if ($clipAnalysis === null) {
+                        // Deleted/no-op: safe return without resolution.
+                        return;
+                    }
+
                     $clipAnalysisResolved = true;
 
                     if ($clipAnalysis->status === MediaClipAnalysis::STATUS_COMPLETED) {
@@ -673,16 +711,33 @@ class ProcessMediaAsset implements ShouldQueue
                         ]);
                     }
                 } catch (\Throwable $e) {
-                    // Transaction-level failure
-                    if ($clipAnalysis->status === MediaClipAnalysis::STATUS_ANALYZING) {
-                        $clipAnalysis->markFailed('analysis_failed');
-                    }
-                    $clipAnalysisResolved = true;
+                    if ($this->isLockTimeout($e)) {
+                        // Bounded contention: sanitized busy. No worker ran
+                        // and neither the owner's row nor the asset is
+                        // mutated or finalized by the contender.
+                        Log::warning('ProcessMediaAsset: clip analysis contended', [
+                            'media_asset_id' => $asset->id,
+                        ]);
 
-                    Log::error('ProcessMediaAsset: clip analysis transaction failed', [
+                        return;
+                    }
+
+                    // Unexpected abort: the transaction already rolled back,
+                    // so prior durable state survives for a later claim, and
+                    // an aborted first-create leaves absence atomically.
+                    // Signal a sanitized retryable abort to the caller/queue.
+                    if ($e instanceof ProcessMediaException
+                        && $e->getMessage() === 'clip_analysis_aborted'
+                        && $e->getPrevious() === null
+                    ) {
+                        throw $e;
+                    }
+
+                    Log::error('ProcessMediaAsset: clip analysis aborted without resolution', [
                         'media_asset_id' => $asset->id,
-                        'error' => $e->getMessage(),
                     ]);
+
+                    throw new ProcessMediaException('clip_analysis_aborted', 1, '');
                 }
             }
         }
@@ -693,6 +748,22 @@ class ProcessMediaAsset implements ShouldQueue
         if ($sceneDetectionResolved && $audioPathResolved && $clipAnalysisResolved) {
             $asset->markCompleted();
         }
+    }
+
+    /**
+     * Whether the throwable chain carries a PostgreSQL lock timeout (55P03).
+     */
+    private function isLockTimeout(\Throwable $exception): bool
+    {
+        $current = $exception;
+        while ($current !== null) {
+            if ($current instanceof QueryException && (string) $current->getCode() === '55P03') {
+                return true;
+            }
+            $current = $current->getPrevious();
+        }
+
+        return false;
     }
 
     /**

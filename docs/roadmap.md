@@ -34,7 +34,7 @@ Completed slices:
 - Deterministic FFprobe media probing worker (Issue #47)
 - Deterministic FFmpeg audio extraction worker (Issue #49)
 
-## M4 — Video Understanding (in progress)
+## M4 — Video Understanding (completed)
 
 Completed slices:
 
@@ -42,23 +42,20 @@ Completed slices:
 - Deterministic scene detection worker stage (Issue #53, PR #55)
 - Scene detection contract hardening (Issue #56, PR #57 — merged)
 
-Active slice:
-
-- Deterministic clip candidate analysis (Issue #58 — in progress; implementation
-  complete and all full-verification baselines GREEN, awaiting PR/CI/Tester).
+- Deterministic clip candidate analysis (Issue #58, PR #59 — merged; issue closed)
 
 M4 supplies validated candidate metadata, deterministic timing-based scores/ranks,
-and persistence/lifecycle infrastructure. M5 retains AI/model-backed recommendation
-and semantic relevance. Do not record #58 or M4 as completed before verified
-closeout. Planner's recommendation to advance to M5 is conditional on that
-closeout and does not authorize another lifecycle.
+and persistence/lifecycle infrastructure. The `scene_timing_baseline` algorithm
+is deterministic, not AI recommendation. Issue #60 is the active corrective
+closeout for concurrency, failure boundaries, validation and documentation;
+its new verification evidence is not attributed retrospectively to #58.
+M5 retains AI/model-backed recommendation and semantic relevance. It is the next
+architectural goal, not active or authorized by this milestone record.
 
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
-| M3 | Asynchronous Media Processing |
-| M4 | Video Understanding |
 | M5 | AI Clip Recommendation |
 | M6 | Vertical Clip Rendering |
 | M7 | Clip Review Experience |

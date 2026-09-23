@@ -9,8 +9,17 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 | M0 — Engineering Governance | Completed |
 | M1 — Application Foundation | Completed |
 | M2 — Media Storage | Completed |
+| M3 — Asynchronous Media Processing | Completed |
+| M4 — Video Understanding | Completed |
+| M5 — AI Clip Recommendation | Future; not active |
 
 M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization, Sanctum SPA authentication, and authenticated project management. M2 delivered: project-scoped video upload with S3-compatible storage (MinIO for development, AWS S3 in production).
+
+M3 delivered queued processing, FFprobe probing, and FFmpeg audio extraction.
+M4 delivered transcription, scene detection, and deterministic candidate metadata
+(`scene_timing_baseline` v1.0.0); Issue #58 was merged in PR #59 and closed.
+Timing-based scores and ranks are not AI recommendations or semantic relevance.
+Issue #60 is the current corrective concurrency/validation closeout, not M5.
 
 ## Architecture
 
@@ -20,16 +29,23 @@ React 19 (apps/web)          Laravel 13 API (apps/api)
 ├── Vite 8                   ├── PostgreSQL 16
 ├── Vitest 5                 ├── Pest
 ├── React Testing Library    ├── Laravel Sanctum SPA
-└── Playwright E2E           └── Laravel Queues (planned)
+└── Playwright E2E           └── Laravel Queues
 
-Python Media Worker (planned)
+Python Media Worker (services/worker; CLI subprocess)
 ├── FFmpeg / FFprobe
 ├── Transcription
 ├── Scene detection
-└── Image generation
+└── Deterministic clip candidate analysis
 ```
 
 Laravel is the authoritative application backend. Heavy ML/media processing runs outside PHP HTTP request processes. The React frontend communicates with the API via REST through a Vite dev proxy (local) or same-origin routing (production).
+
+Current execution: Laravel `ProcessMediaAsset` queue job → `ProcessMediaAction`
+→ Python CLI subprocess → strict result validation → Laravel PostgreSQL
+persistence. Python does not consume Laravel queue jobs or write application
+rows directly. A standalone queue-consuming Python worker is a future target,
+not the current topology. AI recommendation, rendering, and image generation
+remain future capabilities.
 
 ## Technology Stack
 

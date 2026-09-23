@@ -6,7 +6,47 @@ AiClip is a modular application with a dedicated media worker boundary, designed
 
 The platform follows a request-response pattern for user interactions and an event-driven pattern for media processing. User actions trigger API calls that may enqueue background jobs for heavyweight processing like transcription, scene detection, and image generation. Results are stored in object storage and metadata in PostgreSQL, with the frontend polling or using websockets for status updates.
 
-## Service Decomposition
+## Current Execution Topology (M0–M4)
+
+M4 Video Understanding is completed, including Issue #58 / PR #59's merged
+deterministic candidate-analysis foundation. M5 AI Clip Recommendation is
+future and not active. `scene_timing_baseline` v1.0.0 scores/ranks timings;
+it is not an AI or semantic-relevance model. Issue #60 is a corrective closeout,
+not a new recommendation, rendering or UI capability.
+
+```text
+React → Laravel API → Laravel queue → ProcessMediaAsset
+                                      ↓
+                               ProcessMediaAction
+                                      ↓
+                               Python CLI subprocess
+                                      ↓
+                         Strict Laravel result validation
+                                      ↓
+                           Laravel PostgreSQL persistence
+```
+
+The current job chains probe, scene detection, audio extraction, transcription
+and deterministic clip analysis. Scene/transcript failures retain their defined
+independent lifecycles; no-audio/extraction-failure cases can use scene-only
+analysis. Metadata-only candidate analysis receives timing inputs, not transcript
+text. Valid executed empty results complete with full provenance; fabricated
+emptiness inconsistent with independent recomputation is rejected.
+
+Laravel owns row claims and persisted state. Clip claims use a short PostgreSQL
+transaction, unique asset authority and a transaction-local lock timeout derived
+from process timeout plus five seconds. Expected classified worker/protocol
+failures are sanitized durable failures; unexpected aborts roll back and signal
+a sanitized retryable error. These #60 corrections and their evidence remain
+distinct from historical #58 verification until #60 is merged.
+
+Python is invoked by the Laravel queue job; it does not directly consume that
+queue or write application database rows. The standalone worker, broader UI,
+social, rendering, image generation, infrastructure and endpoint descriptions
+below are **target architecture**, not an inventory of shipped capabilities.
+Current shipped capabilities are summarized in `project-state.md`.
+
+## Target Service Decomposition (future evolution)
 
 ### 1. React Web Frontend
 
@@ -64,7 +104,10 @@ The platform follows a request-response pattern for user interactions and an eve
 
 **Responsibility**: Heavy ML/media processing outside PHP runtime
 
-**Queue Boundary**: Laravel dispatches jobs to a queue (Redis/SQS). The Python worker consumes from the same queue using a compatible client library (rq for Redis, boto3 for SQS), not Laravel-native serialized jobs. This ensures the worker does not depend on Laravel's internal serialization format.
+**Future Queue Boundary**: A standalone Python service may consume an explicit
+language-neutral job contract from a queue. It must not consume Laravel-native
+serialized jobs. Queue/provider/client choices remain future design decisions;
+this is not the implemented `ProcessMediaAction` → Python CLI topology.
 
 **Technology Stack**:
 - Python 3.12
@@ -117,7 +160,7 @@ The platform follows a request-response pattern for user interactions and an eve
 - Caches public media for faster delivery
 - Reduces load on object storage
 
-## Data Flow
+## Target Data Flow (not the current execution topology)
 
 ### User Interaction Flow
 
@@ -181,7 +224,7 @@ Long-video clipping does NOT require generative video models. The primary pipeli
 - **First-party authentication** (AiClip user login): Sanctum SPA session cookies. User authenticates with email/password. Session is server-side managed.
 - **Social OAuth authorization**: User authorizes AiClip to publish on their behalf. These tokens (YouTube, Instagram, TikTok) are stored encrypted server-side and never exposed to the frontend. They are authorization grants, not authentication credentials.
 
-### Key Endpoints
+### Target Endpoint Catalog (includes unimplemented capabilities)
 
 **Authentication**:
 - `POST /api/v1/auth/register`
