@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
 use Illuminate\Support\Facades\Log;
+use JsonException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
 class ProcessMediaAction
@@ -306,9 +308,16 @@ class ProcessMediaAction
             $output = json_decode($process->getOutput(), false, 512, JSON_THROW_ON_ERROR);
 
             return ClipAnalysisValidator::result($output, $request);
-        } catch (\Throwable) {
-            // Never retain a sensitive process/JSON/worker exception as previous.
+        } catch (ProcessMediaException|ProcessTimedOutException|JsonException) {
+            // Classified failures (explicit worker/validation failure, actual
+            // process timeout, invalid worker JSON) commit a fixed sanitized
+            // ordinary failure with no raw cause chained.
             throw new ProcessMediaException('Clip analysis failed', 1, '');
+        } catch (\Throwable) {
+            // Unexpected runtime/programming/infrastructure failure: escape as
+            // a sanitized abort, never as ordinary worker failure, carrying
+            // no raw message, output, contract or previous cause.
+            throw new ProcessMediaException('clip_analysis_aborted', 1, '');
         }
     }
 

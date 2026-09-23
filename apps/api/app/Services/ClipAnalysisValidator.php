@@ -230,11 +230,16 @@ final class ClipAnalysisValidator
             }
         }
 
-        // Validate candidates
-        $candidates = $analysis['candidates'] ?? [];
-        if (empty($candidates)) {
-            throw new ProcessMediaException('Candidates must not be empty');
+        // Validate candidate presence and list shape before any rederivation.
+        // Missing, null, non-array, or non-list candidates are never a valid
+        // empty completion.
+        if (! array_key_exists('candidates', $analysis)
+            || ! is_array($analysis['candidates'])
+            || ! array_is_list($analysis['candidates'])
+        ) {
+            throw new ProcessMediaException('Invalid candidates');
         }
+        $candidates = $analysis['candidates'];
 
         // Independent rederivation from input snapshot
         $request = [
@@ -253,6 +258,15 @@ final class ClipAnalysisValidator
 
         if (count($candidates) !== count($expectedCandidates)) {
             throw new ProcessMediaException('Candidate count mismatch');
+        }
+
+        if ($candidates === []) {
+            // Eligible-empty completion: the claimed provenance must equal
+            // the independently rederived expectations in full. Remaining
+            // snapshot/privacy/execution checks below still run.
+            if (($analysis['parameters'] ?? []) != $expectedAnalysis['parameters']) {
+                throw new ProcessMediaException('Invalid parameters structure');
+            }
         }
 
         foreach ($candidates as $index => $candidate) {
@@ -335,7 +349,7 @@ final class ClipAnalysisValidator
         if (! is_int($executionParameters['timeout_seconds']) || $executionParameters['timeout_seconds'] <= 0 || $executionParameters['timeout_seconds'] > 120) {
             throw new ProcessMediaException('Invalid timeout_seconds');
         }
-        $expectedLockWait = config('media.clip_analysis_lock_wait_seconds', 35);
+        $expectedLockWait = $executionParameters['timeout_seconds'] + 5;
         if (! is_int($executionParameters['lock_wait_seconds']) || $executionParameters['lock_wait_seconds'] !== $expectedLockWait) {
             throw new ProcessMediaException('Invalid lock_wait_seconds');
         }

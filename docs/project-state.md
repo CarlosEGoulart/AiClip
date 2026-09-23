@@ -4,6 +4,9 @@ Laravel 13 API, React 19 + Vite 8 frontend, and PostgreSQL 16, verified by a
 health endpoint (`GET /api/v1/health`) with a real database check. Authentication
 via Laravel Sanctum SPA session/cookie mode with CSRF protection. Media storage
 via S3-compatible backend (MinIO in development, AWS S3 in production).
+Laravel's `ProcessMediaAsset` queue job invokes `ProcessMediaAction`, which
+runs the Python media CLI as a subprocess. Laravel validates worker results
+and owns PostgreSQL persistence; Python does not consume the Laravel queue.
 
 # Completed Capabilities
 
@@ -23,6 +26,12 @@ user_id/project_id/uuid key structure, MediaAsset model, upload/list/delete
 API with rate limiting, frontend media upload and list with delete confirmation,
 MinIO integration tests, and full E2E coverage with mocked storage. Final
 verification is in `specs/035-media-storage/evidence.md`.
+M3: queued processing, FFprobe probing and FFmpeg audio extraction.
+M4: transcription, scene detection, contract hardening and deterministic clip
+candidate analysis (Issue #58 / PR #59 merged and closed). Candidate metadata
+uses `scene_timing_baseline` v1.0.0 with timing-based scores/ranks, not AI
+recommendation. Scene analysis is independent of transcription failure;
+no-audio and extraction-failure workflows retain scene-only analysis.
 
 # Important Decisions
 
@@ -48,33 +57,15 @@ features do not exist yet.
 
 # Current Milestone
 
-M4 Video Understanding (in progress):
-- Deterministic transcription worker stage (Issue #51) — MERGED.
-- Deterministic scene detection worker stage (Issue #53) — MERGED (PR #55).
-- Post-merge contract hardening for scene detection (Issue #56, PR #57) — MERGED.
-- Deterministic clip candidate analysis (Issue #58) — IN PROGRESS; implementation
-  and full verification baselines are GREEN (worker 298, Laravel/PostgreSQL 318,
-  frontend 187, Playwright 75, governance 170). Awaiting PR, required CI, and
-  independent Tester; not merged and not closed.
-- Transcription engine abstraction (DeterministicTranscriber for CI,
-  FasterWhisperTranscriber for runtime).
-- Scene detection engine abstraction (DeterministicSceneDetector for CI,
-  PySceneDetectAdapter for runtime).
-- MediaTranscript model with retryable lifecycle
-  (pending → transcribing → completed/failed → transcribing).
-- MediaSceneAnalysis model with retryable lifecycle
-  (pending → detecting → completed/failed).
-- Segment validation and transcription timeout enforcement.
-- ProcessMediaAsset chains: probe → scene detection → audio extraction → transcription.
-- Scene failure does not block transcription; no-audio video still receives scene detection.
-- Laravel response validation for malformed worker output.
+M0–M4 foundations completed. Issue #60 is the active M4 corrective closeout
+for PostgreSQL concurrency, failure boundaries, empty-result completion and
+documentation. Its evidence is separate from the merged #58 artifacts; this
+state document does not claim #60 merged or closed.
 
 # Next Architectural Goal
 
-Land Issue #58's M4 candidate-analysis foundation through PR, required CI, and
-independent Tester (currently in flight). After verified merge and closure,
-M4's pre-recommendation pipeline (transcription, scene detection, contract
-hardening, validated candidate metadata) can be recorded complete. M5 retains
-AI/model-backed recommendation and semantic relevance; Planner recommends M5
-as the next goal only after that closeout. Human merge authorization and
-authorization for any subsequent lifecycle remain required.
+M5 AI Clip Recommendation: model-backed recommendation and semantic relevance,
+future and not active. A standalone queue-consuming Python service is also a
+future architectural evolution, not the current CLI execution topology.
+Complete #60's independent review, CI and human-authorized merge before any
+new lifecycle; starting M5 requires separate explicit authorization.

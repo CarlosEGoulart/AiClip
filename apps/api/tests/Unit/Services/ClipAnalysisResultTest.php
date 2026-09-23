@@ -88,7 +88,7 @@ it('accepts independently hand-derived golden analysis', function () {
     expect(Fixture::action(json_encode($response, JSON_THROW_ON_ERROR))->analyzeClips(Fixture::contract()))->toBe($response);
 });
 
-it('sanitizes transport errors without chained sensitive exceptions', function (string $raw, bool $throws) {
+it('sanitizes transport errors without chained sensitive exceptions', function (string $raw, bool $throws, string $expected) {
     config(['logging.default' => 'null']);
     $failure = null;
     try {
@@ -97,15 +97,15 @@ it('sanitizes transport errors without chained sensitive exceptions', function (
         $failure = $exception;
     }
     $this->assertInstanceOf(ProcessMediaException::class, $failure);
-    expect($failure->getMessage())->toBe('Clip analysis failed');
+    expect($failure->getMessage())->toBe($expected);
     expect($failure->getPrevious())->toBeNull();
     expect($failure->stderr)->toBe('');
 })->with([
-    'malformed JSON' => ['PRIVATE_SENTINEL', false],
-    'trailing output' => ['{"status":"success"} PRIVATE_SENTINEL', false],
-    'nonfinite' => ['{"status":"success","analysis":{"score":NaN}}', false],
-    'overflow' => ['{"status":"success","analysis":{"score":1e9999}}', false],
-    'process exception' => ['', true],
+    'malformed JSON' => ['PRIVATE_SENTINEL', false, 'Clip analysis failed'],
+    'trailing output' => ['{"status":"success"} PRIVATE_SENTINEL', false, 'Clip analysis failed'],
+    'nonfinite' => ['{"status":"success","analysis":{"score":NaN}}', false, 'Clip analysis failed'],
+    'overflow' => ['{"status":"success","analysis":{"score":1e9999}}', false, 'Clip analysis failed'],
+    'unexpected runtime abort' => ['', true, 'clip_analysis_aborted'],
 ]);
 
 it('rejects candidate timing beyond persisted duration and negative values', function (string $key, mixed $value) {
