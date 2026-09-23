@@ -9,6 +9,7 @@ use App\Services\ProcessMediaAction;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\Issue60DbGuard;
 
 /*
  * Issue #60 C1 test-only child runner (not a production Artisan command).
@@ -54,13 +55,21 @@ try {
     }
 
     require __DIR__.'/../../vendor/autoload.php';
+    require_once __DIR__.'/Issue60DbGuard.php';
 
     /** @var Application $app */
     $app = require __DIR__.'/../../bootstrap/app.php';
     $kernel = $app->make(Kernel::class);
     $kernel->bootstrap();
 
-    // Guard: authorized disposable target only, before any claim work.
+    // Guard: authorized disposable target only, before any claim work. The
+    // expected name is derived from configuration and must be a disposable
+    // test database, never the development/production database.
+    try {
+        $expectedDb = Issue60DbGuard::expectedDatabase();
+    } catch (Throwable) {
+        $expectedDb = null;
+    }
     $guardFailed = null;
     if (! extension_loaded('pdo_pgsql')) {
         $guardFailed = 'missing_pdo_pgsql';
@@ -68,7 +77,7 @@ try {
         $guardFailed = 'unexpected_default_connection';
     } elseif (config('database.connections.pgsql.driver') !== 'pgsql') {
         $guardFailed = 'unexpected_driver';
-    } elseif (config('database.connections.pgsql.database') !== 'aiclip_test_issue60') {
+    } elseif ($expectedDb === null || config('database.connections.pgsql.database') !== $expectedDb) {
         $guardFailed = 'unexpected_database';
     } elseif (DB::transactionLevel() !== 0) {
         $guardFailed = 'unexpected_transaction_level';
@@ -79,9 +88,9 @@ try {
         } else {
             $cur = DB::select('SELECT current_database() AS db');
             $curDb = $cur[0]->db ?? null;
-            if ($curDb !== 'aiclip_test_issue60') {
+            if ($curDb !== $expectedDb) {
                 $guardFailed = 'current_database_mismatch';
-            } elseif (DB::connection()->getDatabaseName() !== 'aiclip_test_issue60') {
+            } elseif (DB::connection()->getDatabaseName() !== $expectedDb) {
                 $guardFailed = 'connection_database_mismatch';
             }
         }

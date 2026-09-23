@@ -645,6 +645,32 @@ Production diff is still exactly these four files: `ProcessMediaAsset.php`,
 `ClipAnalysisValidator.php`, `ProcessMediaAction.php`, `config/media.php`.
 No docs, Planner, `phpunit.xml`, permissions, history, M5, or lifecycle
 operations. Diagnostics and generated files remain for maintainer cleanup.
+
+## Builder CI-guard generalization — test-only, all green
+
+CI backend failed 22 tests with a single root cause: the #60 guards
+hardcoded disposable `aiclip_test_issue60` while CI sets
+`DB_DATABASE=aiclip_test`. All failures were guard mismatches, never
+production behavior. No production/config/CI-workflow edits were made
+(`backend.yml` untouched); prior production work is committed as `271c6cd`
+and the workdir production diff is now zero.
+
+Fix: new `tests/Support/Issue60DbGuard.php` (`Issue60DbGuard::expectedDatabase()`)
+derives the expected name from configuration and fails closed unless it
+matches `/^aiclip_test/`, is non-empty/known, and never equals `aiclip`.
+All seven literal sites now use it — C1, 12-matrix, abort boundary, atomic,
+and empty-persistence parents/children (child runners included). A plain
+function first failed autoloading under PSR-4, so the helper is a static
+class; no `composer.json` change was needed. Zero `aiclip_test_issue60`
+literals remain in tests. Every behavioral assertion, barrier, and
+determinism property is preserved; no skips, sleeps, or global TestCase
+changes. Pint clean.
+
+Local reruns on authorized `aiclip_test_issue60` only (no other DB created
+or used): C1 1/1 (25 assertions); matrix 12/12 (187); abort boundary 4/4
+(85); atomic 2/2 (39); empty persistence 3/3 (37); completion unit 32/32
+(109); each re-run after pint with identical green. The `aiclip_test` path
+itself is re-verified by CI, not locally.
 Unit-vs-persistence proof distinction: unit tests prove the boundary
 contract via the recording-update convention; the persistence file proves
 real stored state. Outstanding gaps: none in the authorized scope.

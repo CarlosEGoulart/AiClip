@@ -8,6 +8,7 @@ use App\Models\MediaSceneAnalysis;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\Process\Process;
+use Tests\Support\Issue60DbGuard;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -20,14 +21,16 @@ uses(TestCase::class);
  * the authorized disposable target before any destructive setup.
  */
 it('concurrent first creation yields one durable row with one worker call and loser reuse', function () {
-    // Parent guards before any destructive operation.
+    // Parent guards before any destructive operation. The expected database
+    // is derived from configuration and must be a disposable test target.
+    $expectedDb = Issue60DbGuard::expectedDatabase();
     expect(extension_loaded('pdo_pgsql'))->toBeTrue('pdo_pgsql must be loaded');
     expect(config('database.default'))->toBe('pgsql');
     expect(config('database.connections.pgsql.driver'))->toBe('pgsql');
-    expect(config('database.connections.pgsql.database'))->toBe('aiclip_test_issue60');
+    expect(config('database.connections.pgsql.database'))->toBe($expectedDb);
     expect(DB::select('SELECT 1 AS one')[0]->one)->toBe(1);
-    expect(DB::select('SELECT current_database() AS db')[0]->db)->toBe('aiclip_test_issue60');
-    expect(DB::connection()->getDatabaseName())->toBe('aiclip_test_issue60');
+    expect(DB::select('SELECT current_database() AS db')[0]->db)->toBe($expectedDb);
+    expect(DB::connection()->getDatabaseName())->toBe($expectedDb);
     expect(DB::transactionLevel())->toBe(0);
 
     $parentPidRow = DB::select('SELECT pg_backend_pid() AS pid');

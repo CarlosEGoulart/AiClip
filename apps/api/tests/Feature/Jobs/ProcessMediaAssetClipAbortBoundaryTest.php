@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\Process\Process;
 use Tests\Support\ClipAnalysisFixture as Fixture;
+use Tests\Support\Issue60DbGuard;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -29,13 +30,14 @@ uses(TestCase::class);
 
 function abortBoundaryGuard(): void
 {
+    $expectedDb = Issue60DbGuard::expectedDatabase();
     expect(extension_loaded('pdo_pgsql'))->toBeTrue('pdo_pgsql must be loaded');
     expect(config('database.default'))->toBe('pgsql');
     expect(config('database.connections.pgsql.driver'))->toBe('pgsql');
-    expect(config('database.connections.pgsql.database'))->toBe('aiclip_test_issue60');
+    expect(config('database.connections.pgsql.database'))->toBe($expectedDb);
     expect(DB::select('SELECT 1 AS one')[0]->one)->toBe(1);
-    expect(DB::select('SELECT current_database() AS db')[0]->db)->toBe('aiclip_test_issue60');
-    expect(DB::connection()->getDatabaseName())->toBe('aiclip_test_issue60');
+    expect(DB::select('SELECT current_database() AS db')[0]->db)->toBe($expectedDb);
+    expect(DB::connection()->getDatabaseName())->toBe($expectedDb);
     expect(DB::transactionLevel())->toBe(0);
 }
 

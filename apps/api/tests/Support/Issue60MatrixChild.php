@@ -9,6 +9,7 @@ use App\Services\ProcessMediaAction;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\Issue60DbGuard;
 
 /*
  * Issue #60 matrix test-only child runner (not a production Artisan command).
@@ -62,16 +63,24 @@ try {
     }
 
     require __DIR__.'/../../vendor/autoload.php';
+    require_once __DIR__.'/Issue60DbGuard.php';
 
     /** @var Application $app */
     $app = require __DIR__.'/../../bootstrap/app.php';
     $kernel = $app->make(Kernel::class);
     $kernel->bootstrap();
 
-    if (! extension_loaded('pdo_pgsql')
+    try {
+        $expectedDb = Issue60DbGuard::expectedDatabase();
+    } catch (Throwable) {
+        $expectedDb = null;
+    }
+
+    if ($expectedDb === null
+        || ! extension_loaded('pdo_pgsql')
         || config('database.default') !== 'pgsql'
         || config('database.connections.pgsql.driver') !== 'pgsql'
-        || config('database.connections.pgsql.database') !== 'aiclip_test_issue60'
+        || config('database.connections.pgsql.database') !== $expectedDb
         || DB::transactionLevel() !== 0
     ) {
         $result['error_class'] = 'guard_mismatch';
@@ -83,8 +92,8 @@ try {
     $one = DB::select('SELECT 1 AS one');
     $cur = DB::select('SELECT current_database() AS db');
     if (($one[0]->one ?? null) != 1
-        || ($cur[0]->db ?? null) !== 'aiclip_test_issue60'
-        || DB::connection()->getDatabaseName() !== 'aiclip_test_issue60'
+        || ($cur[0]->db ?? null) !== $expectedDb
+        || DB::connection()->getDatabaseName() !== $expectedDb
     ) {
         $result['error_class'] = 'guard_database_mismatch';
         $writeResult();

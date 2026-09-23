@@ -7,6 +7,7 @@ use App\Models\MediaAsset;
 use App\Models\MediaClipAnalysis;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\Issue60DbGuard;
 use Tests\TestCase;
 
 /*
@@ -23,13 +24,14 @@ class MediaClipAnalysisEmptyPersistenceTest extends TestCase
 
     private function guardIssue60Target(): void
     {
+        $expectedDb = Issue60DbGuard::expectedDatabase();
         $this->assertTrue(extension_loaded('pdo_pgsql'), 'pdo_pgsql must be loaded');
         $this->assertSame('pgsql', config('database.default'));
         $this->assertSame('pgsql', config('database.connections.pgsql.driver'));
-        $this->assertSame('aiclip_test_issue60', config('database.connections.pgsql.database'));
+        $this->assertSame($expectedDb, config('database.connections.pgsql.database'));
         $this->assertSame(1, DB::select('SELECT 1 AS one')[0]->one);
-        $this->assertSame('aiclip_test_issue60', DB::select('SELECT current_database() AS db')[0]->db);
-        $this->assertSame('aiclip_test_issue60', DB::connection()->getDatabaseName());
+        $this->assertSame($expectedDb, DB::select('SELECT current_database() AS db')[0]->db);
+        $this->assertSame($expectedDb, DB::connection()->getDatabaseName());
     }
 
     /**
