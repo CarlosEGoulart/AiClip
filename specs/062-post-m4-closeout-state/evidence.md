@@ -130,6 +130,30 @@ staging/commit. Application unit, integration/API, E2E, Playwright, visual,
 responsive, and accessibility checks N/A: documentation-only, no runtime or
 interface behavior affected. No approval of merge, #62 closure, or M5.
 
+## TDD Evidence (documentation assertions)
+
+### RED
+
+Fresh manual documentation assertions D1–D10 executed against the pinned
+baseline before edits: D1/D2/D4/D5 failed on stale content (active/pending
+#60 prose, conditional evidence separation, incomplete M5 qualifiers);
+D3/D6/D7/D8/D9 passed as invariants; D10 passed for the intermediate scope.
+Failures were content-based, not environment, syntax, fixture, or harness
+failures. Recorded in the Fresh RED section above with file/line observations.
+
+### GREEN
+
+Same D1–D10 assertions rerun after the minimal four-document correction
+(README +3/-2, architecture +4/-3, project-state +10/-9, roadmap +7/-5):
+all PASS. Governance `python -m unittest discover -s tests/governance`
+→ 170 tests, OK, exit 0. `git diff --check` clean.
+
+### REFACTOR
+
+No-change concision review: corrections localized, readable, and consistent
+across documents; checklist rerun after final wording; governance rerun
+170 OK. No unrelated cleanup performed.
+
 ### Verdict
 
 No blocking defects. All Issue #62 acceptance behaviors verified with
