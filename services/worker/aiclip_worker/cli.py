@@ -279,6 +279,10 @@ def main(argv: list[str] | None = None) -> int:
         from aiclip_worker.actions.analyze_clips import run_cli
 
         return run_cli(arguments[1:])
+    if arguments and arguments[0] == "rank-clips":
+        from aiclip_worker.actions.rank_clips import run_cli
+
+        return run_cli(arguments[1:])
 
     parser = argparse.ArgumentParser(
         prog="aiclip_worker",
@@ -341,6 +345,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Contract JSON string",
     )
     detect_scenes_parser.add_argument(
+        "--contract-file",
+        type=str,
+        help="Path to contract JSON file",
+    )
+
+    rank_clips_parser = subparsers.add_parser("rank-clips", help="Rank clip candidates by semantic relevance")
+    rank_clips_parser.add_argument(
+        "--contract-json",
+        type=str,
+        help="Contract JSON string",
+    )
+    rank_clips_parser.add_argument(
         "--contract-file",
         type=str,
         help="Path to contract JSON file",

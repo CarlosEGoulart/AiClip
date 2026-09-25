@@ -7,6 +7,7 @@ use App\Exceptions\ProcessMediaException;
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\MediaClipAnalysis;
+use App\Models\MediaClipRecommendation;
 use App\Models\MediaSceneAnalysis;
 use App\Models\MediaTranscript;
 use App\Services\ProcessMediaAction;
@@ -16,6 +17,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ProcessMediaAsset implements ShouldQueue
@@ -470,7 +472,7 @@ class ProcessMediaAsset implements ShouldQueue
         }  // Close outer else (audio_codec !== null)
 
         // =====================================================================
-        // Clip Analysis Stage (metadata-only, after upstream resolution)
+        // Clip Analysis Stage (metadata-only, after upstream resolution) - M4
         // =====================================================================
         $clipAnalysisResolved = false;
 
@@ -585,18 +587,18 @@ class ProcessMediaAsset implements ShouldQueue
                 // lock all happen inside one bounded transaction, so an abort
                 // rolls everything back and never leaves a placeholder.
                 try {
-                    \DB::transaction(function () use ($asset, $clipContract, $action, $clipTimeoutSeconds, $clipLockWaitSeconds) {
-                        if (\DB::connection()->getDriverName() === 'pgsql') {
+                    DB::transaction(function () use ($asset, $clipContract, $action, $clipTimeoutSeconds, $clipLockWaitSeconds) {
+                        if (DB::connection()->getDriverName() === 'pgsql') {
                             // Bound every contended statement in this claim,
                             // including the insert/unique-conflict wait below.
                             // Other drivers have no lock_timeout semantics.
-                            \DB::select("SELECT set_config('lock_timeout', ?, true)", [$clipLockWaitSeconds.'s']);
+                            DB::select("SELECT set_config('lock_timeout', ?, true)", [$clipLockWaitSeconds.'s']);
                         }
 
                         // Conflict-safe first insert: concurrent creators
                         // arbitrate on the unique constraint; the loser waits
                         // within the bound, then rereads the winner below.
-                        \DB::table('media_clip_analyses')->insertOrIgnore([
+                        DB::table('media_clip_analyses')->insertOrIgnore([
                             'media_asset_id' => $asset->id,
                             'status' => MediaClipAnalysis::STATUS_PENDING,
                             'created_at' => now(),
@@ -743,9 +745,382 @@ class ProcessMediaAsset implements ShouldQueue
         }
 
         // =====================================================================
+        // Clip Recommendation Stage (metadata-only, after M4 resolution) - M5
+        // =====================================================================
+        $clipRecommendationResolved = false;
+
+        $clipRecommendation = MediaClipRecommendation::where('media_asset_id', $asset->id)->first();
+
+        // Check if clip recommendation is already completed (terminal reuse)
+        if ($clipRecommendation !== null && $clipRecommendation->status === MediaClipRecommendation::STATUS_COMPLETED) {
+            $clipRecommendationResolved = true;
+
+            Log::info('ProcessMediaAsset: clip recommendation already completed, skipping', [
+                'media_asset_id' => $asset->id,
+            ]);
+        } else {
+            // Determine if M4 clip analysis is ready for recommendation
+            $m4Ready = false;
+            $m4Candidates = [];
+
+            if ($clipAnalysis !== null && $clipAnalysis->status === MediaClipAnalysis::STATUS_COMPLETED) {
+                $m4Ready = true;
+                $m4Candidates = $clipAnalysis->candidates ?? [];
+            } elseif ($clipAnalysis !== null && $clipAnalysis->status === MediaClipAnalysis::STATUS_FAILED) {
+                // M4 failed — claim recommendation attempt, mark failed
+                if ($clipRecommendation === null) {
+                    $clipRecommendation = MediaClipRecommendation::create([
+                        'media_asset_id' => $asset->id,
+                        'status' => MediaClipRecommendation::STATUS_PENDING,
+                    ]);
+                }
+                $clipRecommendation->markRanking();
+                $clipRecommendation->markFailed('upstream_m4_failed');
+
+                $clipRecommendationResolved = true;
+
+                Log::error('ProcessMediaAsset: clip recommendation failed due to M4 clip analysis failure', [
+                    'media_asset_id' => $asset->id,
+                ]);
+            } else {
+                if ($clipAnalysis === null) {
+                    // M4 stage resolved as not applicable — claim attempt, mark failed
+                    if ($clipRecommendation === null) {
+                        $clipRecommendation = MediaClipRecommendation::create([
+                            'media_asset_id' => $asset->id,
+                            'status' => MediaClipRecommendation::STATUS_PENDING,
+                        ]);
+                    }
+                    $clipRecommendation->markRanking();
+                    $clipRecommendation->markFailed('upstream_m4_missing');
+
+                    $clipRecommendationResolved = true;
+
+                    Log::error('ProcessMediaAsset: clip recommendation failed due to missing M4 clip analysis', [
+                        'media_asset_id' => $asset->id,
+                    ]);
+                } else {
+                    // M4 clip analysis pending/analyzing — not ready
+                    // Create clip recommendation row if needed and throw to trigger bounded retry (max 3 attempts)
+                    if ($clipRecommendation === null) {
+                        $clipRecommendation = MediaClipRecommendation::create([
+                            'media_asset_id' => $asset->id,
+                            'status' => MediaClipRecommendation::STATUS_PENDING,
+                        ]);
+                    }
+                    if ($clipRecommendation->status !== MediaClipRecommendation::STATUS_RANKING) {
+                        $clipRecommendation->markRanking();
+                    }
+
+                    Log::info('ProcessMediaAsset: clip recommendation not ready, M4 clip analysis pending, releasing for retry', [
+                        'media_asset_id' => $asset->id,
+                        'attempt' => $this->attempts(),
+                    ]);
+
+                    throw new ProcessMediaException('upstream_not_ready', 1);
+                }
+            }
+
+            // If M4 is ready, determine transcript availability for M5 (seven cases)
+            if ($m4Ready && ! $clipRecommendationResolved) {
+                // Build candidate objects for rank_clips (index, start_ms, end_ms, rank, transcript_text)
+                // Extract transcript text per candidate from MediaTranscript segments
+                $rankClipsCandidates = [];
+
+                // Determine transcript availability (seven cases)
+                $transcript = MediaTranscript::where('media_asset_id', $asset->id)->first();
+                $transcriptUsed = false;
+                $candidateTranscriptTexts = [];
+
+                if ($transcript !== null && $transcript->status === MediaTranscript::STATUS_COMPLETED) {
+                    // Case 1: Completed valid transcript, Case 2: Completed empty transcript
+                    $segments = $transcript->segments ?? [];
+                    if (! empty($segments)) {
+                        $transcriptUsed = true;
+                    }
+
+                    // Extract candidate-relevant transcript text
+                    foreach ($m4Candidates as $candidate) {
+                        $text = '';
+                        foreach ($segments as $seg) {
+                            $segStart = $seg['start_ms'] ?? 0;
+                            $segEnd = $seg['end_ms'] ?? 0;
+                            $segText = $seg['text'] ?? '';
+
+                            // Check if segment overlaps with candidate
+                            if ($segStart < $candidate['end_ms'] && $segEnd > $candidate['start_ms']) {
+                                if ($text !== '') {
+                                    $text .= ' ';
+                                }
+                                $text .= $segText;
+                            }
+                        }
+                        $candidateTranscriptTexts[$candidate['index']] = $text;
+                    }
+                } elseif ($transcript !== null && $transcript->status === MediaTranscript::STATUS_FAILED) {
+                    // Case 5: Failed transcription - no transcript used, all candidates get empty text
+                    foreach ($m4Candidates as $candidate) {
+                        $candidateTranscriptTexts[$candidate['index']] = '';
+                    }
+                } elseif ($audioCodec === null) {
+                    // Case 3: No audio - no transcript used, all candidates get empty text
+                    foreach ($m4Candidates as $candidate) {
+                        $candidateTranscriptTexts[$candidate['index']] = '';
+                    }
+                } elseif ($asset->processing_status === MediaAsset::PROCESSING_FAILED) {
+                    // Case 4: Failed extraction - no transcript used even if stale transcript exists
+                    foreach ($m4Candidates as $candidate) {
+                        $candidateTranscriptTexts[$candidate['index']] = '';
+                    }
+                } elseif ($transcript === null) {
+                    // Case 6: Missing transcript - no transcript used, all candidates get empty text
+                    foreach ($m4Candidates as $candidate) {
+                        $candidateTranscriptTexts[$candidate['index']] = '';
+                    }
+                } elseif (in_array($transcript->status, [MediaTranscript::STATUS_PENDING, MediaTranscript::STATUS_TRANSCRIBING], true)) {
+                    // Case 7: Not ready (pending/transcribing) - bounded not-ready
+                    // Create clip recommendation row if needed and throw to trigger bounded retry
+                    if ($clipRecommendation === null) {
+                        $clipRecommendation = MediaClipRecommendation::create([
+                            'media_asset_id' => $asset->id,
+                            'status' => MediaClipRecommendation::STATUS_PENDING,
+                        ]);
+                    }
+                    if ($clipRecommendation->status !== MediaClipRecommendation::STATUS_RANKING) {
+                        $clipRecommendation->markRanking();
+                    }
+
+                    Log::info('ProcessMediaAsset: clip recommendation not ready, transcript pending/transcribing, releasing for retry', [
+                        'media_asset_id' => $asset->id,
+                        'transcript_status' => $transcript->status,
+                        'attempt' => $this->attempts(),
+                    ]);
+
+                    throw new ProcessMediaException('upstream_not_ready', 1);
+                } else {
+                    // Invalid completed transcript timing (malformed) - will fail preflight
+                    foreach ($m4Candidates as $candidate) {
+                        $candidateTranscriptTexts[$candidate['index']] = '';
+                    }
+                }
+
+                // Build rank_clips candidates with transcript text
+                foreach ($m4Candidates as $candidate) {
+                    $rankClipsCandidates[] = [
+                        'index' => $candidate['index'],
+                        'start_ms' => $candidate['start_ms'],
+                        'end_ms' => $candidate['end_ms'],
+                        'rank' => $candidate['rank'],
+                        'transcript_text' => $candidateTranscriptTexts[$candidate['index']] ?? '',
+                    ];
+                }
+
+                // Build the metadata-only contract for clip recommendation
+                $recommendationContract = MediaProcessingContract::fromMediaAsset($asset, $this->idempotencyKey, 'rank_clips');
+                $recommendationContract->durationMs = $durationMs;
+                $recommendationContract->candidates = $rankClipsCandidates;
+                $recommendationContract->configuration = [
+                    'prototype_query' => config('media.clip_ranking_prototype_query'),
+                ];
+
+                // Scenes are re-read afresh (M4 terminal reuse may leave earlier locals unset).
+                $rankSceneAnalysis = MediaSceneAnalysis::where('media_asset_id', $asset->id)->first();
+                $recommendationContract->scenes = ($rankSceneAnalysis !== null
+                    && $rankSceneAnalysis->status === MediaSceneAnalysis::STATUS_COMPLETED)
+                    ? ($rankSceneAnalysis->scenes ?? [])
+                    : [];
+
+                // Timing-only transcript projection for toArray()/metadata shape.
+                // Text is never included here; raw text lives only in candidates for worker transport.
+                if ($transcript !== null && $transcript->status === MediaTranscript::STATUS_COMPLETED) {
+                    $recommendationContract->transcriptSegments = array_map(
+                        static fn (array $seg): array => [
+                            'start_ms' => $seg['start_ms'],
+                            'end_ms' => $seg['end_ms'],
+                        ],
+                        $transcript->segments ?? [],
+                    );
+                } else {
+                    $recommendationContract->transcriptSegments = null;
+                }
+
+                // Single validated operational source: strict integer seconds.
+                $rankingTimeoutSeconds = config('media.clip_ranking_timeout_seconds', 60);
+                if (! is_int($rankingTimeoutSeconds) || $rankingTimeoutSeconds < 1 || $rankingTimeoutSeconds > 120) {
+                    throw new ProcessMediaException('invalid_configuration');
+                }
+                $rankingLockWaitSeconds = $rankingTimeoutSeconds + 5;
+
+                // Atomic claim: first insert, contention waits and the row
+                // lock all happen inside one bounded transaction, so an abort
+                // rolls everything back and never leaves a placeholder.
+                try {
+                    DB::transaction(function () use ($asset, $recommendationContract, $action, $rankingTimeoutSeconds, $rankingLockWaitSeconds, $transcriptUsed) {
+                        if (DB::connection()->getDriverName() === 'pgsql') {
+                            // Bound every contended statement in this claim,
+                            // including the insert/unique-conflict wait below.
+                            // Other drivers have no lock_timeout semantics.
+                            DB::select("SELECT set_config('lock_timeout', ?, true)", [$rankingLockWaitSeconds.'s']);
+                        }
+
+                        // Conflict-safe first insert: concurrent creators
+                        // arbitrate on the unique constraint; the loser waits
+                        // within the bound, then rereads the winner below.
+                        DB::table('media_clip_recommendations')->insertOrIgnore([
+                            'media_asset_id' => $asset->id,
+                            'status' => MediaClipRecommendation::STATUS_PENDING,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+
+                        // Fresh locked reread of the unique winner.
+                        $locked = MediaClipRecommendation::where('media_asset_id', $asset->id)
+                            ->lockForUpdate()
+                            ->first();
+
+                        if ($locked === null) {
+                            return;
+                        }
+
+                        // Re-read status after locking
+                        if ($locked->status === MediaClipRecommendation::STATUS_COMPLETED) {
+                            return;
+                        }
+
+                        // Transition to ranking
+                        $locked->markRanking();
+
+                        // Capture input snapshot (with transcript text hashes for privacy)
+                        $inputSnapshot = [
+                            'duration_ms' => $recommendationContract->durationMs,
+                            'candidates' => array_map(function ($c) {
+                                return [
+                                    'index' => $c['index'],
+                                    'start_ms' => $c['start_ms'],
+                                    'end_ms' => $c['end_ms'],
+                                    'rank' => $c['rank'],
+                                ];
+                            }, $recommendationContract->candidates),
+                            'transcript_used' => $transcriptUsed,
+                            'prototype_query' => $recommendationContract->configuration['prototype_query'],
+                        ];
+
+                        $executionParams = [
+                            'timeout_seconds' => $rankingTimeoutSeconds,
+                            'lock_wait_seconds' => $rankingLockWaitSeconds,
+                        ];
+
+                        try {
+                            // Invoke the worker
+                            $result = $action->rankClips($recommendationContract);
+
+                            $ranking = $result['ranking'] ?? null;
+
+                            if (! is_array($ranking)) {
+                                throw new ProcessMediaException(
+                                    'Worker returned success but ranking data is missing or malformed',
+                                    1,
+                                );
+                            }
+
+                            // Validate required fields
+                            $algorithm = $ranking['algorithm'] ?? null;
+                            $algorithmVersion = $ranking['algorithm_version'] ?? null;
+                            $parameters = $ranking['parameters'] ?? null;
+                            $recommendations = $ranking['recommendations'] ?? null;
+
+                            if (! is_string($algorithm) || $algorithm === '') {
+                                throw new ProcessMediaException('ranking_missing_algorithm', 1);
+                            }
+                            if (! is_string($algorithmVersion) || $algorithmVersion === '') {
+                                throw new ProcessMediaException('ranking_missing_algorithm_version', 1);
+                            }
+                            if (! is_array($parameters)) {
+                                throw new ProcessMediaException('ranking_missing_parameters', 1);
+                            }
+                            if (! is_array($recommendations)) {
+                                throw new ProcessMediaException('ranking_missing_recommendations', 1);
+                            }
+
+                            // Complete the recommendation
+                            $locked->markCompleted(
+                                $algorithm,
+                                $algorithmVersion,
+                                $parameters,
+                                $recommendations,
+                                $inputSnapshot,
+                                $executionParams,
+                            );
+                        } catch (ProcessMediaException $e) {
+                            if ($e->getMessage() === 'clip_ranking_aborted' && $e->getPrevious() === null) {
+                                // Sanitized abort: roll back, never convert to ranking_failed.
+                                throw $e;
+                            }
+                            // Expected worker/validation failure: sanitized
+                            // failed attempt. Anything else propagates so the
+                            // transaction rolls back and durable state
+                            // survives for a later claim.
+                            $locked->markFailed('ranking_failed');
+                        }
+                    });
+
+                    // Fresh reread: no row may have existed before the claim.
+                    $clipRecommendation = MediaClipRecommendation::where('media_asset_id', $asset->id)->first();
+
+                    if ($clipRecommendation === null) {
+                        // Deleted/no-op: safe return without resolution.
+                        return;
+                    }
+
+                    $clipRecommendationResolved = true;
+
+                    if ($clipRecommendation->status === MediaClipRecommendation::STATUS_COMPLETED) {
+                        Log::info('ProcessMediaAsset: clip recommendation succeeded', [
+                            'media_asset_id' => $asset->id,
+                            'recommendations_count' => count($clipRecommendation->recommendations ?? []),
+                        ]);
+                    } else {
+                        Log::error('ProcessMediaAsset: clip recommendation failed', [
+                            'media_asset_id' => $asset->id,
+                            'error' => $clipRecommendation->error,
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    if ($this->isLockTimeout($e)) {
+                        // Bounded contention: sanitized busy. No worker ran
+                        // and neither the owner's row nor the asset is
+                        // mutated or finalized by the contender.
+                        Log::warning('ProcessMediaAsset: clip recommendation contended', [
+                            'media_asset_id' => $asset->id,
+                        ]);
+
+                        return;
+                    }
+
+                    // Unexpected abort: the transaction already rolled back,
+                    // so prior durable state survives for a later claim, and
+                    // an aborted first-create leaves absence atomically.
+                    // Signal a sanitized retryable abort to the caller/queue.
+                    if ($e instanceof ProcessMediaException
+                        && $e->getMessage() === 'clip_ranking_aborted'
+                        && $e->getPrevious() === null
+                    ) {
+                        throw $e;
+                    }
+
+                    Log::error('ProcessMediaAsset: clip recommendation aborted without resolution', [
+                        'media_asset_id' => $asset->id,
+                    ]);
+
+                    throw new ProcessMediaException('clip_ranking_aborted', 1, '');
+                }
+            }
+        }
+
+        // =====================================================================
         // Mark asset as completed when ALL applicable stages have resolved
         // =====================================================================
-        if ($sceneDetectionResolved && $audioPathResolved && $clipAnalysisResolved) {
+        if ($sceneDetectionResolved && $audioPathResolved && $clipAnalysisResolved && $clipRecommendationResolved) {
             $asset->markCompleted();
         }
     }
@@ -816,7 +1191,7 @@ class ProcessMediaAsset implements ShouldQueue
 
         $asset->markFailed($error);
 
-        // If exhaustion due to upstream not ready, mark clip analysis as failed
+        // If exhaustion due to upstream not ready, mark clip analysis and clip recommendation as failed
         if ($error === 'upstream_not_ready') {
             $clipAnalysis = MediaClipAnalysis::where('media_asset_id', $asset->id)->first();
             if ($clipAnalysis === null) {
@@ -832,6 +1207,21 @@ class ProcessMediaAsset implements ShouldQueue
             }
             if ($clipAnalysis->status === MediaClipAnalysis::STATUS_ANALYZING) {
                 $clipAnalysis->markFailed('upstream_not_ready');
+            }
+
+            // Also handle clip recommendation
+            $clipRecommendation = MediaClipRecommendation::where('media_asset_id', $asset->id)->first();
+            if ($clipRecommendation === null) {
+                $clipRecommendation = MediaClipRecommendation::create([
+                    'media_asset_id' => $asset->id,
+                    'status' => MediaClipRecommendation::STATUS_PENDING,
+                ]);
+            }
+            if ($clipRecommendation->status === MediaClipRecommendation::STATUS_PENDING) {
+                $clipRecommendation->markRanking();
+            }
+            if ($clipRecommendation->status === MediaClipRecommendation::STATUS_RANKING) {
+                $clipRecommendation->markFailed('upstream_not_ready');
             }
         }
 

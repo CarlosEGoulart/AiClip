@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Contracts\ClipRankingProvider;
+use App\Services\FakeRankingProvider;
+use App\Services\WorkerRankingProvider;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -14,7 +17,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Single ClipRankingProvider binding: the CI/testing context uses the
+        // deterministic PHP fake; production/default contexts bind the thin
+        // adapter that delegates through the single ProcessMediaAction::
+        // rankClips path. rankClips itself never resolves this binding.
+        $this->app->bind(
+            ClipRankingProvider::class,
+            $this->app->environment('testing') ? FakeRankingProvider::class : WorkerRankingProvider::class,
+        );
     }
 
     /**

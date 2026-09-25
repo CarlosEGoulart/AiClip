@@ -62,4 +62,18 @@ return [
 
     'clip_analysis_weight_boundary_alignment' => (int) env('MEDIA_CLIP_ANALYSIS_WEIGHT_BOUNDARY_ALIGNMENT', 20),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Clip Ranking Configuration (M5)
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for semantic clip recommendation. These values
+    | are operational settings, not score inputs or worker configuration.
+    |
+    */
+
+    'clip_ranking_timeout_seconds' => (int) env('MEDIA_CLIP_RANKING_TIMEOUT_SECONDS', 60),
+
+    'clip_ranking_prototype_query' => 'Engaging, self-contained, viral-worthy short-form video clip highlight with clear narrative or punchline.',
+
 ];

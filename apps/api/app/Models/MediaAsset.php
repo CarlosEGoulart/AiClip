@@ -173,6 +173,12 @@ class MediaAsset extends Model
         ]);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Get the project that owns the media asset.
      */
@@ -211,5 +217,13 @@ class MediaAsset extends Model
     public function clipAnalysis(): HasOne
     {
         return $this->hasOne(MediaClipAnalysis::class);
+    }
+
+    /**
+     * Get the clip recommendation for this media asset.
+     */
+    public function clipRecommendation(): HasOne
+    {
+        return $this->hasOne(MediaClipRecommendation::class);
     }
 }

@@ -322,6 +322,74 @@ class ProcessMediaAction
     }
 
     /**
+     * Rank clip candidates using the Python worker CLI.
+     *
+     * Contract travels via stdin, not command-line arguments.
+     *
+     * @return array{status: string, ranking: array<string, mixed>}
+     *
+     * @throws ProcessMediaException
+     */
+    public function rankClips(MediaProcessingContract $contract): array
+    {
+        if (! $contract->validate()) {
+            throw new ProcessMediaException('Invalid ranking contract');
+        }
+
+        // Validate operational timeout before process creation
+        $timeout = config('media.clip_ranking_timeout_seconds', 60);
+        if (! is_int($timeout) || $timeout <= 0 || $timeout > 120) {
+            throw new ProcessMediaException('Invalid clip ranking timeout configuration');
+        }
+
+        try {
+            $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
+            $request = $contract->toRankClipsMetadataArray();
+            $contractJson = json_encode($request, JSON_THROW_ON_ERROR);
+            $process = $this->createProcess([
+                ...explode(' ', $workerCommand),
+                'rank-clips',
+            ]);
+            $process->setTimeout($timeout);
+            $process->setInput($contractJson);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                $exitCode = $process->getExitCode() ?? 1;
+                $stderr = $process->getErrorOutput();
+                $envelope = json_decode($process->getOutput(), true);
+                if (is_array($envelope)
+                    && isset($envelope['stderr'])
+                    && is_string($envelope['stderr'])
+                    && $envelope['stderr'] !== ''
+                ) {
+                    $stderr = $envelope['stderr'];
+                }
+
+                throw new ProcessMediaException('Ranking failed', $exitCode, $stderr);
+            }
+
+            // Keep JSON objects distinct from lists until strict validation completes.
+            $output = json_decode($process->getOutput(), false, 512, JSON_THROW_ON_ERROR);
+
+            return ClipRecommendationValidator::result($output, $request);
+        } catch (ProcessMediaException $e) {
+            // Preserve sanitized validation/worker failure messages and any
+            // captured stderr; never chain a raw previous cause.
+            throw $e;
+        } catch (JsonException|ProcessTimedOutException) {
+            // Invalid worker JSON or actual process timeout: fixed sanitized
+            // ordinary failure with no raw cause chained.
+            throw new ProcessMediaException('Ranking validation failed', 1, '');
+        } catch (\Throwable) {
+            // Unexpected runtime/programming/infrastructure failure: escape as
+            // a sanitized abort, never as ordinary worker failure, carrying
+            // no raw message, output, contract or previous cause.
+            throw new ProcessMediaException('clip_ranking_aborted', 1, '');
+        }
+    }
+
+    /**
      * Create a process instance. Overridable for testing.
      *
      * @param  list<string>  $command
