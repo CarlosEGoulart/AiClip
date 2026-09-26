@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import math
+import os
 import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
 # These imports will fail initially - this is the expected RED
 from aiclip_worker.ranking import (
+    MANIFEST_FILENAME,
+    MANIFEST_SCHEMA,
+    MODEL_ID,
+    MODEL_REVISION,
     ClipRankingProvider,
     FakeRankingProvider,
     CrossEncoderRankingProvider,
@@ -116,7 +125,7 @@ def test_fake_ranking_provider_returns_deterministic_scores():
     assert output.recommendations[1].combined_rank == 2
     # Provenance
     assert output.transcript_used is False
-    assert output.provider_name == "fake-ranking-v1"
+    assert output.provider_name == "fake_ranking_provider"
     identity = provider.get_model_identity()
     assert identity["model_id"] == "fake-ranking-v1"
     assert identity["provider_name"] == "fake_ranking_provider"
@@ -127,9 +136,9 @@ def test_cross_encoder_ranking_provider_loads_model():
     provider = CrossEncoderRankingProvider()
     identity = provider.get_model_identity()
 
-    assert identity["model_id"] == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    assert identity["model_id"] == "cross-encoder/ms-marco-MiniLM-L6-v2"
+    assert identity["model_revision"] == "233902d25c440f23af6f7d6e94d2946bac0bee0a"
     assert identity["provider_name"] == "cross_encoder_ranking_provider"
-    assert "model_revision" in identity
 
 
 def test_ranking_input_validation():
@@ -157,8 +166,18 @@ def test_fake_provider_transcript_used_false():
     assert output.transcript_used is False
 
 
-def test_cross_encoder_provider_scores_empty_text():
+def test_cross_encoder_provider_scores_empty_text(monkeypatch):
     """CrossEncoderRankingProvider must score empty transcript text honestly."""
+    # Lightweight loader stub: this assertion is about honest empty-text
+    # scoring, not about importing the heavyweight runtime in mandatory CI.
+    class StubModel:
+        def predict(self, pairs):
+            return [0.0] * len(pairs)
+
+    def loader(self):
+        self._model = StubModel()
+
+    monkeypatch.setattr(CrossEncoderRankingProvider, "_load_model", loader)
     provider = CrossEncoderRankingProvider()
     input_data = create_ranking_input([
         {"index": 0, "start_ms": 0, "end_ms": 10000, "rank": 1, "transcript_text": ""},
@@ -226,10 +245,11 @@ GOLDEN_RECOMMENDATIONS_W2_1 = [
     (2, 0.268941, 3),
 ]
 
-# Exact expected model identity dict for the CrossEncoder provider (W2.8).
+# Exact expected model identity dict for the CrossEncoder provider (W2.8):
+# canonical model id plus the immutable pinned revision.
 GOLDEN_IDENTITY_W2_1 = {
-    "model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    "model_revision": "main",
+    "model_id": "cross-encoder/ms-marco-MiniLM-L6-v2",
+    "model_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
     "provider_name": "cross_encoder_ranking_provider",
 }
 
@@ -324,7 +344,7 @@ def test_w2_1_exact_golden_output_with_sigmoid_normalized_scores():
 
     # Provenance of the fixed-seed fixture run.
     assert output.transcript_used is True
-    assert output.model_id == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    assert output.model_id == "cross-encoder/ms-marco-MiniLM-L6-v2"
     assert output.provider_name == "cross_encoder_ranking_provider"
 
 
@@ -378,3 +398,329 @@ def test_w2_8_plausible_wrong_result_detected_against_golden_constants():
         # ...so the exact golden comparison detects/rejects it.
         with pytest.raises(AssertionError):
             assert_matches_golden(wrong, GOLDEN_RECOMMENDATIONS_W2_1)
+
+
+# ---------------------------------------------------------------------------
+# Pinned loader, artifact manifest, execution policy and raw-logit validation
+# (test-plan.md "Worker unit, schema, action and CLI coverage", item 3)
+# ---------------------------------------------------------------------------
+
+SNAPSHOT_RELATIVE = (
+    Path("models--cross-encoder--ms-marco-MiniLM-L6-v2")
+    / "snapshots"
+    / MODEL_REVISION
+)
+
+BASE_ARTIFACTS = {
+    "config.json": b'{"model_type": "cross-encoder", "num_labels": 1}',
+    "tokenizer_config.json": b'{"tokenizer_class": "BertTokenizer"}',
+    "tokenizer.json": b'{"version": "1.0", "truncation": null}',
+    "model.safetensors": b"fixed-weights\x00\x01\x02",
+}
+
+
+class _EvalRecordingModel:
+    """Model double exposing only the evaluation mode the policy sets."""
+
+    def __init__(self) -> None:
+        self.evaluated = False
+
+    def eval(self):
+        self.evaluated = True
+        return self
+
+
+def digests_of(artifacts: dict) -> dict:
+    return {
+        name: hashlib.sha256(payload).hexdigest()
+        for name, payload in artifacts.items()
+    }
+
+
+def manifest_text(artifacts: dict, **overrides) -> str:
+    manifest = {
+        "schema": MANIFEST_SCHEMA,
+        "model_id": MODEL_ID,
+        "model_revision": MODEL_REVISION,
+        "artifacts": digests_of(artifacts),
+    }
+    manifest.update(overrides)
+    return json.dumps(manifest, indent=2)
+
+
+def provision(root: Path, artifacts: dict, manifest: str | None) -> Path:
+    """Write a pinned snapshot directory, optionally with a manifest."""
+    snapshot = root / SNAPSHOT_RELATIVE
+    snapshot.mkdir(parents=True, exist_ok=True)
+    for name, payload in artifacts.items():
+        (snapshot / name).write_bytes(payload)
+    if manifest is not None:
+        (snapshot / MANIFEST_FILENAME).write_text(manifest, encoding="utf-8")
+    return snapshot
+
+
+def provider_pointing_at(root: Path, monkeypatch) -> CrossEncoderRankingProvider:
+    """A provider whose model came from the given operator cache."""
+    monkeypatch.setenv("SENTENCE_TRANSFORMERS_HOME", str(root))
+    provider = CrossEncoderRankingProvider()
+    provider._model = _EvalRecordingModel()
+    provider._loaded_from_cache = True
+    return provider
+
+
+def install_fake_torch(monkeypatch) -> list:
+    """Install a recording torch double for the execution-policy assertion."""
+    calls = []
+
+    torch = ModuleType("torch")
+    torch.manual_seed = lambda seed: calls.append(("manual_seed", seed))
+    torch.set_num_threads = lambda value: calls.append(("set_num_threads", value))
+    torch.set_num_interop_threads = lambda value: calls.append(
+        ("set_num_interop_threads", value)
+    )
+    torch.set_grad_enabled = lambda value: calls.append(("set_grad_enabled", value))
+    torch.nn = SimpleNamespace(Identity=type("Identity", (), {}))
+
+    numpy = ModuleType("numpy")
+    numpy.random = SimpleNamespace(seed=lambda seed: calls.append(("numpy_seed", seed)))
+
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "numpy", numpy)
+    return calls
+
+
+def test_manifest_missing_snapshot_fails_closed(monkeypatch, tmp_path):
+    """An unprovisioned cache directory refuses to be used."""
+    provider = provider_pointing_at(tmp_path / "cache", monkeypatch)
+    with pytest.raises(ValueError):
+        provider._ensure_ready()
+
+
+def test_manifest_missing_manifest_fails_closed(monkeypatch, tmp_path):
+    """A snapshot without its manifest refuses to be used."""
+    root = tmp_path / "cache"
+    provision(root, BASE_ARTIFACTS, None)
+
+    provider = provider_pointing_at(root, monkeypatch)
+    with pytest.raises(ValueError):
+        provider._ensure_ready()
+
+
+def test_manifest_mismatches_fail_closed(monkeypatch, tmp_path):
+    """Every manifest defect fails closed before the runtime policy runs."""
+    def declared_wrong_revision():
+        artifacts = dict(BASE_ARTIFACTS)
+        return artifacts, manifest_text(artifacts, model_revision="another-revision")
+
+    def declared_wrong_model():
+        artifacts = dict(BASE_ARTIFACTS)
+        return artifacts, manifest_text(artifacts, model_id="cross-encoder/other-model")
+
+    def declared_wrong_schema():
+        artifacts = dict(BASE_ARTIFACTS)
+        return artifacts, manifest_text(artifacts, schema="aiclip_ranking_artifacts_v2")
+
+    def declared_unknown_key():
+        artifacts = dict(BASE_ARTIFACTS)
+        return artifacts, json.dumps({
+            **json.loads(manifest_text(artifacts)),
+            "unexpected": True,
+        })
+
+    def tampered_digest():
+        artifacts = dict(BASE_ARTIFACTS)
+        manifest = json.loads(manifest_text(artifacts))
+        manifest["artifacts"]["config.json"] = "0" * 64
+        return artifacts, json.dumps(manifest)
+
+    def artifact_not_on_disk():
+        artifacts = dict(BASE_ARTIFACTS)
+        manifest = manifest_text({**artifacts, "extra.safetensors": b"missing"})
+        return artifacts, manifest
+
+    def required_file_undeclared():
+        artifacts = dict(BASE_ARTIFACTS)
+        manifest = json.loads(manifest_text(artifacts))
+        del manifest["artifacts"]["config.json"]
+        return artifacts, json.dumps(manifest)
+
+    def no_weights_declared():
+        artifacts = dict(BASE_ARTIFACTS)
+        manifest = json.loads(manifest_text(artifacts))
+        del manifest["artifacts"]["model.safetensors"]
+        return artifacts, json.dumps(manifest)
+
+    def pickle_artifact_declared():
+        artifacts = dict(BASE_ARTIFACTS)
+        artifacts["pytorch_model.bin"] = b"pickled-payload"
+        return artifacts, manifest_text(artifacts)
+
+    def non_hex_digest():
+        artifacts = dict(BASE_ARTIFACTS)
+        manifest = json.loads(manifest_text(artifacts))
+        manifest["artifacts"]["config.json"] = "not-a-digest"
+        return artifacts, json.dumps(manifest)
+
+    def path_traversal_name():
+        artifacts = dict(BASE_ARTIFACTS)
+        manifest = json.loads(manifest_text(artifacts))
+        manifest["artifacts"]["../config.json"] = manifest["artifacts"]["config.json"]
+        return artifacts, json.dumps(manifest)
+
+    def duplicate_manifest_key():
+        artifacts = dict(BASE_ARTIFACTS)
+        text = manifest_text(artifacts)
+        return artifacts, text.replace('"schema":', '"schema":"dup","schema":', 1)
+
+    def manifest_is_not_an_object():
+        artifacts = dict(BASE_ARTIFACTS)
+        return artifacts, json.dumps([1, 2, 3])
+
+    def manifest_has_no_artifacts():
+        artifacts = dict(BASE_ARTIFACTS)
+        manifest = json.loads(manifest_text(artifacts))
+        manifest["artifacts"] = {}
+        return artifacts, json.dumps(manifest)
+
+    def manifest_uses_nan():
+        artifacts = dict(BASE_ARTIFACTS)
+        return artifacts, manifest_text(artifacts).replace(
+            f'"{MODEL_REVISION}"', "NaN", 1
+        )
+
+    scenarios = {
+        "wrong_revision": declared_wrong_revision,
+        "wrong_model": declared_wrong_model,
+        "wrong_schema": declared_wrong_schema,
+        "unknown_key": declared_unknown_key,
+        "tampered_digest": tampered_digest,
+        "artifact_not_on_disk": artifact_not_on_disk,
+        "required_file_undeclared": required_file_undeclared,
+        "no_weights_declared": no_weights_declared,
+        "pickle_artifact": pickle_artifact_declared,
+        "non_hex_digest": non_hex_digest,
+        "path_traversal": path_traversal_name,
+        "duplicate_key": duplicate_manifest_key,
+        "not_an_object": manifest_is_not_an_object,
+        "no_artifacts": manifest_has_no_artifacts,
+        "non_finite_constant": manifest_uses_nan,
+    }
+
+    for name, builder in scenarios.items():
+        artifacts, manifest = builder()
+        root = tmp_path / name
+        provision(root, artifacts, manifest)
+        provider = provider_pointing_at(root, monkeypatch)
+        try:
+            provider._ensure_ready()
+        except ValueError:
+            continue
+        raise AssertionError(
+            f"manifest scenario {name!r} was accepted instead of failing closed"
+        )
+
+
+def test_manifest_accepts_provisioned_snapshot_and_applies_policy(monkeypatch, tmp_path):
+    """A verified snapshot runs the pinned CPU execution policy once."""
+    root = tmp_path / "cache"
+    provision(root, BASE_ARTIFACTS, manifest_text(BASE_ARTIFACTS))
+    calls = install_fake_torch(monkeypatch)
+
+    provider = provider_pointing_at(root, monkeypatch)
+    provider._ensure_ready()
+
+    assert ("set_num_threads", 2) in calls
+    assert ("set_num_interop_threads", 1) in calls
+    assert ("set_grad_enabled", False) in calls
+    assert provider._model.evaluated is True
+    assert provider._loaded_from_cache is False, "the policy runs once"
+
+    # A second readiness check must not repeat verification or the policy.
+    before = list(calls)
+    provider._ensure_ready()
+    assert calls == before
+
+
+def test_validated_logits_accepts_one_finite_scalar_per_candidate():
+    """A 1-D vector of finite scalars of the exact cardinality is accepted."""
+    assert CrossEncoderRankingProvider._validated_logits([0.0, -1.0], 2) == [0.0, -1.0]
+    assert CrossEncoderRankingProvider._validated_logits([], 0) == []
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        [0.0],
+        [0.0, 1.0, 2.0],
+        [0.0, float("nan")],
+        [0.0, float("inf")],
+        [0.0, -float("inf")],
+        [0.0, True],
+        [0.0, "1.0"],
+        [0.0, [1.0]],
+        [[0.0, 1.0]],
+        {"0": 0.0},
+        "0.0",
+        None,
+        0.0,
+    ],
+    ids=[
+        "short",
+        "long",
+        "nan",
+        "inf",
+        "-inf",
+        "bool",
+        "numeric_string",
+        "nested_list",
+        "row_vector",
+        "mapping",
+        "string",
+        "null",
+        "scalar",
+    ],
+)
+def test_validated_logits_rejects_invalid_raw_output(raw):
+    """Booleans, strings, wrong shapes/counts and nonfinite values reject
+    the whole result before any normalization."""
+    with pytest.raises(ValueError):
+        CrossEncoderRankingProvider._validated_logits(raw, 2)
+
+
+def test_quantization_applies_sigmoid_exactly_once():
+    """Raw logit 0 yields 0.5, never sigmoid(0.5): one normalization only."""
+    assert CrossEncoderRankingProvider._quantize_units(0.0) == 500000
+    assert CrossEncoderRankingProvider._sigmoid(0.0) == 0.5
+    # Independent expectation if the sigmoid were applied a second time.
+    assert round(1.0 / (1.0 + math.exp(-0.5)), 6) == 0.622459
+    assert CrossEncoderRankingProvider._quantize_units(0.0) != 622459
+
+
+def test_quantization_survives_extreme_logits_without_overflow():
+    """Saturating finite logits clamp to the inclusive endpoints."""
+    assert CrossEncoderRankingProvider._quantize_units(1000.0) == 1000000
+    assert CrossEncoderRankingProvider._quantize_units(-1000.0) == 0
+    assert CrossEncoderRankingProvider._quantize_units(2.0) == 880797
+    assert CrossEncoderRankingProvider._quantize_units(-2.0) == 119203
+    assert CrossEncoderRankingProvider._quantize_units(-1.0) == 268941
+
+
+@pytest.fixture(autouse=True)
+def isolate_ranking_environment():
+    """The loader switches process-level offline flags and library log
+    levels; keep every such change inside the test that triggers it."""
+    saved_environment = dict(os.environ)
+    watched = (
+        "transformers",
+        "sentence_transformers",
+        "huggingface_hub",
+        "tokenizers",
+        "torch",
+        "urllib3",
+    )
+    saved_levels = {name: logging.getLogger(name).level for name in watched}
+    yield
+    os.environ.clear()
+    os.environ.update(saved_environment)
+    for name, level in saved_levels.items():
+        logging.getLogger(name).setLevel(level)

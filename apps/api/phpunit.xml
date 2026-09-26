@@ -31,6 +31,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="MEDIA_CLIP_RANKING_PROVIDER" value="fake" force="true"/>
         <env name="AWS_ACCESS_KEY_ID" value="minioadmin" force="true"/>
         <env name="AWS_SECRET_ACCESS_KEY" value="minioadmin" force="true"/>
         <env name="AWS_DEFAULT_REGION" value="us-east-1" force="true"/>

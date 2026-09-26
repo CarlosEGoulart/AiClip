@@ -18,8 +18,6 @@ final class Issue64RecordingAction extends ProcessMediaAction
 
     public bool $sentinelSent = false;
 
-    public function __construct(private bool $transcriptUsed = true) {}
-
     public function probe(MediaProcessingContract $contract): array
     {
         return ['status' => 'success', 'probe' => MediaAsset::findOrFail($contract->mediaAssetId)->probe_result];
@@ -54,6 +52,6 @@ final class Issue64RecordingAction extends ProcessMediaAction
         $this->rankCalls++;
         $this->sentinelSent = str_contains(json_encode($contract->candidates), 'SYNTHETIC_64_');
 
-        return Issue64RecoveryFixture::ranking($this->transcriptUsed);
+        return Issue64RecoveryFixture::ranking($contract);
     }
 }

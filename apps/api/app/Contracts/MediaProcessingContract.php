@@ -5,6 +5,7 @@ namespace App\Contracts;
 use App\Exceptions\ProcessMediaException;
 use App\Models\MediaAsset;
 use App\Services\ClipAnalysisValidator;
+use App\Services\ClipRankingProfile;
 use App\Services\ClipRecommendationValidator;
 
 class MediaProcessingContract
@@ -37,10 +38,10 @@ class MediaProcessingContract
     /** @var array<int, array{start_ms: int, end_ms: int}>|null */
     public ?array $transcriptSegments = null;
 
-    /** @var array<int, array{index: int, start_ms: int, end_ms: int, rank: int, transcript_text: string}>|null */
+    /** @var array<int, array{index: int, start_ms: int, end_ms: int, m4_rank: int, m4_score: float|int, transcript_text: string}>|null */
     public ?array $candidates = null;
 
-    /** @var array{min_duration_ms: int, target_duration_ms: int, max_duration_ms: int, max_candidates: int, weights: array{duration_fit: int, speech_coverage: int, boundary_alignment: int}}|array{prototype_query: string}|null */
+    /** @var array{min_duration_ms: int, target_duration_ms: int, max_duration_ms: int, max_candidates: int, weights: array{duration_fit: int, speech_coverage: int, boundary_alignment: int}}|array<string, mixed>|null */
     public ?array $configuration = null;
 
     /**
@@ -62,6 +63,43 @@ class MediaProcessingContract
         $contract->durationMs = $asset->duration_ms ?? null;
 
         return $contract;
+    }
+
+    /**
+     * Build the exact rank_clips request from authoritative local inputs.
+     *
+     * The M4 numeric score crosses the boundary unchanged; no criteria, scene,
+     * transcript metadata, provider identity, storage or asset identity is
+     * added. Validation happens strictly before any process is created.
+     *
+     * @param  list<array{index: int, start_ms: int, end_ms: int, rank: int, score: float|int}>  $m4Candidates
+     * @param  list<string>  $canonicalTexts  Canonical text per candidate, in candidate order.
+     * @return array<string, mixed>
+     *
+     * @throws ProcessMediaException
+     */
+    public static function rankClipsRequest(int $durationMs, array $m4Candidates, array $canonicalTexts): array
+    {
+        $candidates = [];
+
+        foreach ($m4Candidates as $position => $candidate) {
+            $candidates[] = [
+                'index' => $candidate['index'],
+                'start_ms' => $candidate['start_ms'],
+                'end_ms' => $candidate['end_ms'],
+                'm4_rank' => $candidate['rank'],
+                'm4_score' => $candidate['score'],
+                'transcript_text' => $canonicalTexts[$position] ?? '',
+            ];
+        }
+
+        return self::fromArray([
+            'version' => ClipRecommendationValidator::CONTRACT_VERSION,
+            'action' => ClipRecommendationValidator::ACTION,
+            'media' => ['duration_ms' => $durationMs],
+            'candidates' => $candidates,
+            'configuration' => ClipRankingProfile::configuration(),
+        ])->toRankClipsMetadataArray();
     }
 
     /**

@@ -2,11 +2,14 @@
 
 namespace Tests\Support;
 
+use App\Contracts\MediaProcessingContract;
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\MediaClipAnalysis;
 use App\Models\MediaSceneAnalysis;
 use App\Models\MediaTranscript;
+use App\Services\ClipRankingProfile;
+use App\Services\ClipRecommendationValidator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PDO;
@@ -104,30 +107,122 @@ final class Issue64RecoveryFixture
         ];
     }
 
-    public static function ranking(bool $transcriptUsed): array
+    /**
+     * The valid current-protocol worker response for the selected profile.
+     *
+     * Deliberately a full current protocol, not a pre-replacement fixture, so
+     * these tests isolate behavior rather than failing on new-field rejection.
+     * Fake identity, fake score units and the exact digest of the sent bytes
+     * are all truthful: this is a PHP boundary double, never inference.
+     *
+     * Accepts either a MediaProcessingContract or the array returned by
+     * MediaProcessingContract::rankClipsRequest().
+     *
+     * @param  array{version: string, action: string, media: array{duration_ms: int}, candidates: array, configuration: array}|MediaProcessingContract  $contract
+     * @return array{status: string, ranking: array<string, mixed>}
+     */
+    public static function ranking(array|MediaProcessingContract $contract): array
     {
-        // Deliberately the valid CURRENT protocol: isolate behavior, not new-field rejection.
-        return ['status' => 'success', 'ranking' => [
-            'algorithm' => 'cross_encoder_reranker', 'algorithm_version' => '1.0.0',
-            'parameters' => [
-                'prototype_query' => config('media.clip_ranking_prototype_query'),
-                'model_id' => 'cross-encoder/ms-marco-MiniLM-L-6-v2', 'model_revision' => 'main',
-                'provider_name' => 'cross_encoder_ranking_provider', 'transcript_used' => $transcriptUsed,
-                'normalization' => 'sigmoid', 'score_scale' => 1.0, 'tie_break' => 'm4_rank_then_chronological',
+        // Handle array input from rankClipsRequest()
+        if (is_array($contract)) {
+            $configuration = $contract['configuration'];
+            $candidates = $contract['candidates'];
+        } else {
+            $configuration = ClipRankingProfile::configuration();
+            $candidates = $contract->candidates;
+        }
+
+        $recommendations = [];
+        $rank = 0;
+        foreach ($candidates as $candidate) {
+            $rank++;
+            $recommendations[] = [
+                'm4_candidate_index' => $candidate['index'],
+                'start_ms' => $candidate['start_ms'],
+                'end_ms' => $candidate['end_ms'],
+                'm4_rank' => $candidate['m4_rank'],
+                'm4_score' => $candidate['m4_score'],
+                'semantic_score' => (float) (max(0, 1000000 - ($candidate['m4_rank'] - 1) * 100000) / 1000000),
+                'semantic_rank' => $rank,
+                'reason' => null,
+            ];
+        }
+
+        return [
+            'status' => 'success',
+            'ranking' => [
+                'algorithm' => $configuration['algorithm'],
+                'algorithm_version' => $configuration['algorithm_version'],
+                'parameters' => ClipRankingProfile::parameters($configuration, false, true),
+                'request_sha256' => self::requestDigest($contract),
+                'recommendations' => $recommendations,
             ],
-            'recommendations' => [
-                ['m4_candidate_index' => 0, 'semantic_score' => 0.8, 'combined_rank' => 1],
-                ['m4_candidate_index' => 1, 'semantic_score' => 0.6, 'combined_rank' => 2],
-            ],
-        ]];
+        ];
     }
 
-    public static function snapshot(MediaAsset $asset, bool $used): array
+    /**
+     * SHA256 of the exact request bytes Laravel sends to the worker.
+     *
+     * Accepts either a MediaProcessingContract or the array returned by
+     * MediaProcessingContract::rankClipsRequest().
+     *
+     * @param  array{version: string, action: string, media: array{duration_ms: int}, candidates: array, configuration: array}|MediaProcessingContract  $contract
+     */
+    public static function requestDigest(array|MediaProcessingContract $contract): string
     {
+        if (is_array($contract)) {
+            return hash('sha256', json_encode($contract, JSON_THROW_ON_ERROR));
+        }
+        return hash('sha256', json_encode($contract->toRankClipsMetadataArray(), JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * A validated current-protocol completion of a worker result.
+     *
+     * Accepts either a MediaProcessingContract or the array returned by
+     * MediaProcessingContract::rankClipsRequest() (which calls
+     * toRankClipsMetadataArray() internally).
+     *
+     * @param  array{version: string, action: string, media: array{duration_ms: int}, candidates: array, configuration: array}|MediaProcessingContract  $contract
+     * @return array<string, mixed>
+     */
+    public static function completion(array|MediaProcessingContract $contract, int $m4AnalysisId): array
+    {
+        // Handle array input from rankClipsRequest()
+        if (is_array($contract)) {
+            $metadata = $contract;
+            $durationMs = $metadata['media']['duration_ms'];
+            $candidates = $metadata['candidates'];
+            $configuration = $metadata['configuration'];
+        } else {
+            $metadata = $contract->toRankClipsMetadataArray();
+            $durationMs = $contract->durationMs;
+            $candidates = $contract->candidates;
+            $configuration = $contract->configuration;
+        }
+
+        $ranking = self::ranking($contract)['ranking'];
+
         return [
-            'duration_ms' => 40000,
-            'candidates' => array_map(static fn ($c) => array_intersect_key($c, array_flip(['index', 'start_ms', 'end_ms', 'rank'])), $asset->clipAnalysis->candidates),
-            'transcript_used' => $used, 'prototype_query' => config('media.clip_ranking_prototype_query'),
+            'algorithm' => $ranking['algorithm'],
+            'algorithm_version' => $ranking['algorithm_version'],
+            'parameters' => $ranking['parameters'],
+            'recommendations' => $ranking['recommendations'],
+            'input_snapshot' => [
+                'm4_analysis_id' => $m4AnalysisId,
+                'm4_algorithm' => ClipRecommendationValidator::M4_ALGORITHM,
+                'm4_algorithm_version' => ClipRecommendationValidator::M4_ALGORITHM_VERSION,
+                'm4_candidates' => ClipAnalysisFixture::response()['analysis']['candidates'],
+                'duration_ms' => $durationMs,
+                'transcript_state' => 'completed_valid',
+                'projection_version' => $configuration['projection_version'],
+                'text_hashes' => array_map(static fn (array $candidate): array => [
+                    'index' => (int) $candidate['index'],
+                    'sha256' => hash('sha256', $candidate['transcript_text']),
+                ], $candidates),
+                'request_sha256' => $ranking['request_sha256'],
+            ],
+            'execution_parameters' => ['timeout_seconds' => 60, 'lock_wait_seconds' => 65],
         ];
     }
 

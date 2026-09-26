@@ -7,481 +7,727 @@ use stdClass;
 
 /**
  * Independent PHP trust boundary for the metadata-only rank_clips action.
- * Validates worker output independently, even when test doubles report success.
+ *
+ * The same invariant core runs at the worker trust boundary (result) and at
+ * the model completion boundary (validateCompletion), so persistence cannot
+ * bypass any envelope, provenance, reference, precision, ordering, rank or
+ * snapshot check. Laravel never recomputes or golden-pins neural scores: a
+ * structurally valid alternative in-range score is the documented boundary.
  */
 final class ClipRecommendationValidator
 {
-    public const MAX_DURATION = 2147483647;
+    public const MAX_DURATION_MS = ClipRankingProfile::MAX_DURATION_MS;
 
-    private const PROTOTYPE_QUERY = 'Engaging, self-contained, viral-worthy short-form video clip highlight with clear narrative or punchline.';
+    public const MAX_CANDIDATES = ClipRankingProfile::MAX_CANDIDATES;
 
-    private const EXPECTED_ALGORITHM = 'cross_encoder_reranker';
+    /**
+     * The only M4 authority M5 may bind to. M5 never reinterprets, rescales or
+     * revalidates M4 output; it only records and re-checks this identity.
+     */
+    public const M4_ALGORITHM = 'scene_timing_baseline';
 
-    private const EXPECTED_ALGORITHM_VERSION = '1.0.0';
+    public const M4_ALGORITHM_VERSION = '1.0.0';
 
-    private const EXPECTED_MODEL_ID = 'cross-encoder/ms-marco-MiniLM-L-6-v2';
+    public const CONTRACT_VERSION = '1.0.0';
 
-    private const EXPECTED_PROVIDER_NAME = 'cross_encoder_ranking_provider';
+    public const ACTION = 'rank_clips';
 
-    private const EXPECTED_NORMALIZATION = 'sigmoid';
+    public const UNSCORED_REASON = 'no_candidate_text';
 
-    private const EXPECTED_SCORE_SCALE = 1.0;
+    public const SCORE_UNITS = 1000000;
 
-    private const EXPECTED_TIE_BREAK = 'm4_rank_then_chronological';
+    public const TRANSCRIPT_STATES = [
+        'completed_valid',
+        'completed_empty',
+        'no_audio',
+        'extraction_failed',
+        'transcription_failed',
+        'missing',
+        'no_candidate_text',
+    ];
 
-    private const REQUIRED_PARAMETERS = [
-        'prototype_query', 'model_id', 'model_revision', 'provider_name',
-        'transcript_used', 'normalization', 'score_scale', 'tie_break',
+    public const UNAVAILABLE_REASONS = [
+        'completed_empty',
+        'no_audio',
+        'extraction_failed',
+        'transcription_failed',
+        'missing',
+        'no_candidate_text',
     ];
 
     /**
-     * Validate worker ranking result and return sanitized arrays.
+     * The exact request key set.
      *
-     * @param  array{version: string, action: string, media: array{duration_ms: int}, candidates: array<int, array{index: int, start_ms: int, end_ms: int, rank: int, transcript_text: string}>, configuration: array{prototype_query: string}}  $request
-     * @param  array{duration_ms: int, candidates: array<int, array{index: int, start_ms: int, end_ms: int, rank: int}>, transcript_used: bool, prototype_query: string}  $inputSnapshot
-     * @param  array{timeout_seconds: int, lock_wait_seconds: int}  $executionParameters
-     * @return array{status: string, ranking: array{algorithm: string, algorithm_version: string, parameters: array, recommendations: array}}
-     *
-     * @throws ProcessMediaException
+     * @var list<string>
      */
-    public static function validate(mixed $result, array $request, array $inputSnapshot, array $executionParameters): array
-    {
-        try {
-            // Convert stdClass to array if needed
-            $result = self::toArrays($result);
-
-            // Strict envelope shape: only status + ranking, no extras.
-            self::require(is_array($result), 'Result must be an array');
-            $result = self::fields($result, ['status', 'ranking']);
-            self::require(($result['status'] ?? '') === 'success', 'Status must be success');
-            self::require(is_array($result['ranking'] ?? null), 'Ranking must be an array');
-
-            // Strict ranking object shape.
-            $ranking = self::fields($result['ranking'], ['algorithm', 'algorithm_version', 'parameters', 'recommendations']);
-
-            // Shared ranking-validation core (see validateRanking()).
-            self::validateRanking($ranking, $inputSnapshot, $executionParameters);
-
-            return self::toArrays($result);
-        } catch (ProcessMediaException) {
-            // Sanitize: always use generic message, no previous exception
-            throw new ProcessMediaException('Ranking validation failed', 1, '');
-        }
-    }
+    private const REQUEST_KEYS = ['version', 'action', 'media', 'candidates', 'configuration'];
 
     /**
-     * Validate worker ranking result (simplified interface for ProcessMediaAction).
+     * The exact candidate key set of a rank_clips request.
      *
-     * @param  array{version: string, action: string, media: array{duration_ms: int}, candidates: array<int, array{index: int, start_ms: int, end_ms: int, rank: int, transcript_text: string}>, configuration: array{prototype_query: string}}  $request
-     * @return array{status: string, ranking: array{algorithm: string, algorithm_version: string, parameters: array, recommendations: array}}
-     *
-     * @throws ProcessMediaException
+     * @var list<string>
      */
-    public static function result(mixed $result, array $request): array
-    {
-        // Compute transcript_used from request candidates
-        $transcriptUsed = false;
-        foreach ($request['candidates'] as $c) {
-            if (($c['transcript_text'] ?? '') !== '') {
-                $transcriptUsed = true;
-                break;
-            }
-        }
-
-        // Build input snapshot from request
-        $inputSnapshot = [
-            'duration_ms' => $request['media']['duration_ms'],
-            'candidates' => array_map(function ($c) {
-                return [
-                    'index' => $c['index'],
-                    'start_ms' => $c['start_ms'],
-                    'end_ms' => $c['end_ms'],
-                    'rank' => $c['rank'],
-                ];
-            }, $request['candidates']),
-            'transcript_used' => $transcriptUsed,
-            'prototype_query' => $request['configuration']['prototype_query'],
-        ];
-
-        // Build execution parameters from config
-        $timeoutSeconds = config('media.clip_ranking_timeout_seconds', 60);
-        $executionParameters = [
-            'timeout_seconds' => $timeoutSeconds,
-            'lock_wait_seconds' => $timeoutSeconds + 5,
-        ];
-
-        try {
-            return self::validate($result, $request, $inputSnapshot, $executionParameters);
-        } catch (ProcessMediaException $e) {
-            // Sanitize: always use generic message, no previous exception
-            throw new ProcessMediaException('Ranking validation failed', 1, '');
-        }
-    }
+    private const REQUEST_CANDIDATE_KEYS = [
+        'index', 'start_ms', 'end_ms', 'm4_rank', 'm4_score', 'transcript_text',
+    ];
 
     /**
-     * Validate request input (preflight).
+     * The exact recommendation key set of a worker result or local outcome.
      *
-     * @return array{version: string, action: string, media: array{duration_ms: int}, candidates: array<int, array{index: int, start_ms: int, end_ms: int, rank: int, transcript_text: string}>, configuration: array{prototype_query: string}}
+     * @var list<string>
+     */
+    private const RECOMMENDATION_KEYS = [
+        'm4_candidate_index', 'start_ms', 'end_ms', 'm4_rank', 'm4_score',
+        'semantic_score', 'semantic_rank', 'reason',
+    ];
+
+    /**
+     * The exact input snapshot key set of a durable M5 record.
+     *
+     * @var list<string>
+     */
+    private const SNAPSHOT_KEYS = [
+        'm4_analysis_id', 'm4_algorithm', 'm4_algorithm_version', 'm4_candidates',
+        'duration_ms', 'transcript_state', 'projection_version', 'text_hashes',
+        'request_sha256',
+    ];
+
+    /**
+     * The exact text hash member key set.
+     *
+     * @var list<string>
+     */
+    private const TEXT_HASH_KEYS = ['index', 'sha256'];
+
+    /**
+     * The exact execution parameter key set.
+     *
+     * @var list<string>
+     */
+    private const EXECUTION_KEYS = ['timeout_seconds', 'lock_wait_seconds'];
+
+    /**
+     * The exact persisted M4 candidate key set carried by a snapshot.
+     *
+     * @var list<string>
+     */
+    private const M4_CANDIDATE_KEYS = [
+        'index', 'start_ms', 'end_ms', 'rank', 'score', 'criteria', 'source_scene_indexes',
+    ];
+
+    /**
+     * Validate the worker request before any process is created.
+     *
+     * @return array<string, mixed>
      *
      * @throws ProcessMediaException
      */
     public static function request(mixed $request): array
     {
-        $data = self::fields($request, ['version', 'action', 'media', 'candidates', 'configuration']);
+        $data = self::fields($request, self::REQUEST_KEYS);
 
-        self::require($data['version'] === '1.0.0' && $data['action'] === 'rank_clips');
+        self::require($data['version'] === self::CONTRACT_VERSION, 'Unsupported ranking contract version');
+        self::require($data['action'] === self::ACTION, 'Unsupported ranking action');
 
         $media = self::fields($data['media'], ['duration_ms']);
-        self::integer($media['duration_ms'], 1, self::MAX_DURATION);
+        self::integer($media['duration_ms'], 1, self::MAX_DURATION_MS);
         $data['media'] = $media;
 
-        $candidates = $data['candidates'];
-        self::require(is_array($candidates) && array_is_list($candidates));
-        $data['candidates'] = self::validateCandidates($candidates, $media['duration_ms']);
-
-        $configuration = self::fields($data['configuration'], ['prototype_query']);
-        self::require(is_string($configuration['prototype_query']) && $configuration['prototype_query'] !== '');
-        self::require($configuration['prototype_query'] === self::PROTOTYPE_QUERY);
-        // Reject unknown fields in configuration
-        self::require(array_keys($configuration) === ['prototype_query']);
+        $configuration = self::fields($data['configuration'], ClipRankingProfile::CONFIGURATION_KEYS);
+        self::require(self::configurationMatchesSelection($configuration), 'Ranking configuration is not the selected profile');
         $data['configuration'] = $configuration;
+
+        $candidates = $data['candidates'];
+        self::require(is_array($candidates) && array_is_list($candidates), 'Candidates must be a list');
+        self::require(count($candidates) > 0, 'Ranking requests require at least one candidate');
+        self::require(count($candidates) <= self::MAX_CANDIDATES, 'Too many ranking candidates');
+        $data['candidates'] = self::validateRequestCandidates($candidates, $media['duration_ms']);
+
+        // A worker request is only legitimate when at least one candidate
+        // carries usable text; local zero/empty outcomes never reach here.
+        $usable = false;
+        foreach ($data['candidates'] as $candidate) {
+            if ($candidate['transcript_text'] !== '') {
+                $usable = true;
+                break;
+            }
+        }
+        self::require($usable, 'Ranking requests require usable candidate text');
 
         return $data;
     }
 
     /**
-     * Validate candidate list structure and values.
+     * Validate a worker ranking result independently of any success claim.
      *
-     * @param  array<int, mixed>  $candidates
-     * @return array<int, array{index: int, start_ms: int, end_ms: int, rank: int, transcript_text: string}>
+     * @param  array<string, mixed>  $request
+     * @return array<string, mixed>
      *
      * @throws ProcessMediaException
      */
-    private static function validateCandidates(array $candidates, int $durationMs): array
+    public static function result(mixed $result, array $request, string $requestSha256): array
     {
+        try {
+            $result = self::toArrays($result);
+
+            self::require(is_array($result), 'Result must be an object');
+            $result = self::fields($result, ['status', 'ranking']);
+            self::require($result['status'] === 'success', 'Status must be success');
+            self::require(is_array($result['ranking']), 'Ranking must be an object');
+
+            $ranking = self::fields($result['ranking'], [
+                'algorithm', 'algorithm_version', 'parameters', 'request_sha256', 'recommendations',
+            ]);
+
+            self::require(is_array($ranking['recommendations']) && array_is_list($ranking['recommendations']),
+                'Recommendations must be a list');
+
+            self::validateRanking($ranking, $request, $requestSha256);
+
+            return $result;
+        } catch (ProcessMediaException) {
+            // Sanitized: fixed category, no previous cause, no worker detail.
+            throw self::validationFailed();
+        }
+    }
+
+    /**
+     * Validate a durable completion at the model boundary.
+     *
+     * The completion payload is self describing: the input snapshot carries
+     * the recorded authority, transcript state, text hashes and the optional
+     * worker request digest, so no projection or inference is rerun here.
+     *
+     * @param  array<string, mixed>  $completion
+     *
+     * @throws ProcessMediaException
+     */
+    public static function validateCompletion(mixed $completion): void
+    {
+        try {
+            $completion = self::toArrays($completion);
+            self::require(is_array($completion), 'Completion must be an object');
+
+            $payload = self::fields($completion, [
+                'algorithm', 'algorithm_version', 'parameters', 'recommendations',
+                'input_snapshot', 'execution_parameters',
+            ]);
+
+            self::require(is_array($payload['parameters']), 'Parameters must be an object');
+            $parameters = self::fields($payload['parameters'], ClipRankingProfile::parameterKeys());
+            $configuration = self::configurationFromParameters(
+                $parameters,
+                $payload['algorithm'],
+                $payload['algorithm_version'],
+            );
+
+            $snapshot = self::validateSnapshot($payload['input_snapshot']);
+            $request = self::requestFromSnapshot($snapshot, $configuration);
+
+            self::require(is_array($payload['recommendations']) && array_is_list($payload['recommendations']),
+                'Recommendations must be a list');
+
+            $ranking = [
+                'algorithm' => $payload['algorithm'],
+                'algorithm_version' => $payload['algorithm_version'],
+                'parameters' => $parameters,
+                'request_sha256' => $snapshot['request_sha256'],
+                'recommendations' => $payload['recommendations'],
+            ];
+
+            // A local outcome is identified by the absence of a worker
+            // request digest: it never claims inference or transcript use.
+            $localOutcome = $snapshot['request_sha256'] === null;
+
+            self::validateRanking($ranking, $request, $snapshot['request_sha256'], $localOutcome);
+            self::validateExecutionParameters($payload['execution_parameters']);
+        } catch (ProcessMediaException) {
+            throw self::validationFailed();
+        }
+    }
+
+    /**
+     * The exact local unavailable references of a validated M4 authority.
+     *
+     * A local outcome is built from the authoritative M4 candidate list, never
+     * from a worker request: the specification only allows a worker request
+     * when at least one candidate carries usable text, so routing a local
+     * outcome through the request validator would reject precisely the
+     * outcomes that must never reach the worker. K exact references are kept,
+     * both semantic fields stay null and the reason repeats the outcome
+     * reason.
+     *
+     * @param  list<array{index: int, start_ms: int, end_ms: int, rank: int, score: float|int}>  $m4Candidates
+     * @return list<array<string, mixed>>
+     *
+     * @throws ProcessMediaException
+     */
+    public static function localUnavailableRecommendations(array $m4Candidates, string $reason): array
+    {
+        self::require(in_array($reason, self::UNAVAILABLE_REASONS, true), 'Unknown unavailable reason');
+
+        $recommendations = [];
+        foreach ($m4Candidates as $candidate) {
+            $recommendations[] = [
+                'm4_candidate_index' => (int) $candidate['index'],
+                'start_ms' => (int) $candidate['start_ms'],
+                'end_ms' => (int) $candidate['end_ms'],
+                'm4_rank' => (int) $candidate['rank'],
+                'm4_score' => $candidate['score'],
+                'semantic_score' => null,
+                'semantic_rank' => null,
+                'reason' => $reason,
+            ];
+        }
+
+        return $recommendations;
+    }
+
+    /**
+     * The exact local empty completion of a validated K=0 request.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function noCandidateRecommendations(): array
+    {
+        return [];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Shared invariant core
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * @param  array<string, mixed>  $ranking
+     * @param  array<string, mixed>  $request
+     */
+    private static function validateRanking(array $ranking, array $request, mixed $requestSha256, bool $localOutcome = false): void
+    {
+        $configuration = $request['configuration'];
+
+        self::require($ranking['algorithm'] === $configuration['algorithm'], 'Invalid algorithm');
+        self::require($ranking['algorithm_version'] === $configuration['algorithm_version'], 'Invalid algorithm version');
+
+        $parameters = self::fields($ranking['parameters'], ClipRankingProfile::parameterKeys());
+        self::validateParameters($parameters, $configuration);
+
+        // The response digest binds the result to this exact invocation.
+        if ($localOutcome) {
+            // A local outcome never claims a worker invocation.
+            self::require($requestSha256 === null, 'Local outcome must not carry a worker digest');
+            self::require($ranking['request_sha256'] === null, 'Local outcome must not carry a worker digest');
+            self::require($parameters['inference_performed'] === false, 'Local outcome must not claim inference');
+            self::require($parameters['transcript_used'] === false, 'Local outcome must not claim transcript use');
+        } else {
+            self::require(is_string($requestSha256) && preg_match('/^[0-9a-f]{64}$/', $requestSha256) === 1,
+                'Invalid request digest binding');
+            self::require($ranking['request_sha256'] === $requestSha256, 'Request digest mismatch');
+            self::require(
+                $parameters['inference_performed'] === ClipRankingProfile::inferencePerformed($configuration['provider']),
+                'Inference flag does not match the selected profile'
+            );
+            // These worker requests are transcript bearing by construction.
+            self::require($parameters['transcript_used'] === true, 'Worker requests use the transcript');
+        }
+
+        self::validateRecommendations($ranking['recommendations'], $request, $parameters, $localOutcome);
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     * @param  array<string, mixed>  $configuration
+     */
+    private static function validateParameters(array $parameters, array $configuration): void
+    {
+        $expected = $configuration;
+        unset($expected['algorithm'], $expected['algorithm_version']);
+
+        self::require(self::hasExactKeys($parameters, ClipRankingProfile::parameterKeys()), 'Unexpected parameters key set');
+
+        foreach ($expected as $key => $value) {
+            self::require($parameters[$key] === $value, "Parameter {$key} does not match the selected profile");
+        }
+
+        self::require(
+            is_string($parameters['provider_name']) && $parameters['provider_name'] !== '',
+            'Provider identity must be a non-empty string'
+        );
+        self::require(
+            $parameters['provider_name'] === ClipRankingProfile::providerName($configuration['provider']),
+            'Provider identity does not match the selected profile'
+        );
+        self::require($parameters['provider'] !== $parameters['provider_name'], 'Provider selector and identity must differ');
+        self::require(is_bool($parameters['inference_performed']), 'inference_performed must be boolean');
+        self::require(is_bool($parameters['transcript_used']), 'transcript_used must be boolean');
+    }
+
+    /**
+     * @param  array<string, mixed>  $request
+     * @param  array<string, mixed>  $parameters
+     */
+    private static function validateRecommendations(mixed $recommendations, array $request, array $parameters, bool $localOutcome): void
+    {
+        $candidates = $request['candidates'];
         $k = count($candidates);
-        $seenIndices = [];
-        $seenRanks = [];
 
-        foreach ($candidates as $i => $candidate) {
-            $candidate = self::fields($candidate, ['index', 'start_ms', 'end_ms', 'rank', 'transcript_text']);
-
-            // Strict integer checks (no bool, no float)
-            foreach (['index', 'start_ms', 'end_ms', 'rank'] as $field) {
-                self::require(is_int($candidate[$field]) && ! is_bool($candidate[$field]), "candidate {$i}.{$field} must be integer");
-            }
-
-            self::require(is_string($candidate['transcript_text']), "candidate {$i}.transcript_text must be string");
-
-            $index = $candidate['index'];
-            $startMs = $candidate['start_ms'];
-            $endMs = $candidate['end_ms'];
-            $rank = $candidate['rank'];
-
-            self::require($index === $i, 'candidate index must be sequential 0..K-1');
-            self::require(! in_array($index, $seenIndices, true), "duplicate candidate index: {$index}");
-            $seenIndices[] = $index;
-
-            self::require($startMs >= 0 && $startMs <= $durationMs, "candidate {$i}.start_ms out of range");
-            self::require($endMs > $startMs && $endMs <= $durationMs, "candidate {$i}.end_ms invalid");
-
-            self::require($rank >= 1 && $rank <= $k, "candidate {$i}.rank out of range 1..{$k}");
-            self::require(! in_array($rank, $seenRanks, true), "duplicate candidate rank: {$rank}");
-            $seenRanks[] = $rank;
-        }
-
-        // Verify indices form 0..K-1
-        self::require($seenIndices === range(0, $k - 1), 'candidate indices must form 0..K-1');
-        // Verify ranks form 1..K
-        self::require($seenRanks === range(1, $k), 'candidate ranks must form 1..K');
-
-        return $candidates;
-    }
-
-    /**
-     * Validate completion data at the model completion boundary.
-     *
-     * Consumes the same shared validation core as validate(): one
-     * implementation of the invariants, both entry points identical by
-     * construction, so the completion boundary cannot bypass any ordering,
-     * tie-break, precision, type, or rank-position check.
-     *
-     * @param  array{algorithm: string, algorithm_version: string, parameters: array, recommendations: array}  $ranking
-     * @param  array{duration_ms: int, candidates: array, transcript_used: bool, prototype_query: string}  $inputSnapshot
-     * @param  array{timeout_seconds: int, lock_wait_seconds: int}  $executionParameters
-     *
-     * @throws ProcessMediaException
-     */
-    public static function validateCompletion(array $ranking, array $inputSnapshot, array $executionParameters): void
-    {
-        $ranking = self::toArrays($ranking);
-        self::require(is_array($ranking), 'Ranking must be an array');
-
-        self::validateRanking($ranking, $inputSnapshot, $executionParameters);
-    }
-
-    /**
-     * Shared ranking-validation core consumed by both entry points: one
-     * implementation of the invariants at the worker trust boundary
-     * (validate) and the model completion boundary (validateCompletion).
-     *
-     * Authoritative ordering: descending semantic_score (6-decimal
-     * precision); tie-break ascending M4 candidate rank; final defensive
-     * tie-break ascending start_ms, then end_ms, then source_scene_index
-     * (unreachable while M4 ranks are unique and contiguous, retained for
-     * exhaustiveness).
-     *
-     * @param  array{algorithm: string, algorithm_version: string, parameters: array, recommendations: array}  $ranking
-     * @param  array{duration_ms: int, candidates: array, transcript_used: bool, prototype_query: string}  $inputSnapshot
-     * @param  array{timeout_seconds: int, lock_wait_seconds: int}  $executionParameters
-     */
-    private static function validateRanking(array $ranking, array $inputSnapshot, array $executionParameters): void
-    {
-        // Validate algorithm and version
-        self::require(($ranking['algorithm'] ?? '') === self::EXPECTED_ALGORITHM, 'Invalid algorithm');
-        self::require(($ranking['algorithm_version'] ?? '') === self::EXPECTED_ALGORITHM_VERSION, 'Invalid algorithm version');
-
-        // Strict parameters object shape (rejects unknown keys).
-        self::require(is_array($ranking['parameters'] ?? null), 'Parameters must be an array');
-        $params = self::fields($ranking['parameters'], self::REQUIRED_PARAMETERS);
-
-        self::require($params['prototype_query'] === self::PROTOTYPE_QUERY, 'Prototype query mismatch');
-        self::require($params['model_id'] === self::EXPECTED_MODEL_ID, 'Model ID mismatch');
-        self::require(is_string($params['model_revision']) && $params['model_revision'] !== '', 'Model revision must be non-empty string');
-        self::require($params['provider_name'] === self::EXPECTED_PROVIDER_NAME, 'Provider name mismatch');
-        self::require($params['normalization'] === self::EXPECTED_NORMALIZATION, 'Normalization mismatch');
-        self::require(
-            (is_int($params['score_scale']) || is_float($params['score_scale']))
-                && ! is_bool($params['score_scale'])
-                && abs((float) $params['score_scale'] - self::EXPECTED_SCORE_SCALE) <= 1e-9,
-            'Score scale mismatch'
-        );
-        self::require($params['tie_break'] === self::EXPECTED_TIE_BREAK, 'Tie-break mismatch');
-        self::require(is_bool($params['transcript_used']), 'transcript_used must be boolean');
-        self::require(
-            array_key_exists('transcript_used', $inputSnapshot)
-                && is_bool($inputSnapshot['transcript_used'])
-                && $params['transcript_used'] === $inputSnapshot['transcript_used'],
-            'transcript_used mismatch with input'
-        );
-
-        // Shared recommendation-list invariants core. When the empty
-        // short-circuit applies, snapshot/execution checks are skipped
-        // (unchanged reference behavior).
-        if (self::validateRecommendationList($ranking['recommendations'] ?? null, $inputSnapshot)) {
-            // Validate input snapshot shape and agreement.
-            self::validateInputSnapshot($inputSnapshot, $params);
-
-            // Validate execution parameters.
-            self::validateExecutionParameters($executionParameters);
-        }
-    }
-
-    /**
-     * Shared recommendation-list invariants core: strict per-recommendation
-     * shapes and types, inclusive [0,1] bounds with 6-decimal precision,
-     * m4_candidate_index permutation, combined_rank position+1 contiguity,
-     * and the authoritative ordering with tie-breaks.
-     *
-     * Returns false when the empty short-circuit applies (no candidates must
-     * have empty recommendations), true when the full sweep completed.
-     *
-     * @param  array{duration_ms: int, candidates: array, transcript_used: bool, prototype_query: string}  $inputSnapshot
-     */
-    private static function validateRecommendationList(mixed $recommendations, array $inputSnapshot): bool
-    {
-        self::require(is_array($recommendations) && array_is_list($recommendations), 'Recommendations must be a list');
-        $k = count($inputSnapshot['candidates'] ?? []);
         self::require(count($recommendations) === $k, 'Recommendation count mismatch');
 
         if ($k === 0) {
-            self::require($recommendations === [], 'Empty candidates must have empty recommendations');
+            // A zero-candidate local completion is exact and stays empty.
+            self::require($recommendations === [], 'A zero-candidate outcome must stay empty');
 
+            return;
+        }
+
+        $seenIndexes = [];
+        $seenSemanticRanks = [];
+        $previousUnits = null;
+        $previousM4Rank = null;
+        $scoredEntries = 0;
+        $enteredUnscored = false;
+
+        foreach ($recommendations as $position => $member) {
+            self::require(is_array($member) && ! array_is_list($member), 'Recommendation must be an object');
+            $member = self::fields($member, self::RECOMMENDATION_KEYS);
+
+            $index = $member['m4_candidate_index'];
+            self::require(is_int($index) && ! is_bool($index), 'm4_candidate_index must be integer');
+            self::require($index >= 0 && $index < $k, 'm4_candidate_index out of range');
+            self::require(! in_array($index, $seenIndexes, true), 'Duplicate m4_candidate_index');
+            $seenIndexes[] = $index;
+
+            $candidate = $candidates[$index];
+
+            // Every reference type is checked explicitly, then compared to the
+            // authoritative request value: integers must stay integers, and the
+            // M4 score must keep the exact numeric value that crossed the
+            // boundary without normalization.
+            self::require(is_int($member['start_ms']) && ! is_bool($member['start_ms']), 'start_ms must be integer');
+            self::require(is_int($member['end_ms']) && ! is_bool($member['end_ms']), 'end_ms must be integer');
+            self::require(is_int($member['m4_rank']) && ! is_bool($member['m4_rank']), 'm4_rank must be integer');
+            self::require(
+                (is_int($member['m4_score']) || is_float($member['m4_score'])) && ! is_bool($member['m4_score'])
+                    && is_finite((float) $member['m4_score']),
+                'm4_score must be a finite number'
+            );
+
+            self::require($member['start_ms'] === $candidate['start_ms'], 'start_ms does not match the request');
+            self::require($member['end_ms'] === $candidate['end_ms'], 'end_ms does not match the request');
+            self::require($member['m4_rank'] === $candidate['m4_rank'], 'm4_rank does not match the request');
+            self::require($member['m4_score'] == $candidate['m4_score'], 'm4_score does not match the request');
+
+            $eligible = $candidate['transcript_text'] !== '';
+            $score = $member['semantic_score'];
+            $semanticRank = $member['semantic_rank'];
+            $reason = $member['reason'];
+
+            if (! $eligible) {
+                // Unscored entries carry both semantic fields null and a fixed
+                // reason, and never follow a scored entry.
+                self::require($score === null, 'Ineligible candidate must not carry a semantic score');
+                self::require($semanticRank === null, 'Ineligible candidate must not carry a semantic rank');
+                self::require(is_string($reason) && $reason !== '', 'Unscored entry must carry a reason');
+                if ($localOutcome) {
+                    // A local unavailable outcome repeats its own reason.
+                    self::require(in_array($reason, self::UNAVAILABLE_REASONS, true),
+                        'Unscored entry must carry a known unavailable reason');
+                } else {
+                    // A worker result only ever reports the fixed unscored reason.
+                    self::require($reason === self::UNSCORED_REASON, 'Unscored entry must carry the fixed unscored reason');
+                }
+                $enteredUnscored = true;
+
+                continue;
+            }
+
+            self::require($reason === null, 'Scored entry must not carry a reason');
+            self::require(is_int($score) || is_float($score), 'semantic_score must be a number');
+            self::require(! is_bool($score) && is_finite((float) $score), 'semantic_score must be finite');
+            $value = (float) $score;
+            self::require($value >= 0.0 && $value <= 1.0, 'semantic_score out of inclusive [0,1] bounds');
+            self::require(self::hasAtMostSixDecimals($value), 'semantic_score exceeds six decimal digits');
+            self::require(is_int($semanticRank) && ! is_bool($semanticRank), 'semantic_rank must be integer');
+            self::require(! $enteredUnscored, 'Scored entry must not follow an unscored entry');
+
+            $scoredEntries++;
+            self::require($semanticRank === $scoredEntries, 'semantic_rank must be contiguous from 1');
+            self::require(! in_array($semanticRank, $seenSemanticRanks, true), 'Duplicate semantic_rank');
+            $seenSemanticRanks[] = $semanticRank;
+
+            $units = self::scoreUnits($value);
+            if ($previousUnits !== null) {
+                self::require($units <= $previousUnits, 'Scored entries must be ordered by descending score units');
+                if ($units === $previousUnits) {
+                    self::require($member['m4_rank'] > $previousM4Rank, 'Equal score units must be ordered by ascending M4 rank');
+                }
+            }
+            $previousUnits = $units;
+            $previousM4Rank = $member['m4_rank'];
+        }
+
+        sort($seenIndexes);
+        self::require($seenIndexes === range(0, $k - 1), 'Every candidate index must occur exactly once');
+        if ($scoredEntries > 0) {
+            self::require($seenSemanticRanks === range(1, $scoredEntries), 'semantic_rank must form a contiguous 1..N set');
+        } else {
+            self::require($seenSemanticRanks === [], 'A fully unscored outcome must carry no semantic rank');
+        }
+    }
+
+    /**
+     * The exact M4 authority, transcript state, hashes and digest of a
+     * durable M5 record.
+     *
+     * @return array<string, mixed>
+     */
+    public static function validateSnapshot(mixed $snapshot): array
+    {
+        $snapshot = self::fields($snapshot, self::SNAPSHOT_KEYS);
+
+        self::require(is_int($snapshot['m4_analysis_id']) && ! is_bool($snapshot['m4_analysis_id'])
+            && $snapshot['m4_analysis_id'] > 0, 'm4_analysis_id must be a positive integer');
+        self::require(is_string($snapshot['m4_algorithm']) && $snapshot['m4_algorithm'] === self::M4_ALGORITHM,
+            'Recorded M4 algorithm is not the expected authority');
+        self::require(is_string($snapshot['m4_algorithm_version'])
+            && $snapshot['m4_algorithm_version'] === self::M4_ALGORITHM_VERSION,
+            'Recorded M4 algorithm version is not the expected authority');
+        self::require(is_int($snapshot['duration_ms']) && ! is_bool($snapshot['duration_ms'])
+            && $snapshot['duration_ms'] >= 1 && $snapshot['duration_ms'] <= self::MAX_DURATION_MS,
+            'duration_ms must be a strict positive bounded integer');
+        self::require(is_string($snapshot['transcript_state'])
+            && in_array($snapshot['transcript_state'], self::TRANSCRIPT_STATES, true),
+            'Unknown transcript state');
+        self::require(is_string($snapshot['projection_version']) && $snapshot['projection_version'] !== '',
+            'projection_version must be a non-empty string');
+
+        self::require(is_array($snapshot['m4_candidates']) && array_is_list($snapshot['m4_candidates']),
+            'm4_candidates must be a list');
+        self::require(count($snapshot['m4_candidates']) <= self::MAX_CANDIDATES, 'Too many recorded M4 candidates');
+        $k = count($snapshot['m4_candidates']);
+        $seenRanks = [];
+        foreach ($snapshot['m4_candidates'] as $position => $candidate) {
+            self::require(is_array($candidate) && ! array_is_list($candidate), 'M4 candidate must be an object');
+            $candidate = self::fields($candidate, self::M4_CANDIDATE_KEYS);
+            self::require($candidate['index'] === $position, 'M4 candidate index must be sequential');
+            self::integer($candidate['start_ms'], 0, self::MAX_DURATION_MS);
+            self::integer($candidate['end_ms'], 0, self::MAX_DURATION_MS);
+            self::integer($candidate['rank'], 1, max($k, 1));
+            self::require((is_int($candidate['score']) || is_float($candidate['score'])) && ! is_bool($candidate['score']),
+                'M4 candidate score must be numeric');
+            self::require(is_array($candidate['criteria']) && ! array_is_list($candidate['criteria']),
+                'M4 candidate criteria must be an object');
+            self::require(is_array($candidate['source_scene_indexes']) && array_is_list($candidate['source_scene_indexes']),
+                'M4 candidate source scenes must be a list');
+            self::require($candidate['end_ms'] > $candidate['start_ms']
+                && $candidate['end_ms'] <= $snapshot['duration_ms'], 'M4 candidate bounds are invalid');
+            $seenRanks[] = $candidate['rank'];
+        }
+        if ($k > 0) {
+            sort($seenRanks);
+            self::require($seenRanks === range(1, $k), 'M4 candidate ranks must form 1..K');
+        }
+
+        self::require(is_array($snapshot['text_hashes']) && array_is_list($snapshot['text_hashes']),
+            'text_hashes must be a list');
+        self::require(count($snapshot['text_hashes']) === $k, 'text_hashes must cover every candidate');
+        foreach ($snapshot['text_hashes'] as $position => $entry) {
+            self::require(is_array($entry) && ! array_is_list($entry), 'Text hash must be an object');
+            $entry = self::fields($entry, self::TEXT_HASH_KEYS);
+            self::require($entry['index'] === $position, 'Text hash index must be chronological');
+            self::require(ClipRecommendationProjection::isDigest($entry['sha256']), 'Text hash must be lowercase 64 hex');
+        }
+
+        self::require($snapshot['request_sha256'] === null || ClipRecommendationProjection::isDigest($snapshot['request_sha256']),
+            'Recorded request digest must be null or lowercase 64 hex');
+
+        return $snapshot;
+    }
+
+    /**
+     * The recorded snapshot bound to the selected profile, expressed as the
+     * normalized request the shared core validates against.
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @param  array<string, mixed>  $configuration
+     * @return array<string, mixed>
+     */
+    private static function requestFromSnapshot(array $snapshot, array $configuration): array
+    {
+        self::require($snapshot['projection_version'] === $configuration['projection_version'],
+            'Recorded projection version does not match the selected profile');
+
+        $candidates = [];
+        foreach ($snapshot['m4_candidates'] as $candidate) {
+            // Eligibility is fully captured by the recorded text hash: the
+            // empty-string digest marks a candidate with no usable text.
+            $usable = ! ClipRecommendationProjection::isEmptyDigest($snapshot['text_hashes'][$candidate['index']]['sha256']);
+
+            $candidates[] = [
+                'index' => $candidate['index'],
+                'start_ms' => $candidate['start_ms'],
+                'end_ms' => $candidate['end_ms'],
+                'm4_rank' => $candidate['rank'],
+                'm4_score' => $candidate['score'],
+                'transcript_text' => $usable ? 'recorded' : '',
+            ];
+        }
+
+        return [
+            'version' => self::CONTRACT_VERSION,
+            'action' => self::ACTION,
+            'media' => ['duration_ms' => $snapshot['duration_ms']],
+            'candidates' => $candidates,
+            'configuration' => $configuration,
+        ];
+    }
+
+    /**
+     * Rebuild the exact request configuration from a recorded parameters
+     * object plus the recorded algorithm identity.
+     *
+     * Public entry point for the model completion boundary, which compares a
+     * caller snapshot against the currently selected profile without building
+     * a worker request.
+     *
+     * @param  array<string, mixed>  $parameters
+     * @return array<string, mixed>
+     *
+     * @throws ProcessMediaException
+     */
+    public static function configurationFromRecordedParameters(
+        array $parameters,
+        mixed $algorithm,
+        mixed $algorithmVersion,
+    ): array {
+        try {
+            return self::configurationFromParameters($parameters, $algorithm, $algorithmVersion);
+        } catch (ProcessMediaException) {
+            throw self::validationFailed();
+        }
+    }
+
+    private static function configurationFromParameters(array $parameters, mixed $algorithm, mixed $algorithmVersion): array
+    {
+        $configuration = $parameters;
+        unset($configuration['provider_name'], $configuration['inference_performed'], $configuration['transcript_used']);
+
+        $withIdentity = ['algorithm' => $algorithm, 'algorithm_version' => $algorithmVersion];
+        foreach (array_reverse(array_diff(ClipRankingProfile::CONFIGURATION_KEYS, array_keys($withIdentity))) as $key) {
+            $withIdentity = [$key => $configuration[$key] ?? null] + $withIdentity;
+        }
+
+        self::require(
+            self::hasExactKeys($withIdentity, ClipRankingProfile::CONFIGURATION_KEYS),
+            'Parameters do not carry the exact configuration key set'
+        );
+        self::require(self::configurationMatchesSelection($withIdentity), 'Recorded configuration is not a known profile');
+
+        return $withIdentity;
+    }
+
+    /**
+     * Whether a configuration object is exactly the pinned selected profile.
+     *
+     * @param  array<string, mixed>  $configuration
+     */
+    public static function configurationMatchesSelection(array $configuration): bool
+    {
+        if (! self::hasExactKeys($configuration, ClipRankingProfile::CONFIGURATION_KEYS)) {
             return false;
         }
 
-        // Validate each recommendation structure and global invariants.
-        $seenIndices = [];
-        $seenRanks = [];
-        $prevScore = null;
-        $prevM4Index = null;
-
-        foreach ($recommendations as $index => $rec) {
-            // Strict object shape: rejects start_ms/end_ms/unknown keys.
-            self::require(is_array($rec) && ! array_is_list($rec), "Recommendation {$index} must be an object");
-            $rec = self::fields($rec, ['m4_candidate_index', 'semantic_score', 'combined_rank']);
-
-            // Strict type checks: integer fields take no bool, no float, no
-            // numeric string; the score field takes int|float only.
-            self::require(
-                is_int($rec['m4_candidate_index']) && ! is_bool($rec['m4_candidate_index']),
-                "Recommendation {$index}.m4_candidate_index must be integer"
-            );
-            self::require(
-                (is_int($rec['semantic_score']) || is_float($rec['semantic_score']))
-                    && ! is_bool($rec['semantic_score'])
-                    && is_finite((float) $rec['semantic_score']),
-                "Recommendation {$index}.semantic_score must be finite number"
-            );
-            self::require(
-                is_int($rec['combined_rank']) && ! is_bool($rec['combined_rank']),
-                "Recommendation {$index}.combined_rank must be integer"
-            );
-
-            $m4Index = $rec['m4_candidate_index'];
-            $score = (float) $rec['semantic_score'];
-            $combinedRank = $rec['combined_rank'];
-
-            // Score bounds (inclusive [0,1]) and 6-decimal precision.
-            self::require($score >= 0 && $score <= 1, "Recommendation {$index}.semantic_score out of range [0,1]");
-            self::require(
-                abs($score - round($score, 6)) <= 1e-9,
-                "Recommendation {$index}.semantic_score exceeds 6-decimal precision"
-            );
-
-            // m4_candidate_index range + uniqueness.
-            self::require($m4Index >= 0 && $m4Index < $k, "Recommendation {$index}.m4_candidate_index out of range");
-            self::require(! in_array($m4Index, $seenIndices, true), "Duplicate m4_candidate_index: {$m4Index}");
-            $seenIndices[] = $m4Index;
-
-            // combined_rank must equal position+1 (1..K contiguous in order).
-            self::require(
-                $combinedRank === $index + 1,
-                "Recommendation {$index}.combined_rank must equal position+1"
-            );
-            self::require($combinedRank >= 1 && $combinedRank <= $k, "Recommendation {$index}.combined_rank out of range 1..{$k}");
-            self::require(! in_array($combinedRank, $seenRanks, true), "Duplicate combined_rank: {$combinedRank}");
-            $seenRanks[] = $combinedRank;
-
-            // Ordering: descending semantic_score.
-            if ($prevScore !== null) {
-                self::require(
-                    $score <= $prevScore + 1e-9,
-                    "Recommendations not sorted by descending semantic_score at index {$index}"
-                );
-
-                // Tie-break: if scores equal (within 1e-9), M4 rank must be
-                // ascending.
-                if (abs($score - $prevScore) <= 1e-9 && $prevM4Index !== null) {
-                    $prevCandidate = $inputSnapshot['candidates'][$prevM4Index] ?? null;
-                    $currCandidate = $inputSnapshot['candidates'][$m4Index] ?? null;
-                    if (is_array($prevCandidate) && is_array($currCandidate)) {
-                        $prevRank = $prevCandidate['rank'] ?? 0;
-                        $currRank = $currCandidate['rank'] ?? 0;
-                        self::require(
-                            $prevRank <= $currRank,
-                            "Tie-break by M4 rank violated at index {$index}"
-                        );
-
-                        if ($prevRank === $currRank) {
-                            // Defensive level-3 tie-break (unreachable while
-                            // M4 ranks are unique and contiguous, retained
-                            // for exhaustiveness): ascending start_ms, then
-                            // end_ms, then source_scene_index.
-                            $prevStart = self::candidateTiming($prevCandidate, 'start_ms');
-                            $currStart = self::candidateTiming($currCandidate, 'start_ms');
-                            self::require(
-                                $prevStart <= $currStart,
-                                "Tie-break by start_ms violated at index {$index}"
-                            );
-
-                            if ($prevStart === $currStart) {
-                                $prevEnd = self::candidateTiming($prevCandidate, 'end_ms');
-                                $currEnd = self::candidateTiming($currCandidate, 'end_ms');
-                                self::require(
-                                    $prevEnd <= $currEnd,
-                                    "Tie-break by end_ms violated at index {$index}"
-                                );
-
-                                if ($prevEnd === $currEnd) {
-                                    self::require(
-                                        self::sourceSceneIndex($prevCandidate) <= self::sourceSceneIndex($currCandidate),
-                                        "Tie-break by source_scene_index violated at index {$index}"
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            $prevScore = $score;
-            $prevM4Index = $m4Index;
+        try {
+            $expected = ClipRankingProfile::configuration($configuration['provider']);
+        } catch (ProcessMediaException) {
+            return false;
         }
 
-        // Verify m4_candidate_index forms permutation of 0..K-1.
-        sort($seenIndices);
-        self::require($seenIndices === range(0, $k - 1), 'm4_candidate_index values must form permutation of 0..K-1');
-
-        // Verify combined_rank forms 1..K.
-        self::require($seenRanks === range(1, $k), 'combined_rank values must form permutation of 1..K');
+        // Key order is not part of the contract; every value must match the
+        // pinned selected profile exactly.
+        foreach (ClipRankingProfile::CONFIGURATION_KEYS as $key) {
+            if ($configuration[$key] !== $expected[$key]) {
+                return false;
+            }
+        }
 
         return true;
     }
 
     /**
-     * Validate input snapshot shape and agreement.
-     *
-     * @param  array{duration_ms: int, candidates: array, transcript_used: bool, prototype_query: string}  $inputSnapshot
+     * @param  array<int, mixed>  $candidates
+     * @return array<int, mixed>
      */
-    private static function validateInputSnapshot(array $inputSnapshot, array $params): void
+    private static function validateRequestCandidates(array $candidates, int $durationMs): array
     {
+        $k = count($candidates);
+        $seenRanks = [];
+
+        foreach ($candidates as $position => $candidate) {
+            self::require(is_array($candidate) && ! array_is_list($candidate), 'Candidate must be an object');
+            $candidate = self::fields($candidate, self::REQUEST_CANDIDATE_KEYS);
+
+            self::require($candidate['index'] === $position, 'Candidate index must be sequential 0..K-1');
+            self::integer($candidate['start_ms'], 0, $durationMs);
+            self::integer($candidate['end_ms'], 0, $durationMs);
+            self::require($candidate['end_ms'] > $candidate['start_ms'], 'Candidate interval must be positive');
+            self::integer($candidate['m4_rank'], 1, $k);
+            self::require((is_int($candidate['m4_score']) || is_float($candidate['m4_score'])) && ! is_bool($candidate['m4_score']),
+                'Candidate m4_score must be numeric');
+            self::require(is_finite((float) $candidate['m4_score']), 'Candidate m4_score must be finite');
+            self::require($candidate['m4_score'] >= 0 && $candidate['m4_score'] <= 1,
+                'Candidate m4_score must stay inside the M4 score range');
+            self::require(is_string($candidate['transcript_text']), 'Candidate transcript_text must be a string');
+            self::require(strlen($candidate['transcript_text']) <= ClipRecommendationProjection::MAX_CANDIDATE_TEXT_BYTES,
+                'Candidate transcript_text exceeds the canonical byte bound');
+            // Request text is already canonical: canonicalization is
+            // idempotent on it, and it is either usable text or the exact
+            // empty string. Non-canonical or whitespace-only text never
+            // reaches the worker boundary.
+            self::require(
+                ClipRecommendationProjection::canonicalizeSegmentText($candidate['transcript_text']) === $candidate['transcript_text'],
+                'Candidate transcript_text must already be canonical'
+            );
+            self::require(
+                $candidate['transcript_text'] === '' || ClipRecommendationProjection::isUsable($candidate['transcript_text']),
+                'Candidate transcript_text must be canonical usable text or empty'
+            );
+
+            $seenRanks[] = $candidate['m4_rank'];
+        }
+
+        sort($seenRanks);
+        self::require($seenRanks === range(1, $k), 'Candidate M4 ranks must form 1..K');
+
+        return $candidates;
+    }
+
+    /**
+     * @param  array<string, mixed>  $executionParameters
+     */
+    private static function validateExecutionParameters(mixed $executionParameters): void
+    {
+        $executionParameters = self::fields($executionParameters, self::EXECUTION_KEYS);
+
+        self::integer($executionParameters['timeout_seconds'], ClipRankingProfile::TIMEOUT_MIN, ClipRankingProfile::TIMEOUT_MAX);
         self::require(
-            isset($inputSnapshot['duration_ms'], $inputSnapshot['candidates'], $inputSnapshot['transcript_used'], $inputSnapshot['prototype_query']),
-            'Invalid input snapshot structure'
-        );
-        self::require($inputSnapshot['prototype_query'] === self::PROTOTYPE_QUERY, 'Input snapshot prototype_query mismatch');
-        self::require(
-            is_bool($inputSnapshot['transcript_used']) && $inputSnapshot['transcript_used'] === ($params['transcript_used'] ?? false),
-            'Input snapshot transcript_used mismatch'
+            $executionParameters['lock_wait_seconds'] === $executionParameters['timeout_seconds'] + ClipRankingProfile::LOCK_WAIT_OFFSET_SECONDS,
+            'lock_wait_seconds must equal the captured timeout plus the fixed offset'
         );
     }
 
     /**
-     * Validate execution parameters.
-     *
-     * @param  array{timeout_seconds: int, lock_wait_seconds: int}  $executionParameters
+     * The six-decimal score unit used for the authoritative ordering.
      */
-    private static function validateExecutionParameters(array $executionParameters): void
+    private static function scoreUnits(float $value): int
     {
-        self::require(
-            isset($executionParameters['timeout_seconds'], $executionParameters['lock_wait_seconds']),
-            'Invalid execution parameters structure'
-        );
-        self::require(
-            is_int($executionParameters['timeout_seconds'])
-                && ! is_bool($executionParameters['timeout_seconds'])
-                && $executionParameters['timeout_seconds'] >= 1
-                && $executionParameters['timeout_seconds'] <= 120,
-            'Invalid timeout_seconds'
-        );
-        $expectedLockWait = $executionParameters['timeout_seconds'] + 5;
-        self::require(
-            is_int($executionParameters['lock_wait_seconds'])
-                && ! is_bool($executionParameters['lock_wait_seconds'])
-                && $executionParameters['lock_wait_seconds'] === $expectedLockWait,
-            'Invalid lock_wait_seconds'
-        );
+        return (int) floor($value * self::SCORE_UNITS + 0.5);
     }
 
-    /**
-     * Defensive tie-break timing value: the candidate's timing field when
-     * present, 0 otherwise.
-     */
-    private static function candidateTiming(array $candidate, string $field): int
+    private static function hasAtMostSixDecimals(float $value): bool
     {
-        return (int) ($candidate[$field] ?? 0);
-    }
-
-    /**
-     * Defensive tie-break source scene value: the first entry of the
-     * candidate's source_scene_indexes when present, 0 otherwise.
-     */
-    private static function sourceSceneIndex(array $candidate): int
-    {
-        $indexes = $candidate['source_scene_indexes'] ?? null;
-
-        return is_array($indexes) && $indexes !== [] ? (int) $indexes[0] : 0;
+        return (float) sprintf('%.6F', $value) === $value;
     }
 
     private static function toArrays(mixed $value): mixed
@@ -493,27 +739,61 @@ final class ClipRecommendationValidator
         return is_array($value) ? array_map(self::toArrays(...), $value) : $value;
     }
 
-    private static function fields(mixed $value, array $required, array $optional = []): array
+    /**
+     * Require an object carrying exactly the given key set.
+     *
+     * Key order is not part of the contract; membership is. Missing, extra and
+     * unknown members are rejected recursively at every validated level.
+     *
+     * @param  list<string>  $required
+     * @return array<string, mixed>
+     */
+    private static function fields(mixed $value, array $required): array
     {
         if ($value instanceof stdClass) {
             $value = get_object_vars($value);
         }
-        self::require(is_array($value) && ! array_is_list($value));
-        self::require(array_diff($required, array_keys($value)) === []
-            && array_diff(array_keys($value), [...$required, ...$optional]) === []);
+
+        self::require(is_array($value) && ! array_is_list($value), 'Expected an object');
+
+        $keys = array_keys($value);
+        sort($keys);
+        $expected = $required;
+        sort($expected);
+        self::require($keys === $expected, 'Unexpected key set');
 
         return $value;
     }
 
+    /**
+     * @param  array<string, mixed>  $value
+     * @param  list<string>  $keys
+     */
+    private static function hasExactKeys(array $value, array $keys): bool
+    {
+        $actual = array_keys($value);
+        sort($actual);
+        $expected = $keys;
+        sort($expected);
+
+        return $actual === $expected;
+    }
+
     private static function integer(mixed $value, int $low, int $high): void
     {
-        self::require(is_int($value) && ! is_bool($value) && $value >= $low && $value <= $high);
+        self::require(is_int($value) && ! is_bool($value) && $value >= $low && $value <= $high,
+            'Expected an integer inside the allowed range');
     }
 
     private static function require(bool $condition, string $message = 'Validation failed'): void
     {
         if (! $condition) {
-            throw new ProcessMediaException($message);
+            throw new ProcessMediaException($message, 1, '');
         }
+    }
+
+    private static function validationFailed(): ProcessMediaException
+    {
+        return new ProcessMediaException('Ranking validation failed', 1, '');
     }
 }

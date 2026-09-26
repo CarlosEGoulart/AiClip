@@ -2,165 +2,69 @@
 
 namespace Tests\Feature\Jobs;
 
-use App\Contracts\MediaProcessingContract;
-use App\Jobs\ProcessMediaAsset;
+use App\Exceptions\ProcessMediaException;
 use App\Models\MediaAsset;
 use App\Models\MediaClipAnalysis;
 use App\Models\MediaClipRecommendation;
-use App\Models\MediaSceneAnalysis;
-use App\Models\MediaTranscript;
-use App\Services\ProcessMediaAction;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Mockery;
+use Illuminate\Support\Facades\DB;
+use Tests\Support\M5RecommendationFixture as Fixture;
 use Tests\TestCase;
+
+/*
+|--------------------------------------------------------------------------
+| Durable M5 arbitration invariants that need no second connection
+|--------------------------------------------------------------------------
+|
+| Protocol migrated to the replacement specification. True multi-connection
+| arbitration is mandatory and is not expressible on the in-memory SQLite
+| target, so it lives in the authorized-disposable-PostgreSQL sibling
+| ProcessMediaAssetClipRecommendationRecoveryTest instead of being skipped
+| here. Nothing in this file is conditional or suppressed.
+|
+*/
 
 uses(TestCase::class, RefreshDatabase::class);
 
-// Test double that records ranking invocations with a barrier for synchronization
-class BarrierRankClipsAction extends ProcessMediaAction
+/**
+ * The conflict-safe first insert the claim performs.
+ */
+function m5CreateRow(MediaAsset $asset): void
 {
-    public static array $barrier = [];
-
-    public static int $callCount = 0;
-
-    public array $rankClipsContracts = [];
-
-    public int $rankClipsCallCount = 0;
-
-    public function __construct(
-        private MediaAsset $asset,
-        private array $response,
-    ) {}
-
-    public function rankClips(MediaProcessingContract $contract): array
-    {
-        self::$callCount++;
-        $this->rankClipsCallCount++;
-        $this->rankClipsContracts[] = $contract->toArray();
-
-        // Wait at barrier to allow concurrent test to proceed
-        if (isset(self::$barrier['wait'])) {
-            $start = microtime(true);
-            while (! isset(self::$barrier['release']) && (microtime(true) - $start) < 10) {
-                usleep(10000);
-            }
-        }
-
-        return $this->response;
-    }
-
-    public static function resetBarrier(): void
-    {
-        self::$barrier = [];
-        self::$callCount = 0;
-    }
-
-    public static function setBarrierWait(): void
-    {
-        self::$barrier['wait'] = true;
-        self::$barrier['release'] = false;
-    }
-
-    public static function releaseBarrier(): void
-    {
-        self::$barrier['release'] = true;
-    }
+    DB::table('media_clip_recommendations')->insertOrIgnore([
+        'media_asset_id' => $asset->id,
+        'status' => MediaClipRecommendation::STATUS_PENDING,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
 }
 
-it('arbitrates concurrent first creation - only one worker runs, second reuses completed result', function () {
-    BarrierRankClipsAction::resetBarrier();
-    BarrierRankClipsAction::setBarrierWait();
+/*
+|--------------------------------------------------------------------------
+| One durable recommendation owner per asset
+|--------------------------------------------------------------------------
+*/
 
-    $idempotencyKey = '550e8400-e29b-41d4-a716-446655440020';
-    $probe = [
-        'duration_ms' => 40000,
-        'video_codec' => 'h264',
-        'audio_codec' => 'aac',
-    ];
-    $scenes = [
-        ['index' => 0, 'start_ms' => 0, 'end_ms' => 10000],
-    ];
+it('arbitrates first creation to exactly one durable row', function () {
+    $asset = Fixture::probedAsset();
+    Fixture::completedM4($asset);
+    Fixture::transcript($asset);
 
-    $asset = MediaAsset::factory()->create();
-    $asset->markQueued($idempotencyKey);
-    $asset->markProcessing();
-    $asset->markProbed($probe, 40000);
-
-    // Scene detection completed
-    $sceneAnalysis = MediaSceneAnalysis::create([
-        'media_asset_id' => $asset->id,
-        'status' => MediaSceneAnalysis::STATUS_PENDING,
-    ]);
-    $sceneAnalysis->markDetecting();
-    $sceneAnalysis->markCompleted('deterministic', '0.0.0', ['threshold' => 27], $scenes, 40000);
-
-    // M4 clip analysis completed
-    $clipAnalysis = MediaClipAnalysis::create([
-        'media_asset_id' => $asset->id,
-        'status' => MediaClipAnalysis::STATUS_PENDING,
-    ]);
-    $clipAnalysis->markAnalyzing();
-    $clipAnalysis->markCompleted('scene_timing_baseline', '1.0.0', [
-        'configuration' => ['min_duration_ms' => 5000, 'target_duration_ms' => 10000],
-        'candidate_policy' => 'whole_scene_non_overlapping',
-    ], [
-        ['index' => 0, 'start_ms' => 0, 'end_ms' => 10000, 'rank' => 1, 'score' => 1000000, 'criteria' => ['duration_fit' => 1], 'source_scene_indexes' => [0]],
-    ], 40000);
-
-    // Transcript completed
-    $transcript = MediaTranscript::create([
-        'media_asset_id' => $asset->id,
-        'status' => MediaTranscript::STATUS_PENDING,
-    ]);
-    $transcript->markTranscribing();
-    $transcript->markCompleted('whisper', 'base', 'en', [
-        ['start_ms' => 500, 'end_ms' => 9500, 'text' => 'engaging content'],
-    ]);
-
-    $workerResponse = [
-        'status' => 'success',
-        'ranking' => [
-            'algorithm' => 'cross_encoder_reranker',
-            'algorithm_version' => '1.0.0',
-            'parameters' => [
-                'prototype_query' => 'Engaging, self-contained, viral-worthy short-form video clip highlight with clear narrative or punchline.',
-                'model_id' => 'cross-encoder/ms-marco-MiniLM-L-6-v2',
-                'model_revision' => 'main',
-                'provider_name' => 'cross_encoder_ranking_provider',
-                'transcript_used' => true,
-                'normalization' => 'sigmoid',
-                'score_scale' => 1.0,
-                'tie_break' => 'm4_rank_then_chronological',
-            ],
-            'recommendations' => [
-                ['m4_candidate_index' => 0, 'semantic_score' => 0.872341, 'combined_rank' => 1],
-            ],
-        ],
-    ];
-
-    // First process - will hold at barrier
-    $action1 = Mockery::mock(BarrierRankClipsAction::class, [$asset, $workerResponse])->makePartial();
-    $action1->shouldNotReceive('probe');
-    $action1->shouldNotReceive('detectScenes');
-    $action1->shouldNotReceive('extractAudio');
-    $action1->shouldNotReceive('transcribe');
-    $action1->shouldNotReceive('analyzeClips');
-    app()->instance(ProcessMediaAction::class, $action1);
-
-    // Run first job in background (simulate via direct call with barrier)
-    $job1 = new ProcessMediaAsset($asset, $idempotencyKey);
-
-    // Since we can't easily run true parallel processes in Pest,
-    // we test the database-level arbitration by checking the recommendation row creation
-    // The actual concurrency test with real PostgreSQL would need separate processes
-
-    // For now, verify the recommendation model doesn't exist yet (will be created by job)
     expect(MediaClipRecommendation::where('media_asset_id', $asset->id)->exists())->toBeFalse();
 
-    // This test requires real PostgreSQL with separate connections/processes
-    // which is not available in this test environment
-    $this->markTestSkipped('Requires real PostgreSQL with separate connections for true concurrency test');
+    // Repeated conflict-safe attempts never create a second owner.
+    m5CreateRow($asset);
+    m5CreateRow($asset);
+
+    expect(MediaClipRecommendation::where('media_asset_id', $asset->id)->count())->toBe(1);
+
+    // A plain second insert for the same asset must fail.
+    $this->expectException(QueryException::class);
+    MediaClipRecommendation::create([
+        'media_asset_id' => $asset->id,
+        'status' => MediaClipRecommendation::STATUS_PENDING,
+    ]);
 });
 
 it('verifies recommendation row has unique media_asset_id constraint', function () {
@@ -185,4 +89,113 @@ it('verifies recommendation row has unique media_asset_id constraint', function 
         'media_asset_id' => $asset2->id,
         'status' => MediaClipRecommendation::STATUS_PENDING,
     ]);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Isolation of the authoritative M4 binding
+|--------------------------------------------------------------------------
+*/
+
+it('never binds a recommendation to another asset M4 authority', function () {
+    $asset = Fixture::probedAsset();
+    $m4 = Fixture::completedM4($asset);
+    $other = Fixture::completedM4(MediaAsset::factory()->create());
+    $otherBefore = $other->fresh()->getRawOriginal();
+
+    $row = MediaClipRecommendation::create([
+        'media_asset_id' => $asset->id,
+        'm4_analysis_id' => $m4->id,
+        'status' => MediaClipRecommendation::STATUS_PENDING,
+    ]);
+    $row->markRanking();
+
+    $before = $row->fresh()->getRawOriginal();
+
+    // The other asset's completed M4 row is a complete, valid authority in its
+    // own right, yet it is not this recommendation's authority.
+    expect(fn () => $row->fresh()->markUnavailable(
+        'no_audio',
+        Fixture::localUnavailableOutcome($other, 'no_audio')
+    ))->toThrow(ProcessMediaException::class);
+
+    expect($row->fresh()->getRawOriginal())->toBe($before);
+    expect($other->fresh()->getRawOriginal())->toBe($otherBefore);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Terminal immutability
+|--------------------------------------------------------------------------
+*/
+
+it('never downgrades a terminal row through a stale callback', function () {
+    $asset = Fixture::probedAsset();
+    $m4 = Fixture::completedM4($asset);
+
+    $row = MediaClipRecommendation::create([
+        'media_asset_id' => $asset->id,
+        'm4_analysis_id' => $m4->id,
+        'status' => MediaClipRecommendation::STATUS_PENDING,
+    ]);
+    $row->markRanking();
+    $row->markUnavailable('no_audio', Fixture::localUnavailableOutcome($m4, 'no_audio'));
+
+    $terminal = $row->fresh();
+    $before = $terminal->getRawOriginal();
+
+    expect($terminal->isTerminal())->toBeTrue();
+
+    // A stale callback can neither mark ranking nor downgrade a terminal row.
+    $terminal->markRanking();
+    $terminal->markFailed(MediaClipRecommendation::ERROR_RANKING_FAILED);
+    expect(fn () => $terminal->markCompleted(
+        MediaClipRecommendation::OUTCOME_RANKED,
+        Fixture::localUnavailableOutcome($m4, 'no_audio')
+    ))->toThrow(ProcessMediaException::class);
+    expect(fn () => $terminal->markUnavailable(
+        'missing',
+        Fixture::localUnavailableOutcome($m4, 'missing')
+    ))->toThrow(ProcessMediaException::class);
+
+    expect($row->fresh()->getRawOriginal())->toBe($before);
+    expect(MediaClipAnalysis::where('media_asset_id', $asset->id)->count())->toBe(1);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Failed retry
+|--------------------------------------------------------------------------
+*/
+
+it('lets a failed attempt retry with the current configuration and clears only M5 state', function () {
+    $asset = Fixture::probedAsset();
+    $m4 = Fixture::completedM4($asset);
+    $m4Before = $m4->fresh()->getRawOriginal();
+
+    $row = MediaClipRecommendation::create([
+        'media_asset_id' => $asset->id,
+        'm4_analysis_id' => $m4->id,
+        'status' => MediaClipRecommendation::STATUS_PENDING,
+    ]);
+    $row->markRanking();
+    $row->markFailed(MediaClipRecommendation::ERROR_RANKING_FAILED);
+
+    $failed = $row->fresh();
+    expect($failed->status)->toBe(MediaClipRecommendation::STATUS_FAILED);
+    expect($failed->error)->toBe(MediaClipRecommendation::ERROR_RANKING_FAILED);
+    expect($failed->recommendations)->toBeNull();
+    expect($failed->outcome)->toBeNull();
+    expect($failed->reason)->toBeNull();
+
+    // A failed row may retry with the currently validated configuration,
+    // because no successful result exists yet.
+    $failed->markRanking();
+    $retried = $row->fresh();
+    expect($retried->status)->toBe(MediaClipRecommendation::STATUS_RANKING);
+    expect($retried->error)->toBeNull();
+    expect($retried->m4_analysis_id)->toBe($m4->id);
+
+    // The upstream M4 row is byte-for-byte unchanged by the retry.
+    expect($m4->fresh()->getRawOriginal())->toBe($m4Before);
 });

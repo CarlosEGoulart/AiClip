@@ -76,7 +76,37 @@ First use authoritative probe/extraction outcomes: no audio wins over a stale tr
 | `missing` | No row and upstream audio/transcription attempt has resolved; no worker/model | `unavailable`, reason `missing`; terminal reuse | Normal completion allowed |
 | `not_ready` | Pending/transcribing, or missing while upstream audio/transcription still active; no worker/model | Keep absent/pending/failed durable state; release for retry, maximum 3 attempts, 5-second delay; exhaustion serialized `failed/upstream_not_ready` | No premature completion; exhaustion fails nonterminal asset only |
 
+**Important — `not_ready` reachability:** In the current `ProcessMediaAsset::handle()` flow, the transcription stage (which invokes the worker and resolves `pending`/`transcribing` transcripts to `completed` or `failed`) executes BEFORE the M5 stage. Therefore, when M5 classifies the transcript, it is already resolved — the `not_ready` state is **not reachable through the full job execution path**. The `not_ready` behavior (bounded retry, 3 attempts, 5s delay, exhaustion → `failed/upstream_not_ready`) is implemented in the classifier `ClipRecommendationReadiness::classify()` as a defensive/contractual feature and is **not exercised at the M5 claim boundary** because the transcription stage resolves `not_ready` transcripts before M5 runs. The full-job upstream behavior `upstream_not_ready` (from transcription retry) is the exercised path. The classifier unit tests verify the seven-state logic; the M5 claim-boundary retry/exhaustion path is intentionally unreachable in the current architecture and is not an acceptance requirement. See test-plan.md for the honest test coverage mapping.
+
 Invalid completed segments are `failed/invalid_input`, no worker, never reclassified as missing/empty. M4 pending/missing while active is not-ready; resolved M4 failure/missing is `failed/upstream_m4_unavailable`, no invented candidates. These resolved failures permit normal asset completion only when other stages permit it.
+
+### Operational timeout — authoritative semantics (reconciliation)
+
+**Authoritative raw configuration value:** `config('media.clip_ranking_timeout_seconds')` returns the raw environment value as a string. The config file line 77 must be `'clip_ranking_timeout_seconds' => env('MEDIA_CLIP_RANKING_TIMEOUT_SECONDS', '60'),` — absent environment key yields the raw default string `'60'`; a present environment value (including `'45'`, `'1.5'`, `'abc'`) is preserved as-is. **No `(int)` cast at config load.** An explicitly set `null` in the config array (not unset env) is a distinct invalid value that must fail validation; it is not "unset."
+
+**Canonical decimal string definition:** A string matching the entire allowed ASCII integer text exactly. Grammar: `\A(?:0|[1-9][0-9]*)\z` — no leading/trailing whitespace, no sign, no decimal point, no control characters (including LF/CR), no leading zeros except the single digit `0`. Accepted: `'1'`, `'45'`, `'60'`, `'120'`. Rejected: `' 45'`, `'45 '`, `'045'`, `'+45'`, `'1.5'`, `'1.0'`, `'0'`, `'121'`, `''`, `'abc'`, `"45\n"`, `"45\r"`, `"45\r\n"`. The single digit `'0'` is grammatically valid but rejected by the 1..120 range check.
+
+**Strict validation location:** `ClipRankingProfile::timeoutSeconds()` — called during the ranking stage before subprocess creation. It accepts only:
+- PHP `int` in range 1..120
+- Canonical decimal string as defined above (e.g., `'45'`) which it converts to `int`
+
+It **rejects** (throws `invalid_configuration`): fractional numbers (`1.5`), float strings (`'1.5'`), booleans, `null`, garbage strings (`'abc'`, `''`, `'045'`, `' 45'`, `'45\n'`), arrays, out-of-range integers (`0`, `121`).
+
+**Required Profile change:** `ClipRankingProfile::timeoutSeconds()` currently uses `preg_match('/^\d+$/', $timeout)` which in PHP matches leading zeros and matches before a trailing newline (i.e., `'045'` and `'45\n'` pass). The implementation must be changed to enforce the exact grammar `\A(?:0|[1-9][0-9]*)\z` (e.g., `preg_match('/\A(?:0|[1-9][0-9]*)\z/', $timeout) === 1`).
+
+**Default:** 60 (used only when env is unset; the raw default string `'60'` passes validation identically to an explicit `'60'`). Explicit `null` never defaults.
+
+**Lock wait derivation:** `lockWaitSeconds()` = `timeoutSeconds()` + 5, computed exactly once after successful validation.
+
+**`MEDIA_CLIP_RANKING_TIMEOUT_SECONDS=1.5` outcome:** Fails closed at `ClipRankingProfile::timeoutSeconds()` with `invalid_configuration` before any process creation. The `(int)` cast in `config/media.php` line 77 is removed to prevent silent normalization. The environment value `'1.5'` reaches validation as a string and is rejected.
+
+**Test alignment:** `ClipRankingProfileTest` is the authoritative behavioral contract for validation. `ClipRankingConfigurationTest` must assert the raw env value is published (string `'60'` when default, or explicit string when set) and must not assert `is_int(config(...))`.
+
+**Required regression tests (environment-level, test-local isolation with cleanup):**
+1. Absent `MEDIA_CLIP_RANKING_TIMEOUT_SECONDS` env: config loads default string `'60'`; `timeoutSeconds()` returns `60`; `lockWaitSeconds()` returns `65`; `ProcessMediaAction::rankClips()` receives process timeout `60`.
+2. Explicit `MEDIA_CLIP_RANKING_TIMEOUT_SECONDS=45`: config loads `'45'`; `timeoutSeconds()` returns `45`; `lockWaitSeconds()` returns `50`; process timeout `45`.
+3. Explicit `MEDIA_CLIP_RANKING_TIMEOUT_SECONDS=1.5`: config loads `'1.5'`; `timeoutSeconds()` throws `invalid_configuration`; zero `createProcess` invocations; sanitized error.
+4. Config array explicitly set to `null` (simulating explicit null in config file, not unset env): `timeoutSeconds()` throws `invalid_configuration`; does not default.
 
 K=0 after validated completed M4 is a terminal `completed/no_candidates` outcome with `recommendations=[]`, no worker/provider/model invocation, and `inference_performed=false`. It takes precedence over transcript readiness; do not read unnecessary transcript text. This is local validation completion, never claimed as executed model success. Invalid M4/duration/configuration still fails before this shortcut.
 
@@ -150,6 +180,21 @@ Acceptance requires all rules above plus:
 4. All existing worker/backend/PostgreSQL/MinIO/frontend/lint/build/Playwright/governance regressions executed, no mandatory skips or weakened assertions, independent Tester approval. No new UI does not exempt running-app regression review.
 5. Evidence owner preserves history and records corrective RED/GREEN/REFACTOR and blockers honestly; Orchestrator reconciles current docs as M5 active/not shipped. Planner edits only this bundle.
 6. Five final-head checks: Backend CI, Frontend CI, E2E CI, governance, pr-enforcement. Stop at `CI_GREEN_WAITING_HUMAN_MERGE`. No merge gate, merge, closure or next issue without human authorization.
+
+### Recovery semantics clarification (Issue #64)
+
+A) The "3 attempts / 5 seconds" policy for `not_ready` transcripts is enforced by the transcription stage (upstream) across separate job invocations. The M5 claim-boundary `not_ready` retry/exhaustion path is intentionally unreachable in the current architecture and is not an acceptance requirement for M5; it is covered by `ClipRecommendationReadinessTest` unit tests.
+
+B) For terminal local unavailable outcomes (including `transcription_failed`), the persisted `media_clip_recommendations` row must contain exactly K candidate references with `semantic_score` and `semantic_rank` set to `null`, `reason` equal to the unavailable reason, and `inference_performed=false`, `transcript_used=false`. The `recommendations` JSONB column is not null; it contains the array of references.
+
+C) While the M5 recommendation lock is held, the following M5-scoped invariants must hold:
+   - The `media_clip_recommendations` row for the asset must remain unchanged (all columns identical to the values at lock acquisition).
+   - The asset's `processing_status` must remain at the value indicating M5 processing (e.g., `ranking` or equivalent) and must not be modified by the M5 stage.
+   Upstream stages may mutate the `media_assets` row before lock acquisition, but once the lock is held, no M5‑scoped state may change.
+
+D) For exhaustion outcomes:
+   - In the `exhaustion_unclaimed` case, the final state must be: `media_clip_recommendations.status = 'failed'`, `error = 'upstream_not_ready'`, `recommendations = null`, and the asset's `processing_status = 'failed'` (for nonterminal assets). No worker invocations (`rank_calls = 0`) and no intermediate `ranking` transition or visibility is permitted inside the serialized claim.
+   - In the `exhaustion_owner_wins` case, the final state must preserve the owner's completed terminal `media_clip_recommendations` row (status='completed', outcome='ranked', etc.) and the asset row unchanged. No intermediate ranking transition/visibility is permitted.
 
 ## Planning readiness
 

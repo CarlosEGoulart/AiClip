@@ -1,4 +1,18 @@
-"""Rank clips action with strict validation and privacy-safe transport."""
+"""Rank clips action with strict validation and privacy-safe transport.
+
+Two strictly separated phases (spec.md "Strict worker protocol"):
+
+* contract/selection problems - unknown or unset provider selection, wrong
+  key sets, bounds, types, profile mismatches - are `invalid_contract`
+  (exit 2) and no provider is ever constructed;
+* provider execution problems - runtime absence, cache misses, dependency
+  failures, malformed inference or a malformed provider result - are
+  sanitized `ranking_failed` (exit 1) that never carry partial ranking data
+  or library diagnostics.
+
+The transport is stdin only. The digest echoed in the result is the SHA256 of
+the exact raw stdin bytes, never a reserialized approximation.
+"""
 
 from __future__ import annotations
 
@@ -9,15 +23,22 @@ import math
 import sys
 from typing import Any
 
+from aiclip_worker.contracts import ContractSchemaUnavailable, validate_contract
 from aiclip_worker.ranking import (
+    SCORE_UNITS,
     CrossEncoderRankingProvider,
     FakeRankingProvider,
     RankingInput,
-    Recommendation,
+    profile,
 )
 
 
-MAX_INPUT_BYTES = 8 * 1024 * 1024  # 8MB
+MAX_INPUT_BYTES = 8 * 1024 * 1024  # 8 MiB
+MAX_OUTPUT_BYTES = 1024 * 1024  # 1 MiB
+UNSCORED_REASON = "no_candidate_text"
+_ALGORITHM_KEYS = ("algorithm", "algorithm_version")
+_PARAMETER_IDENTITY_KEYS = ("provider_name", "inference_performed", "transcript_used")
+_DIGEST_ALPHABET = frozenset("0123456789abcdef")
 
 
 def error(code: str) -> dict[str, Any]:
@@ -34,203 +55,254 @@ def error(code: str) -> dict[str, Any]:
     }
 
 
-def _validate_candidates(candidates: list[dict], duration_ms: int) -> None:
-    """Strictly validate candidate list."""
-    if not isinstance(candidates, list):
-        raise ValueError("candidates must be a list")
-
-    k = len(candidates)
-    seen_indices = set()
-    seen_ranks = set()
-
-    for i, candidate in enumerate(candidates):
-        if not isinstance(candidate, dict):
-            raise ValueError(f"candidate {i} must be an object")
-
-        # Required fields with strict types (no bool for int fields)
-        for field in ("index", "start_ms", "end_ms", "rank"):
-            if field not in candidate:
-                raise ValueError(f"candidate {i} missing required field: {field}")
-            value = candidate[field]
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise ValueError(f"candidate {i}.{field} must be an integer, not {type(value).__name__}")
-
-        index = candidate["index"]
-        start_ms = candidate["start_ms"]
-        end_ms = candidate["end_ms"]
-        rank = candidate["rank"]
-
-        # Index validation
-        if index < 0 or index >= k:
-            raise ValueError(f"candidate {i}.index out of range: {index}")
-        if index in seen_indices:
-            raise ValueError(f"duplicate candidate index: {index}")
-        if index != i:
-            raise ValueError(f"candidate index must be sequential 0..K-1, got {index} at position {i}")
-        seen_indices.add(index)
-
-        # Timing validation
-        if start_ms < 0 or start_ms > duration_ms:
-            raise ValueError(f"candidate {i}.start_ms out of range: {start_ms}")
-        if end_ms <= start_ms or end_ms > duration_ms:
-            raise ValueError(f"candidate {i}.end_ms invalid: {end_ms}")
-
-        # Rank validation
-        if rank < 1 or rank > k:
-            raise ValueError(f"candidate {i}.rank out of range 1..{k}: {rank}")
-        if rank in seen_ranks:
-            raise ValueError(f"duplicate candidate rank: {rank}")
-        seen_ranks.add(rank)
-
-        # Transcript text (required field, may be empty string)
-        if "transcript_text" not in candidate:
-            raise ValueError(f"candidate {i} missing required field: transcript_text")
-        if not isinstance(candidate["transcript_text"], str):
-            raise ValueError(f"candidate {i}.transcript_text must be a string")
+def _is_digest(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in _DIGEST_ALPHABET for character in value)
+    )
 
 
-def _validate_configuration(configuration: dict) -> str:
-    """Validate configuration and return prototype_query."""
-    if not isinstance(configuration, dict):
-        raise ValueError("configuration must be an object")
+def _select_provider(selector: str) -> Any:
+    """Construct the explicitly selected trusted profile.
 
-    if "prototype_query" not in configuration:
-        raise ValueError("configuration missing required field: prototype_query")
-
-    prototype_query = configuration["prototype_query"]
-    if not isinstance(prototype_query, str):
-        raise ValueError("configuration.prototype_query must be a string")
-    if not prototype_query:
-        raise ValueError("configuration.prototype_query must not be empty")
-
-    # Reject unknown fields in configuration
-    allowed_config_fields = {"prototype_query"}
-    unknown = set(configuration.keys()) - allowed_config_fields
-    if unknown:
-        raise ValueError(f"configuration contains unknown fields: {sorted(unknown)}")
-
-    return prototype_query
+    The selector is the trusted `configuration.provider` sent in the
+    validated request. There is no environment selection, no automatic
+    detection and no fallback of any kind; an unknown selector is rejected
+    by contract validation before this function runs.
+    """
+    if selector == "fake":
+        return FakeRankingProvider()
+    if selector == "cross_encoder":
+        return CrossEncoderRankingProvider()
+    raise ValueError("Unknown ranking provider selection")
 
 
-def _transcript_text_hash(text: str) -> str:
-    """Compute SHA256 hash of transcript text for privacy-safe snapshot."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def _is_integer(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
-def rank_clips(contract: dict) -> dict[str, Any]:
-    """Rank clips from contract."""
+def _validate_provider_output(
+    output: Any, candidates: list, eligible: list, selector: str
+) -> list:
+    """Validate the provider result as a whole before any serialization.
+
+    The identity of the result must equal the identity of the profile the
+    request selected, so a result from another profile can never be passed
+    off as the selected one. Every eligible candidate must appear exactly
+    once with a finite in-range score, a contiguous semantic rank and an
+    ordering that follows the quantized-unit rule. Any missing, extra,
+    duplicate, unknown or malformed member rejects the whole result; nothing
+    is partially emitted.
+    """
+    identity = profile(selector)
+
+    if (
+        output.model_id != identity["model_id"]
+        or output.model_revision != identity["model_revision"]
+        or output.provider_name != identity["provider_name"]
+    ):
+        raise ValueError("Provider identity does not match the selected profile")
+
+    recommendations = list(output.recommendations)
+    eligible_indexes = [candidate["index"] for candidate in eligible]
+    if len(recommendations) != len(eligible_indexes):
+        raise ValueError("Provider must return one recommendation per eligible candidate")
+
+    by_index = {candidate["index"]: candidate for candidate in candidates}
+    eligible_set = set(eligible_indexes)
+
+    seen: set[int] = set()
+    previous_units = None
+    previous_m4_rank = None
+    ordered: list[tuple[dict, float]] = []
+
+    for position, recommendation in enumerate(recommendations):
+        index = recommendation.m4_candidate_index
+        if not _is_integer(index) or index not in eligible_set:
+            raise ValueError("Provider returned an unknown candidate reference")
+        if index in seen:
+            raise ValueError("Provider returned a duplicate candidate reference")
+        seen.add(index)
+
+        score = recommendation.semantic_score
+        if isinstance(score, bool) or not isinstance(score, (int, float)):
+            raise ValueError("Provider score must be numeric")
+        score = float(score)
+        if not math.isfinite(score) or score < 0.0 or score > 1.0:
+            raise ValueError("Provider score must be finite and inside [0,1]")
+
+        semantic_rank = recommendation.combined_rank
+        if not _is_integer(semantic_rank) or semantic_rank != position + 1:
+            raise ValueError("Provider semantic ranks must be contiguous from 1")
+
+        units = math.floor(score * SCORE_UNITS + 0.5)
+        m4_rank = by_index[index]["m4_rank"]
+        if previous_units is not None:
+            if units > previous_units:
+                raise ValueError("Provider output is not ordered by descending units")
+            if units == previous_units and m4_rank <= previous_m4_rank:
+                raise ValueError("Equal units must be ordered by ascending M4 rank")
+        previous_units = units
+        previous_m4_rank = m4_rank
+
+        ordered.append((by_index[index], score))
+
+    if seen != eligible_set:
+        raise ValueError("Provider output does not cover every eligible candidate")
+
+    return ordered
+
+
+def _build_recommendations(candidates: list, ordered: list) -> list:
+    """Build exactly K recommendation objects in the specified order.
+
+    Scored entries come first in provider ranking order, then unscored
+    entries ascending by candidate index. Every index occurs exactly once.
+    """
+    recommendations = []
+
+    for position, (candidate, score) in enumerate(ordered):
+        recommendations.append(
+            {
+                "m4_candidate_index": candidate["index"],
+                "start_ms": candidate["start_ms"],
+                "end_ms": candidate["end_ms"],
+                "m4_rank": candidate["m4_rank"],
+                "m4_score": candidate["m4_score"],
+                "semantic_score": score,
+                "semantic_rank": position + 1,
+                "reason": None,
+            }
+        )
+
+    for candidate in candidates:
+        if candidate["transcript_text"] != "":
+            continue
+        recommendations.append(
+            {
+                "m4_candidate_index": candidate["index"],
+                "start_ms": candidate["start_ms"],
+                "end_ms": candidate["end_ms"],
+                "m4_rank": candidate["m4_rank"],
+                "m4_score": candidate["m4_score"],
+                "semantic_score": None,
+                "semantic_rank": None,
+                "reason": UNSCORED_REASON,
+            }
+        )
+
+    if len(recommendations) != len(candidates):
+        raise ValueError("Recommendation count must equal the candidate count")
+
+    return recommendations
+
+
+def _build_parameters(configuration: dict, transcript_used: bool) -> dict:
+    """Exactly the request configuration minus algorithm/algorithm_version,
+    plus the profile identity and the two truthful flags."""
+    parameters = {
+        key: value
+        for key, value in configuration.items()
+        if key not in _ALGORITHM_KEYS
+    }
+
+    identity = profile(configuration["provider"])
+    parameters["provider_name"] = identity["provider_name"]
+    parameters["inference_performed"] = identity["inference_performed"]
+    parameters["transcript_used"] = transcript_used
+
+    expected_keys = [key for key in configuration if key not in _ALGORITHM_KEYS]
+    expected_keys.extend(_PARAMETER_IDENTITY_KEYS)
+    if set(parameters.keys()) != set(expected_keys):
+        raise ValueError("Unexpected parameter key set")
+
+    return parameters
+
+
+def rank_clips(contract: dict, request_sha256: str) -> dict[str, Any]:
+    """Rank clips from a validated contract.
+
+    `request_sha256` is the digest of the exact raw transport bytes of this
+    invocation; it is echoed verbatim so Laravel can bind the result to the
+    request it sent.
+    """
+    # ------------------------------------------------------------------
+    # Contract, selection and provider construction (invalid_contract)
+    # ------------------------------------------------------------------
     try:
-        # Validate required top-level fields
         if not isinstance(contract, dict):
-            return error("invalid_contract")
-
-        if contract.get("version") != "1.0.0":
             return error("invalid_contract")
 
         if contract.get("action") != "rank_clips":
             return error("invalid_contract")
 
-        # Validate media
-        media = contract.get("media")
-        if not isinstance(media, dict) or "duration_ms" not in media:
-            return error("invalid_contract")
-        duration_ms = media["duration_ms"]
-        if not isinstance(duration_ms, int) or duration_ms <= 0:
-            return error("invalid_contract")
-
-        # Validate candidates
-        candidates = contract.get("candidates")
+        # Shared strict validation: packaged schema and runtime checks agree.
         try:
-            _validate_candidates(candidates, duration_ms)
-        except ValueError:
+            is_valid, _reason = validate_contract(contract)
+        except ContractSchemaUnavailable:
+            # The packaged schema itself is unavailable: an environment
+            # failure, never a malformed request.
+            return error("ranking_failed")
+        if not is_valid:
             return error("invalid_contract")
 
-        # Validate configuration
-        configuration = contract.get("configuration")
-        try:
-            prototype_query = _validate_configuration(configuration)
-        except ValueError:
+        if not _is_digest(request_sha256):
             return error("invalid_contract")
 
-        # Reject unknown top-level fields (only rank_clips fields allowed)
-        allowed_top_level = {"version", "action", "media", "candidates", "configuration"}
-        unknown = set(contract.keys()) - allowed_top_level
-        if unknown:
+        configuration = contract["configuration"]
+        candidates = contract["candidates"]
+        provider = _select_provider(configuration["provider"])
+    except Exception:
+        # Phase 1 performs no provider execution: every failure here is a
+        # contract, selection or construction problem, never a runtime
+        # inference failure.
+        return error("invalid_contract")
+
+    # ------------------------------------------------------------------
+    # Provider execution (ranking_failed)
+    # ------------------------------------------------------------------
+    try:
+        eligible = [
+            candidate for candidate in candidates if candidate["transcript_text"] != ""
+        ]
+        if not eligible:
+            # Contract validation guarantees at least one usable candidate;
+            # this keeps the boundary closed if that invariant ever drifts.
             return error("invalid_contract")
 
-        # Choose provider (Fake for CI, CrossEncoder for production)
-        # In CI, FAKE_RANKING_PROVIDER env var can be set to use fake provider
-        import os
-        if os.environ.get("FAKE_RANKING_PROVIDER") == "1":
-            provider = FakeRankingProvider()
-        else:
-            provider = CrossEncoderRankingProvider()
-
-        # Build ranking input
         ranking_input = RankingInput(
-            candidates=candidates,
-            prototype_query=prototype_query,
+            candidates=eligible,
+            prototype_query=configuration["prototype_query"],
         )
 
-        # Execute ranking
         output = provider.rank(ranking_input)
+        ordered = _validate_provider_output(
+            output, candidates, eligible, configuration["provider"]
+        )
+        recommendations = _build_recommendations(candidates, ordered)
 
-        # Build response
-        recommendations_json = [
-            {
-                "m4_candidate_index": rec.m4_candidate_index,
-                "semantic_score": rec.semantic_score,
-                "combined_rank": rec.combined_rank,
-            }
-            for rec in output.recommendations
-        ]
+        # transcript_used is derived from the validated request, not from the
+        # provider, so Laravel rederives the same value independently.
+        transcript_used = any(
+            candidate["transcript_text"] != "" for candidate in candidates
+        )
 
-        # Spec-fixed provenance parameters (constants from the ranking algorithm contract).
-        # transcript_used is computed from the input, not the provider, so PHP can
-        # independently rederive the same value from the request.
-        input_transcript_used = any(c.get("transcript_text", "") for c in candidates)
-
-        parameters = {
-            "prototype_query": prototype_query,
-            "model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-            "model_revision": "main",
-            "provider_name": "cross_encoder_ranking_provider",
-            "transcript_used": input_transcript_used,
-            "normalization": "sigmoid",
-            "score_scale": 1.0,
-            "tie_break": "m4_rank_then_chronological",
-        }
-
-        # Build input snapshot (for provenance, with transcript text hashes only)
-        input_snapshot = {
-            "duration_ms": duration_ms,
-            "candidates": [
-                {
-                    "index": c["index"],
-                    "start_ms": c["start_ms"],
-                    "end_ms": c["end_ms"],
-                    "rank": c["rank"],
-                    "transcript_text_hash": _transcript_text_hash(c.get("transcript_text", "")),
-                }
-                for c in candidates
-            ],
-            "transcript_used": input_transcript_used,
-            "prototype_query": prototype_query,
-        }
+        parameters = _build_parameters(configuration, transcript_used)
 
         return {
             "status": "success",
             "ranking": {
-                "algorithm": "cross_encoder_reranker",
-                "algorithm_version": "1.0.0",
+                "algorithm": configuration["algorithm"],
+                "algorithm_version": configuration["algorithm_version"],
                 "parameters": parameters,
-                "recommendations": recommendations_json,
+                "request_sha256": request_sha256,
+                "recommendations": recommendations,
             },
         }
-
-    except (ValueError, TypeError, RecursionError, OverflowError):
-        return error("invalid_contract")
     except Exception:
+        # Sanitized runtime/output failure: no ranking payload, no library
+        # message, no fabricated fallback result.
         return error("ranking_failed")
 
 
@@ -256,28 +328,54 @@ def _unique_object(pairs):
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message):
+        # Argument problems never echo the message: it may carry payload
+        # fragments from a rejected argument-list transport.
         raise ValueError("Argument parsing error")
 
 
+def _read_stdin() -> bytes:
+    """Read the raw request bytes from stdin only."""
+    stream = getattr(sys.stdin, "buffer", None)
+    if stream is None:
+        text = sys.stdin.read()
+        return text.encode("utf-8") if isinstance(text, str) else bytes(text)
+
+    if sys.stdin.isatty():
+        raise ValueError("No contract input")
+
+    return stream.read(MAX_INPUT_BYTES + 1)
+
+
+def _emit(result: dict[str, Any]) -> int:
+    """Write exactly one bounded strict JSON envelope and the exit code."""
+    try:
+        output = json.dumps(result, allow_nan=False, separators=(",", ":"))
+        if len(output.encode("utf-8")) > MAX_OUTPUT_BYTES:
+            raise ValueError("Output too large")
+    except (ValueError, TypeError):
+        result = error("ranking_failed")
+        output = json.dumps(result, allow_nan=False, separators=(",", ":"))
+
+    sys.stdout.write(output)
+
+    if result.get("status") == "success":
+        return 0
+    if result.get("code") == "invalid_contract":
+        return 2
+    return 1
+
+
 def run_cli(argv: list[str]) -> int:
-    """CLI entry point for rank-clips subcommand."""
+    """CLI entry point for the rank-clips subcommand.
+
+    The transcript-bearing request is accepted from stdin only; argument-list
+    and file transports are rejected without echoing their payload.
+    """
     try:
         parser = _Parser(prog="aiclip_worker rank-clips", add_help=False)
-        source = parser.add_mutually_exclusive_group()
-        source.add_argument("--contract-json")
-        source.add_argument("--contract-file")
-        args = parser.parse_args(argv)
+        parser.parse_args(argv)  # any argument is rejected without echo
 
-        if args.contract_json is not None:
-            raw = args.contract_json.encode("utf-8")
-        elif args.contract_file is not None:
-            with open(args.contract_file, "rb") as stream:
-                raw = stream.read(MAX_INPUT_BYTES + 1)
-        elif not sys.stdin.isatty():
-            raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
-        else:
-            raise ValueError("No contract input")
-
+        raw = _read_stdin()
         if len(raw) > MAX_INPUT_BYTES:
             raise ValueError("Input too large")
 
@@ -287,17 +385,13 @@ def run_cli(argv: list[str]) -> int:
             parse_float=_finite_float,
             object_pairs_hook=_unique_object,
         )
-
-        result = rank_clips(contract)
-
+        request_sha256 = hashlib.sha256(raw).hexdigest()
     except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
-        result = error("invalid_contract")
+        return _emit(error("invalid_contract"))
 
     try:
-        output = json.dumps(result, allow_nan=False, separators=(",", ":"))
-    except (ValueError, TypeError):
+        result = rank_clips(contract, request_sha256)
+    except Exception:
         result = error("ranking_failed")
-        output = json.dumps(result, allow_nan=False)
 
-    sys.stdout.write(output)
-    return 0 if result["status"] == "success" else (2 if result["code"] == "invalid_contract" else 1)
+    return _emit(result)

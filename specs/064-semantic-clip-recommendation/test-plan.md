@@ -25,9 +25,13 @@ Suggested worker files are under `services/worker/tests/`; Laravel files under `
 | `test_wrong_logit_count_rejects_entire_result` (`test_rank_clips.py`) | Two usable candidates; injected model returns [0.0], then [0.0,1.0,2.0]. Each must yield exact ranking_failed with no partial success; no zip truncation accepted. |
 | `test_no_audio_and_extraction_failure_ignore_stale_transcript` (`Feature/Jobs/ProcessMediaAssetClipRecommendationTest.php`) | Data rows: authoritative no-audio, authoritative extraction failure, each with stale completed sentinel transcript and valid completed M4 K=2. Execute job with recording process boundary. Assert zero rankClips calls, durable unavailable reason matching row, two null-scored references, no sentinel in output/snapshots/logs, unchanged M4; extraction-failed asset stays failed. Observe call count before asserting new lifecycle fields so failure exposes current stale-text behavior. |
 | `test_completed_snapshot_binds_candidate_text_hashes` (same Laravel suite) | Completed M4 and valid completed transcript; recording action double returns internally valid current success (not an invalid fixture). Execute job, then assert persisted text_hashes equal independently computed SHA256 of canonical candidate text, raw text absent, M4 unchanged. Initial RED isolates absent binding rather than new contract field mismatch; adapt fixture to final protocol in GREEN while preserving hash assertion. |
-| `test_not_ready_does_not_commit_ranking_or_finalize_owner` (`Feature/Jobs/ProcessMediaAssetClipRecommendationConcurrencyTest.php`) | Committed completed M4 + pending/transcribing transcript; call job and observe DB from independent connection after controlled not-ready. Assert no worker, no committed ranking and no asset completion. With another connection holding recommendation lock, contender/exhaustion cannot write owner state. Verify actual 3-attempt/5s policy and serialized exhaustion only after release. Existing unlocked transition should expose behavioral failure. |
+| `test_not_ready_does_not_commit_ranking_or_finalize_owner` (`Feature/Jobs/ProcessMediaAssetClipRecommendationRecoveryTest.php`) | Committed completed M4 + pending/transcribing transcript; call full job `handle()` and observe DB from independent connection. **The transcription stage runs first and resolves the transcript (retries per its own policy). M5 then sees `transcription_failed` (or `completed_valid`/`completed_empty`) and produces the corresponding local outcome.** Assert: zero `rankClips` calls; final M5 outcome is `unavailable`/`transcription_failed` (or `completed`/`unavailable` per resolved transcript); asset completion follows four-stage resolution; M4 unchanged. With another connection holding recommendation lock, contender/exhaustion cannot write owner state. **The M5 claim-boundary `not_ready` retry/exhaustion (3 attempts/5s) is NOT exercised in the full job flow and is not an acceptance requirement here; it is covered by `ClipRecommendationReadinessTest` unit tests.** Existing unlocked transition should expose behavioral failure. |
 
-Keep existing successful legacy probe/analyze_clips contract and M4 snapshot tests as controls. A new malformed-input rejection already passing is not RED. For initial provider defects, use the existing accepted request shape and existing provider-selection test hook to reach inference/action serialization; a new final-contract rejection before the loader is reached does not prove the fallback/loader defect. Recording spies must demonstrate the intended boundary was reached. Update those fixture shapes to the final strict contract after authorization while retaining the same behavioral assertions. If an initial fixture cannot reach its behavior assertion because of another existing defect, report that actual defect and refine only the test fixture/helper; never claim import/setup failure as the intended RED.
+For initial provider defects, use the existing accepted request shape and existing provider-selection test hook to reach inference/action serialization; a new final-contract rejection before the loader is reached does not prove the fallback/loader defect. Recording spies must demonstrate the intended boundary was reached. Update those fixture shapes to the final strict contract after authorization while retaining the same behavioral assertions. If an initial fixture cannot reach its behavior assertion because of another existing defect, report that actual defect and refine only the test fixture/helper; never claim import/setup failure as the intended RED.
+
+Keep existing successful legacy probe/analyze_clips contract and M4 snapshot tests as controls. A new malformed-input rejection already passing is not RED.
+
+**Boundary refinement — `not_ready` reachability:** The `test_not_ready_does_not_commit_ranking_or_finalize_owner` test exercises the **full-job upstream transcription retry path**. The transcription stage runs first, retries per its own policy (transcribe_calls=3), and the transcript resolves to `failed`. M5 then classifies it as `transcription_failed` and produces `unavailable`/`transcription_failed`. The test MUST assert this upstream transcription retry behavior (transcription stage retries, final transcript=failed, M5 produces unavailable outcome), NOT the M5 claim-boundary `not_ready` retry behavior (3 attempts/5s releases from M5). The M5 claim-boundary `not_ready` classifier logic is covered by `ClipRecommendationReadinessTest` unit tests; the M5 claim-boundary retry/exhaustion path is intentionally unreachable in the full job flow and is not an acceptance requirement for this integration test.
 
 **STOP after execution and report to Orchestrator.** No GREEN code until explicit approval of valid corrective failures. Tests may be staged to isolate behavior on the existing protocol before the new exact protocol, with the transition documented; assertions on business behavior must remain.
 
@@ -73,6 +77,10 @@ Disposable migration up/down; unique asset FK, M4 FK same-asset invariant, JSONB
 
 Completed and unavailable terminal reuse: zero worker calls, exact original fields/timestamps/error/selection preserved after rerun and later transcript change. Model/provider/algorithm/query/projection/runtime/scoring configuration change or M4 authority change -> version_conflict, no rewrite/new row/inference/success for new selection. Timeout-only change reuses old terminal result. Failed retry captures new valid selection. No new reanalysis endpoint or public recommendation serialization.
 
+**Version conflict and terminal assets:** The M5 version conflict check runs inside `ProcessMediaAsset::handle()` for all assets that reach the M5 stage. On conflict, a sanitized `ProcessMediaException('recommendation_version_conflict')` is thrown, which fails the job but leaves the asset's `processing_status` unchanged (completed stays completed, failed stays failed) and the terminal M5 row unmutated. This matches the specification's "may fail only a nonterminal asset through the existing safe failure path" — the job failure is the safe failure path; for a nonterminal asset the job can be retried, for a terminal asset the job fails but the asset remains terminal. The `MediaAsset::VALID_TRANSITIONS` terminal states do not prevent the job from executing its stages; they only prevent state transitions.
+
+**Test reachability note:** The current test `test_signals_a_version_conflict_on_a_changed_semantic_selection_without_mutating_the_terminal_row` (and the terminal reuse test) exercises the version conflict logic by manually resetting the asset `processing_status` to `PROCESSING_PROBED` (a nonterminal state) before rerunning `handle()`. This is the realistic re-entry path: a terminal asset is not naturally re-queued, but if it were dispatched (e.g., via manual retry or operational requeue), the version conflict logic would execute. The `failed()` callback test separately proves that a stale callback cannot downgrade a terminal asset or row. The acceptance requirement is that the version conflict logic is implemented and tested from the realistic re-entry fixture; a direct terminal-asset `handle()` test without manual status reset is not required because it does not reflect the actual queue lifecycle.
+
 ## PostgreSQL concurrency, fencing and failure matrix
 
 Independent connections/processes and committed observations are mandatory, not sequential refreshes or SQLite. Use deterministic barriers, not sleeps alone. Assert worker calls and persisted raw data, not only row count.
@@ -85,11 +93,11 @@ Independent connections/processes and committed observations are mandatory, not 
 | Existing-row and insert-conflict waits | Actual PostgreSQL SQLSTATE 55P03; bounded busy after rollback; owner/asset unchanged; no contender worker/finalization |
 | Expected worker timeout/malformed output | Child terminated/bounded, atomic failed M5, no partial JSON, unchanged M4, serial retry succeeds |
 | Unexpected exception and actual connection termination | Rollback leaves old pending/failed state exactly or no new row; sanitized retryable abort; no committed ranking; later retry works |
-| Not-ready retries/exhaustion | Three attempts/5s, zero worker, no ranking commit; serialized exhaustion only for unclaimed pending/failed; no overwrite of locked/completed/unavailable/deleted state |
+| Not-ready retries/exhaustion (M5 claim boundary) | Three attempts/5s, zero worker, no ranking commit; serialized exhaustion only for unclaimed pending/failed; no overwrite of locked/completed/unavailable/deleted state. **This M5 claim-boundary path is NOT exercised in the full ProcessMediaAsset::handle() flow (transcription stage resolves not_ready first). It is a defensive classifier feature covered by ClipRecommendationReadinessTest unit tests. The full-job exhaustion path for unclaimed pending/failed rows (after upstream transcription retry exhaustion) follows the normal claim process: acquires lock, transitions through ranking status, commits failed/upstream_not_ready.** |
 | Late callback/stale model instance | Callback acquires lock/rereads; terminal snapshot and terminal asset unchanged; no stale completion outside transaction |
 | Delete before/during claim and empty reread | Safe no-op or serialized cascade; no orphan/resurrection/late successful write; query only after rollback on DB errors |
 | Fresh projection | Change committed upstream state before claim acquisition; owner uses fresh authority, not pre-lock stale contract |
-| Lock scope | Upstream probe/scenes/audio/transcription/M4 execute without M5 row lock; only bounded metadata stage holds it |
+| Lock scope | Upstream probe/scenes/audio/transcription/M4 execute without M5 row lock; only bounded metadata stage holds it. **Asset row (media_assets) may be modified by upstream stages in a contending process BEFORE it blocks on the M5 recommendation lock. Tests must assert M5 recommendation row and M5-specific asset state immutability during lock hold, not full asset row byte-identity.** |
 | Settings isolation | Derived lock_timeout set before all contended statements, correct actual timeout snapshot, restored after commit and rollback, other connections unaffected |
 
 Run existing #60 C1–C9 regressions unchanged as well. M5 failures and callbacks may never alter M4 fields/timestamps. Do not use a compensating delete to simulate atomic rollback.
@@ -97,6 +105,24 @@ Run existing #60 C1–C9 regressions unchanged as well. M5 failures and callback
 ## Mandatory fake subprocess integration
 
 Actual ProcessMediaAction -> Python CLI using explicitly configured Python fake -> PHP validation -> PostgreSQL model completion. Assert exact fake scores/reference order, fake metadata, no real inference flag, exact stdin digest and canonical text hashes. Include mixed input and malformed output controls via separate process-double tests. Spy/deny network and heavyweight imports. Missing CLI/dependency/DB is a failure/blocker, never skip. No PHP fake can replace this boundary and no real-adapter fallback may satisfy it.
+
+### Timeout configuration test alignment (reconciliation note)
+
+`ClipRankingProfileTest` is the authoritative behavioral contract for operational timeout validation:
+- Accepts canonical decimal strings (`'45'`) from environment-facing config
+- Rejects fractions (`1.5`, `'1.5'`), booleans, `null`, garbage, leading zeros (`'045'`), whitespace (`' 45'`, `'45\n'`, `'45\r'`, `'45\r\n'`), out-of-range with `invalid_configuration`
+- Returns validated `int` and derives `lockWaitSeconds()` = timeout + 5 exactly once
+- Uses exact grammar `\A(?:0|[1-9][0-9]*)\z` for string validation (not `^\d+$` which admits leading zeros and trailing newline in PHP)
+
+`ClipRankingConfigurationTest` currently asserts `is_int(config('media.clip_ranking_timeout_seconds'))` which contradicts the strict contract (it expects the `(int)` cast in `media.php` that silently normalizes invalid values). **Builder must update ConfigurationTest** to assert the raw env value is published (string `'60'` when default, explicit string when set) and rely on `ClipRankingProfileTest` for validation behavior.
+
+**Required regression tests (environment-level, test-local isolation with cleanup — no .env edits, no infrastructure overrides):**
+1. **Absent env / default control:** Unset `MEDIA_CLIP_RANKING_TIMEOUT_SECONDS`; config loads default string `'60'`; `ClipRankingProfile::timeoutSeconds()` returns `60`; `lockWaitSeconds()` returns `65`; `ProcessMediaAction::rankClips()` creates process with timeout `60`.
+2. **Valid canonical string:** `MEDIA_CLIP_RANKING_TIMEOUT_SECONDS=45`; config loads `'45'`; `timeoutSeconds()` returns `45`; `lockWaitSeconds()` returns `50`; process timeout `45`.
+3. **Invalid float string (regression):** `MEDIA_CLIP_RANKING_TIMEOUT_SECONDS=1.5`; config loads `'1.5'`; `timeoutSeconds()` throws `invalid_configuration`; zero `createProcess` invocations; sanitized error before subprocess.
+4. **Explicit config null:** Config array explicitly set to `null` (simulating explicit null in config file, distinct from unset env); `timeoutSeconds()` throws `invalid_configuration`; does not default.
+
+Each test must isolate the single non-secret environment key, use actual `config/media.php` loading (not `config([...])` override which bypasses the cast), and fully clean up.
 
 ## Separate real-model smoke (operator prepared, not mandatory CI)
 
@@ -117,6 +143,21 @@ Run all baseline tests plus new tests; previous historical counts are not eviden
 | Frontend | `npm run test -- --maxWorkers=1`, `npm run lint`, `npm run build` in apps/web |
 | Playwright | `npm run test:e2e` with managed servers/PostgreSQL/Chromium |
 | Governance | Existing approved `python -m unittest discover -s tests/governance` by authorized role, unchanged; not a merge-gate invocation |
+
+### Recovery semantics clarification (Issue #64)
+
+A) The "3 attempts / 5 seconds" policy for `not_ready` transcripts is enforced by the transcription stage (upstream) across separate job invocations. The M5 claim-boundary `not_ready` retry/exhaustion path is intentionally unreachable in the current architecture and is not an acceptance requirement for M5; it is covered by `ClipRecommendationReadinessTest` unit tests.
+
+B) For terminal local unavailable outcomes (including `transcription_failed`), the persisted `media_clip_recommendations` row must contain exactly K candidate references with `semantic_score` and `semantic_rank` set to `null`, `reason` equal to the unavailable reason, and `inference_performed=false`, `transcript_used=false`. The `recommendations` JSONB column is not null; it contains the array of references.
+
+C) While the M5 recommendation lock is held, the following M5-scoped invariants must hold:
+   - The `media_clip_recommendations` row for the asset must remain unchanged (all columns identical to the values at lock acquisition).
+   - The asset's `processing_status` must remain at the value indicating M5 processing (e.g., `ranking` or equivalent) and must not be modified by the M5 stage.
+   Upstream stages may mutate the `media_assets` row before lock acquisition, but once the lock is held, no M5‑scoped state may change.
+
+D) For exhaustion outcomes:
+   - In the `exhaustion_unclaimed` case, the final state must be: `media_clip_recommendations.status = 'failed'`, `error = 'upstream_not_ready'`, `recommendations = null`, and the asset's `processing_status = 'failed'` (for nonterminal assets). No worker invocations (`rank_calls = 0`) and no intermediate `ranking` transition or visibility is permitted inside the serialized claim.
+   - In the `exhaustion_owner_wins` case, the final state must preserve the owner's completed terminal `media_clip_recommendations` row (status='completed', outcome='ranked', etc.) and the asset row unchanged. No intermediate ranking transition/visibility is permitted.
 
 Tester independently exercises CLI/DB/malformed-success/timeouts/retries/unavailable/empty/concurrency outcomes, verifies scope/privacy/owner isolation and current docs. Running-app auth/projects/media upload/list/delete at 390x844, 768x1024, 1440x900 remains mandatory: screenshots/layout/overflow, loading/empty/error/success/disabled states, keyboard/focus/accessibility, console/network/API/responses/resources/redirects. Unexpected console errors or unexpected 4xx/5xx reject. No new recommendation screen exists; new-screen visual review alone is N/A, not the regression workflow.
 

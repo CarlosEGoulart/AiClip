@@ -350,17 +350,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to contract JSON file",
     )
 
-    rank_clips_parser = subparsers.add_parser("rank-clips", help="Rank clip candidates by semantic relevance")
-    rank_clips_parser.add_argument(
-        "--contract-json",
-        type=str,
-        help="Contract JSON string",
-    )
-    rank_clips_parser.add_argument(
-        "--contract-file",
-        type=str,
-        help="Path to contract JSON file",
-    )
+    # The rank-clips subparser exists only so the subcommand is listed in
+    # help. Its transport is stdin only, so no argument-list or file mode is
+    # declared; main() dispatches this subcommand before argparse runs.
+    subparsers.add_parser("rank-clips", help="Rank clip candidates by semantic relevance")
 
     args = parser.parse_args(argv)
 

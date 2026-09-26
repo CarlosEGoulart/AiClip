@@ -2,12 +2,15 @@
 
 namespace Tests\Feature\Jobs;
 
+use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
 use App\Jobs\ProcessMediaAsset;
 use App\Models\MediaAsset;
 use App\Models\MediaClipAnalysis;
+use App\Models\MediaClipRecommendation;
 use App\Models\MediaSceneAnalysis;
 use App\Models\MediaTranscript;
+use App\Services\ClipRankingProfile;
 use App\Services\ProcessMediaAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
@@ -52,6 +55,45 @@ function sceneClipEmptyResult(bool $transcriptUsed): array
                 'limits' => ['max_scenes' => 10000, 'max_transcript_segments' => 50000, 'max_input_bytes' => 8388608, 'max_duration_ms' => 2147483647],
             ],
             'candidates' => [],
+        ],
+    ];
+}
+
+/*
+ * The M5 stage is mandatory after M4, so a legacy scene/transcription flow with
+ * K>=1 candidates and overlapping transcript text now reaches the ranking
+ * boundary. This builds the valid current-protocol response the selected fake
+ * profile must return, including the exact digest of the bytes Laravel sends.
+ */
+function sceneRankClipsResult(MediaProcessingContract $contract): array
+{
+    $configuration = ClipRankingProfile::configuration();
+
+    $recommendations = [];
+    foreach ($contract->candidates as $candidate) {
+        $recommendations[] = [
+            'm4_candidate_index' => $candidate['index'],
+            'start_ms' => $candidate['start_ms'],
+            'end_ms' => $candidate['end_ms'],
+            'm4_rank' => $candidate['m4_rank'],
+            'm4_score' => $candidate['m4_score'],
+            'semantic_score' => max(0, 1000000 - ($candidate['m4_rank'] - 1) * 100000) / 1000000,
+            'semantic_rank' => 1,
+            'reason' => null,
+        ];
+    }
+
+    return [
+        'status' => 'success',
+        'ranking' => [
+            'algorithm' => $configuration['algorithm'],
+            'algorithm_version' => $configuration['algorithm_version'],
+            'parameters' => ClipRankingProfile::parameters($configuration, false, true),
+            'request_sha256' => hash('sha256', json_encode(
+                $contract->toRankClipsMetadataArray(),
+                JSON_THROW_ON_ERROR
+            )),
+            'recommendations' => $recommendations,
         ],
     ];
 }
@@ -482,6 +524,14 @@ it('skips scene detection if analysis exists with completed status', function ()
             ];
         });
     $actionMock->shouldReceive('transcribe')->once()->andReturn($transcribeResult);
+    $rankingCalls = [];
+    $actionMock->shouldReceive('rankClips')
+        ->once()
+        ->andReturnUsing(function ($contract) use (&$rankingCalls) {
+            $rankingCalls[] = $contract->toRankClipsMetadataArray();
+
+            return sceneRankClipsResult($contract);
+        });
 
     app()->instance(ProcessMediaAction::class, $actionMock);
 
@@ -531,6 +581,32 @@ it('skips scene detection if analysis exists with completed status', function ()
         ],
     ]);
     expect($clipAnalysis->execution_parameters)->toBe(['timeout_seconds' => 30, 'lock_wait_seconds' => 35]);
+
+    // The mandatory M5 stage resolved against the same M4 authority and the
+    // overlapping transcript window, without changing any M4 row.
+    expect($rankingCalls)->toHaveCount(1);
+    expect($rankingCalls[0]['candidates'])->toBe([[
+        'index' => 0,
+        'start_ms' => 0,
+        'end_ms' => 5000,
+        'm4_rank' => 1,
+        'm4_score' => 343334 / 1000000,
+        'transcript_text' => 'Already transcribed',
+    ]]);
+
+    $recommendation = MediaClipRecommendation::where('media_asset_id', $asset->id)->first();
+    expect($recommendation)->not->toBeNull();
+    expect($recommendation->status)->toBe(MediaClipRecommendation::STATUS_COMPLETED);
+    expect($recommendation->outcome)->toBe(MediaClipRecommendation::OUTCOME_RANKED);
+    expect($recommendation->recommendations)->toHaveCount(1);
+    expect($recommendation->parameters['inference_performed'])->toBeFalse();
+    expect($recommendation->parameters['transcript_used'])->toBeTrue();
+    expect($recommendation->input_snapshot['m4_analysis_id'])->toBe($clipAnalysis->id);
+    expect($recommendation->input_snapshot['text_hashes'])->toBe([
+        ['index' => 0, 'sha256' => hash('sha256', 'Already transcribed')],
+    ]);
+    expect($recommendation->input_snapshot['request_sha256'])
+        ->toBe(hash('sha256', json_encode($rankingCalls[0], JSON_THROW_ON_ERROR)));
 });
 
 /*
@@ -1005,6 +1081,7 @@ it('previous transcription tests remain green', function () {
     app()->instance(ProcessMediaAction::class, $actionMock);
 
     $clipContracts = [];
+    $rankingCalls = [];
     $actionMock->shouldReceive('analyzeClips')
         ->once()
         ->andReturnUsing(function ($contract) use (&$clipContracts) {
@@ -1051,6 +1128,13 @@ it('previous transcription tests remain green', function () {
                 ],
             ];
         });
+    $actionMock->shouldReceive('rankClips')
+        ->once()
+        ->andReturnUsing(function ($contract) use (&$rankingCalls) {
+            $rankingCalls[] = $contract->toRankClipsMetadataArray();
+
+            return sceneRankClipsResult($contract);
+        });
 
     $job = new ProcessMediaAsset($asset, $asset->idempotency_key ?? '550e8400-e29b-41d4-a716-446655440000');
     $job->handle();
@@ -1075,6 +1159,24 @@ it('previous transcription tests remain green', function () {
     expect($clipAnalysis->candidates)->toHaveCount(1);
     expect($clipAnalysis->candidates[0]['score'])->toBe(403334 / 1000000);
     expect($clipAnalysis->candidates[0]['source_scene_indexes'])->toBe([0]);
+
+    // The mandatory M5 stage still resolved the same completed transcript.
+    expect($rankingCalls)->toHaveCount(1);
+    expect($rankingCalls[0]['candidates'])->toBe([[
+        'index' => 0,
+        'start_ms' => 0,
+        'end_ms' => 5000,
+        'm4_rank' => 1,
+        'm4_score' => 403334 / 1000000,
+        'transcript_text' => 'Hello world',
+    ]]);
+
+    $recommendation = MediaClipRecommendation::where('media_asset_id', $asset->id)->first();
+    expect($recommendation)->not->toBeNull();
+    expect($recommendation->status)->toBe(MediaClipRecommendation::STATUS_COMPLETED);
+    expect($recommendation->input_snapshot['text_hashes'])->toBe([
+        ['index' => 0, 'sha256' => hash('sha256', 'Hello world')],
+    ]);
 });
 
 /*

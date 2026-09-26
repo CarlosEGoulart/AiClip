@@ -63,10 +63,15 @@ Execute against preserved defective implementation, recording command, exit stat
 Follow #60's atomic claim discipline; adapt tests, never rewrite its historical specification/evidence. No committed ranking state, unlocked not-ready writes or snapshot capture before claim.
 
 1. Strict operational timeout validation before contended work; transaction-local lock_timeout before insert/FK/unique waits. Conflict-safe creation then locked fresh reread.
+
+   **Timeout validation detail:** The `clip_ranking_timeout_seconds` config value is the raw env string (no `(int)` cast in `config/media.php`). Change line 77 from `'clip_ranking_timeout_seconds' => (int) env('MEDIA_CLIP_RANKING_TIMEOUT_SECONDS', 60),` to `'clip_ranking_timeout_seconds' => env('MEDIA_CLIP_RANKING_TIMEOUT_SECONDS', '60'),` (raw string default `'60'`). `ClipRankingProfile::timeoutSeconds()` validates strictly at call time (accepts `int` 1..120 or canonical decimal string matching grammar `\A(?:0|[1-9][0-9]*)\z` — no leading zeros, no whitespace, no control chars; rejects fractions, booleans, null, garbage, leading zeros, whitespace, newlines, out-of-range). This validation occurs in the ranking stage before subprocess creation, satisfying "strict operational timeout validation before process creation." `ClipRankingConfigurationTest` is updated to assert the raw env value is published (string `'60'` when default) and must not assert `is_int(config(...))`.
+
+   **Required Profile implementation change:** `ClipRankingProfile::timeoutSeconds()` currently uses `preg_match('/^\d+$/', $timeout)` which in PHP matches leading zeros and matches before trailing newline. Must change to enforce exact grammar `\A(?:0|[1-9][0-9]*)\z` (e.g., `preg_match('/\A(?:0|[1-9][0-9]*)\z/', $timeout) === 1`).
 2. Fresh authoritative upstream reads/projection under lock. Upstream processing itself outside M5 transaction. One bounded metadata subprocess at most; completion/validation/failure commit together.
 3. Expected worker/validation errors commit failure; unexpected caller/DB errors roll back and propagate sanitized retryable abort. Busy/deleted outcomes remain separate, no owner mutation. All callers/failure callbacks lock and reread, not stale instance saves.
 4. Not-ready leaves no durable ranking state; three attempts/5s retry, safe serialized exhaustion. Terminal/deleted/locked state is protected. Preserve extraction-failed and terminal asset statuses; require explicit four-stage resolution for normal completion.
-5. Test independent PostgreSQL processes/connections with committed setup and barriers for first-create/retry/lock timeout/connection termination/deletion/stale callback/settings restoration. Observe persisted state externally while owner holds claim and after commit/rollback.
+5. Ensure M5-scoped invariants during lock hold: the `media_clip_recommendations` row must remain unchanged (all columns identical to values at lock acquisition) and the asset's `processing_status` must not be modified by the M5 stage.
+6. Test independent PostgreSQL processes/connections with committed setup and barriers for first-create/retry/lock timeout/connection termination/deletion/stale callback/settings restoration. Observe persisted state externally while owner holds claim and after commit/rollback.
 
 ## Phase 5 — Integration and real smoke
 

@@ -4,6 +4,8 @@ namespace Tests\Unit\Services;
 
 use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
+use App\Services\ClipRankingProfile;
+use App\Services\ClipRecommendationValidator;
 use App\Services\ProcessMediaAction;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
@@ -12,51 +14,119 @@ uses(TestCase::class);
 
 /*
 |--------------------------------------------------------------------------
-| Helpers
+| Helpers — fixtures hand-derived from the specification
 |--------------------------------------------------------------------------
 */
 
-function createRankClipsContract(array $overrides = []): MediaProcessingContract
+/**
+ * The exact rank_clips request of the specification, for the forced fake
+ * selection of this suite.
+ */
+function rankClipsRequestPayload(): array
 {
-    $data = array_merge([
+    return [
         'version' => '1.0.0',
         'action' => 'rank_clips',
         'media' => ['duration_ms' => 40000],
         'candidates' => [
-            ['index' => 0, 'start_ms' => 0, 'end_ms' => 10000, 'rank' => 1, 'transcript_text' => 'engaging content'],
-            ['index' => 1, 'start_ms' => 10000, 'end_ms' => 20000, 'rank' => 2, 'transcript_text' => ''],
+            [
+                'index' => 0,
+                'start_ms' => 0,
+                'end_ms' => 10000,
+                'm4_rank' => 1,
+                'm4_score' => 1.0,
+                'transcript_text' => 'first candidate window text',
+            ],
+            [
+                'index' => 1,
+                'start_ms' => 10000,
+                'end_ms' => 20000,
+                'm4_rank' => 2,
+                'm4_score' => 0.5,
+                'transcript_text' => '',
+            ],
         ],
-        'configuration' => [
-            'prototype_query' => 'Engaging, self-contained, viral-worthy short-form video clip highlight with clear narrative or punchline.',
-        ],
-    ], $overrides);
+        'configuration' => ClipRankingProfile::configuration(),
+    ];
+}
 
-    // Create contract directly since fromArray doesn't support rank_clips yet (RED phase)
+function createRankClipsContract(array $overrides = []): MediaProcessingContract
+{
+    $data = array_replace_recursive(rankClipsRequestPayload(), $overrides);
+
+    return MediaProcessingContract::fromArray($data);
+}
+
+/**
+ * Build a rank_clips contract object directly, bypassing the eager
+ * `fromArray()` preflight, so the pre-process `validate()` boundary itself
+ * can be exercised.
+ */
+function unvalidatedRankClipsContract(array $overrides = []): MediaProcessingContract
+{
+    $data = array_replace_recursive(rankClipsRequestPayload(), $overrides);
+
     $contract = new MediaProcessingContract;
-    $contract->version = $data['version'];
-    $contract->action = $data['action'];
+    $contract->action = 'rank_clips';
     $contract->durationMs = $data['media']['duration_ms'];
     $contract->candidates = $data['candidates'];
     $contract->configuration = $data['configuration'];
-    // rank_clips is metadata-only, no legacy envelope fields needed
-    $contract->mediaAssetId = 0;
-    $contract->projectId = 0;
-    $contract->storage = ['disk' => '', 'key' => '', 'mime_type' => ''];
-    $contract->idempotencyKey = '00000000-0000-0000-0000-000000000000';
-    $contract->createdAt = now()->toIso8601String();
 
     return $contract;
 }
 
+/**
+ * A contract-valid worker success for the exact request bytes.
+ */
+function rankClipsSuccessPayload(array $request): array
+{
+    $configuration = $request['configuration'];
+    $parameters = $configuration;
+    unset($parameters['algorithm'], $parameters['algorithm_version']);
+    $parameters['provider_name'] = 'fake_ranking_provider';
+    $parameters['inference_performed'] = false;
+    $parameters['transcript_used'] = true;
+
+    return [
+        'status' => 'success',
+        'ranking' => [
+            'algorithm' => 'transcript_semantic_recommendation',
+            'algorithm_version' => '1.0.0',
+            'parameters' => $parameters,
+            'request_sha256' => hash('sha256', (string) json_encode($request, JSON_THROW_ON_ERROR)),
+            'recommendations' => [
+                [
+                    'm4_candidate_index' => 0,
+                    'start_ms' => 0,
+                    'end_ms' => 10000,
+                    'm4_rank' => 1,
+                    'm4_score' => 1.0,
+                    'semantic_score' => 0.9,
+                    'semantic_rank' => 1,
+                    'reason' => null,
+                ],
+                [
+                    'm4_candidate_index' => 1,
+                    'start_ms' => 10000,
+                    'end_ms' => 20000,
+                    'm4_rank' => 2,
+                    'm4_score' => 0.5,
+                    'semantic_score' => null,
+                    'semantic_rank' => null,
+                    'reason' => 'no_candidate_text',
+                ],
+            ],
+        ],
+    ];
+}
+
 function createMockableAction(array $commandOutputs): ProcessMediaAction
 {
-    $outputSequence = $commandOutputs;
-
-    return new class($outputSequence) extends ProcessMediaAction
+    return new class($commandOutputs) extends ProcessMediaAction
     {
-        private array $outputSequence;
+        public array $outputSequence;
 
-        private int $callIndex = 0;
+        public int $callIndex = 0;
 
         public function __construct(array $outputSequence)
         {
@@ -65,16 +135,12 @@ function createMockableAction(array $commandOutputs): ProcessMediaAction
 
         protected function createProcess(array $command): Process
         {
-            $index = $this->callIndex++;
-            $data = $this->outputSequence[$index] ?? $this->outputSequence[0];
+            $data = $this->outputSequence[$this->callIndex++] ?? $this->outputSequence[0];
 
             return new class($data) extends Process
             {
-                private array $processData;
-
-                public function __construct(array $data)
+                public function __construct(private array $processData)
                 {
-                    $this->processData = $data;
                     parent::__construct(['echo', 'ok']);
                 }
 
@@ -85,6 +151,12 @@ function createMockableAction(array $commandOutputs): ProcessMediaAction
 
                 public function run(?callable $callback = null, array $env = []): int
                 {
+                    if ($callback !== null && isset($this->processData['chunks'])) {
+                        foreach ($this->processData['chunks'] as $chunk) {
+                            $callback($chunk['type'], $chunk['data']);
+                        }
+                    }
+
                     return $this->processData['exitCode'] ?? 0;
                 }
 
@@ -103,7 +175,7 @@ function createMockableAction(array $commandOutputs): ProcessMediaAction
                     return $this->processData['stderr'] ?? '';
                 }
 
-                public function getExitCode(): int
+                public function getExitCode(): ?int
                 {
                     return $this->processData['exitCode'] ?? 0;
                 }
@@ -119,44 +191,94 @@ function createMockableAction(array $commandOutputs): ProcessMediaAction
 */
 
 it('rank_clips invokes worker and returns result', function () {
+    $request = rankClipsRequestPayload();
     $contract = createRankClipsContract();
-
-    $workerResponse = [
-        'status' => 'success',
-        'ranking' => [
-            'algorithm' => 'cross_encoder_reranker',
-            'algorithm_version' => '1.0.0',
-            'parameters' => [
-                'prototype_query' => 'Engaging, self-contained, viral-worthy short-form video clip highlight with clear narrative or punchline.',
-                'model_id' => 'cross-encoder/ms-marco-MiniLM-L-6-v2',
-                'model_revision' => 'main',
-                'provider_name' => 'cross_encoder_ranking_provider',
-                'transcript_used' => true,
-                'normalization' => 'sigmoid',
-                'score_scale' => 1.0,
-                'tie_break' => 'm4_rank_then_chronological',
-            ],
-            'recommendations' => [
-                ['m4_candidate_index' => 0, 'semantic_score' => 0.872341, 'combined_rank' => 1],
-                ['m4_candidate_index' => 1, 'semantic_score' => 0.654321, 'combined_rank' => 2],
-            ],
-        ],
-    ];
+    $response = rankClipsSuccessPayload($request);
 
     $action = createMockableAction([
-        [
-            'exitCode' => 0,
-            'stdout' => json_encode($workerResponse),
-            'stderr' => '',
-        ],
+        ['exitCode' => 0, 'stdout' => json_encode($response), 'stderr' => ''],
     ]);
 
     $result = $action->rankClips($contract);
 
-    expect($result['status'])->toBe('success');
-    expect($result['ranking'])->toBeArray();
-    expect($result['ranking']['algorithm'])->toBe('cross_encoder_reranker');
-    expect($result['ranking']['recommendations'])->toHaveCount(2);
+    expect($result['status'])->toBe('success')
+        ->and($result['ranking'])->toBeArray()
+        ->and($result['ranking']['algorithm'])->toBe('transcript_semantic_recommendation')
+        ->and($result['ranking']['request_sha256'])->toBe($response['ranking']['request_sha256'])
+        ->and($result['ranking']['recommendations'])->toHaveCount(2);
+});
+
+it('rank_clips sends the exact request bytes and binds the response digest', function () {
+    $request = rankClipsRequestPayload();
+    $contract = createRankClipsContract();
+    $response = rankClipsSuccessPayload($request);
+
+    $process = new class($response) extends Process
+    {
+        public ?string $sentInput = null;
+
+        public function __construct(private array $workerResponse)
+        {
+            parent::__construct(['echo', 'ok']);
+        }
+
+        public function setInput(mixed $input): static
+        {
+            $this->sentInput = is_string($input) ? $input : null;
+
+            return $this;
+        }
+
+        public function run(?callable $callback = null, array $env = []): int
+        {
+            return 0;
+        }
+
+        public function isSuccessful(): bool
+        {
+            return true;
+        }
+
+        public function getOutput(): string
+        {
+            return (string) json_encode($this->workerResponse);
+        }
+
+        public function getExitCode(): ?int
+        {
+            return 0;
+        }
+    };
+
+    $action = new class($process) extends ProcessMediaAction
+    {
+        public function __construct(private Process $process) {}
+
+        protected function createProcess(array $command): Process
+        {
+            return $this->process;
+        }
+    };
+
+    $action->rankClips($contract);
+
+    // The digest Python echoes is the SHA256 of the exact stdin bytes, stdin
+    // is the only transport for this transcript bearing action, and no asset,
+    // project, storage or criteria metadata crosses the boundary.
+    $decoded = json_decode((string) $process->sentInput, true);
+
+    expect($process->sentInput)->toBe(json_encode($request, JSON_THROW_ON_ERROR))
+        ->and(hash('sha256', (string) $process->sentInput))->toBe($response['ranking']['request_sha256'])
+        ->and(array_keys($decoded))->toBe(['version', 'action', 'media', 'candidates', 'configuration'])
+        ->and(array_keys($decoded['media']))->toBe(['duration_ms'])
+        ->and(array_keys($decoded['candidates'][0]))->toBe([
+            'index', 'start_ms', 'end_ms', 'm4_rank', 'm4_score', 'transcript_text',
+        ])
+        ->and($decoded)->not->toHaveKey('media_asset_id')
+        ->and($decoded)->not->toHaveKey('project_id')
+        ->and($decoded)->not->toHaveKey('storage')
+        ->and($decoded)->not->toHaveKey('scenes')
+        ->and($decoded)->not->toHaveKey('transcript_segments');
 });
 
 /*
@@ -185,7 +307,7 @@ it('throws ProcessMediaException on worker failure', function () {
     $action->rankClips($contract);
 });
 
-it('captures stderr on failure', function () {
+it('discards private stderr and worker diagnostics on failure', function () {
     $contract = createRankClipsContract();
 
     $action = createMockableAction([
@@ -204,13 +326,171 @@ it('captures stderr on failure', function () {
     try {
         $action->rankClips($contract);
     } catch (ProcessMediaException $e) {
-        expect($e->stderr)->toBe('Detailed error output here');
+        expect($e->stderr)->toBe('')
+            ->and($e->getMessage())->toBe('Ranking failed')
+            ->and($e->getPrevious())->toBeNull();
 
         return;
     }
 
     $this->fail('Expected ProcessMediaException was not thrown');
 });
+
+it('rejects oversized ranking output before decoding without leaking diagnostics', function () {
+    // A contract-valid success plus legal JSON trailing whitespace: the size
+    // bound, rather than a JSON or fixture error, must reject this.
+    $response = rankClipsSuccessPayload(rankClipsRequestPayload());
+    expect(ClipRecommendationValidator::result(
+        $response,
+        rankClipsRequestPayload(),
+        $response['ranking']['request_sha256'],
+    ))->toBe($response);
+
+    $action = createMockableAction([[
+        'exitCode' => 0,
+        'stdout' => json_encode($response).str_repeat(' ', 1024 * 1024 + 1),
+        'stderr' => 'PRIVATE_DIAGNOSTIC_SENTINEL',
+    ]]);
+
+    try {
+        $action->rankClips(createRankClipsContract());
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Ranking failed')
+            ->and($e->stderr)->toBe('')
+            ->and($e->getPrevious())->toBeNull();
+
+        return;
+    }
+
+    $this->fail('Oversized worker output must reject the entire attempt');
+});
+
+it('bounds streaming ranking output and terminates the owned child', function (string $stream) {
+    $process = new class($stream) extends Process
+    {
+        public bool $stopped = false;
+
+        public bool $drained = false;
+
+        public function __construct(private string $stream)
+        {
+            parent::__construct(['recording-worker']);
+        }
+
+        public function run(?callable $callback = null, array $env = []): int
+        {
+            for ($i = 0; $i < 17; $i++) {
+                if ($callback !== null) {
+                    $callback($this->stream, str_repeat('x', 65536));
+                }
+            }
+            $this->drained = true;
+
+            return 1;
+        }
+
+        public function stop(float $timeout = 10, ?int $signal = null): ?int
+        {
+            $this->stopped = true;
+
+            return 1;
+        }
+
+        public function isSuccessful(): bool
+        {
+            return false;
+        }
+
+        public function getOutput(): string
+        {
+            return '';
+        }
+
+        public function getErrorOutput(): string
+        {
+            return '';
+        }
+
+        public function getExitCode(): ?int
+        {
+            return 1;
+        }
+    };
+    $action = new class($process) extends ProcessMediaAction
+    {
+        public function __construct(private Process $process) {}
+
+        protected function createProcess(array $command): Process
+        {
+            return $this->process;
+        }
+    };
+
+    expect(fn () => $action->rankClips(createRankClipsContract()))
+        ->toThrow(ProcessMediaException::class, 'Ranking failed');
+    expect($process->stopped)->toBeTrue();
+    expect($process->drained)->toBeFalse();
+})->with(['stdout' => [Process::OUT], 'stderr' => [Process::ERR]]);
+
+it('sanitizes transport level failures without chaining sensitive exceptions', function (string $output, bool $throws, string $expected) {
+    $action = new class($output, $throws ? new \RuntimeException('PRIVATE_SENTINEL') : null) extends ProcessMediaAction
+    {
+        public function __construct(private string $output, private ?\Throwable $failure) {}
+
+        protected function createProcess(array $command): Process
+        {
+            return new class($this->output, $this->failure) extends Process
+            {
+                public function __construct(private string $output, private ?\Throwable $failure)
+                {
+                    parent::__construct(['recording-worker']);
+                }
+
+                public function run(?callable $callback = null, array $env = []): int
+                {
+                    if ($this->failure !== null) {
+                        throw $this->failure;
+                    }
+
+                    return 0;
+                }
+
+                public function isSuccessful(): bool
+                {
+                    return true;
+                }
+
+                public function getOutput(): string
+                {
+                    return $this->output;
+                }
+
+                public function getExitCode(): ?int
+                {
+                    return 0;
+                }
+            };
+        }
+    };
+
+    $failure = null;
+    try {
+        $action->rankClips(createRankClipsContract());
+    } catch (\Throwable $exception) {
+        $failure = $exception;
+    }
+
+    $this->assertInstanceOf(ProcessMediaException::class, $failure);
+    expect($failure->getMessage())->toBe($expected)
+        ->and($failure->getPrevious())->toBeNull()
+        ->and($failure->stderr)->toBe('');
+})->with([
+    'malformed JSON' => ['PRIVATE_SENTINEL', false, 'Ranking validation failed'],
+    'trailing output' => ['{"status":"success"} PRIVATE_SENTINEL', false, 'Ranking validation failed'],
+    'nonfinite' => ['{"status":"success","ranking":{"score":NaN}}', false, 'Ranking validation failed'],
+    'overflow' => ['{"status":"success","ranking":{"score":1e9999}}', false, 'Ranking validation failed'],
+    'unexpected runtime abort' => ['', true, 'clip_ranking_aborted'],
+]);
 
 /*
 |--------------------------------------------------------------------------
@@ -219,7 +499,7 @@ it('captures stderr on failure', function () {
 */
 
 it('throws ProcessMediaException when contract validation fails', function () {
-    $contract = createRankClipsContract(['media' => ['duration_ms' => 0]]);
+    $contract = unvalidatedRankClipsContract(['media' => ['duration_ms' => 0]]);
 
     $action = createMockableAction([]);
 
@@ -229,7 +509,7 @@ it('throws ProcessMediaException when contract validation fails', function () {
 });
 
 it('does not call createProcess when contract is invalid', function () {
-    $contract = createRankClipsContract(['media' => ['duration_ms' => 0]]);
+    $contract = unvalidatedRankClipsContract(['media' => ['duration_ms' => 0]]);
 
     $action = new class extends ProcessMediaAction
     {
@@ -251,9 +531,37 @@ it('does not call createProcess when contract is invalid', function () {
     expect($action->processCreated)->toBeFalse();
 });
 
+it('does not call createProcess for a request without usable candidate text', function () {
+    $contract = unvalidatedRankClipsContract([
+        'candidates' => [
+            ['transcript_text' => ''],
+            ['index' => 1, 'transcript_text' => '   '],
+        ],
+    ]);
+
+    $action = new class extends ProcessMediaAction
+    {
+        public bool $processCreated = false;
+
+        protected function createProcess(array $command): Process
+        {
+            $this->processCreated = true;
+            throw new \RuntimeException('createProcess must not be called for an unusable request');
+        }
+    };
+
+    try {
+        $action->rankClips($contract);
+    } catch (ProcessMediaException) {
+        // Expected
+    }
+
+    expect($action->processCreated)->toBeFalse();
+});
+
 /*
 |--------------------------------------------------------------------------
-| Timeout Configuration
+| Trusted Configuration Before Process Creation
 |--------------------------------------------------------------------------
 */
 
@@ -261,42 +569,13 @@ it('uses configured clip_ranking_timeout_seconds', function () {
     config(['media.clip_ranking_timeout_seconds' => 45]);
 
     $contract = createRankClipsContract();
-
-    // Contract-valid success response: exact fixed provenance per the M5 spec
-    // and exactly K=2 recommendation entries matching the input candidates, so
-    // strict validation passes and the timeout assertion below executes.
-    $workerResponse = [
-        'status' => 'success',
-        'ranking' => [
-            'algorithm' => 'cross_encoder_reranker',
-            'algorithm_version' => '1.0.0',
-            'parameters' => [
-                'prototype_query' => 'Engaging, self-contained, viral-worthy short-form video clip highlight with clear narrative or punchline.',
-                'model_id' => 'cross-encoder/ms-marco-MiniLM-L-6-v2',
-                'model_revision' => 'main',
-                'provider_name' => 'cross_encoder_ranking_provider',
-                'transcript_used' => true,
-                'normalization' => 'sigmoid',
-                'score_scale' => 1.0,
-                'tie_break' => 'm4_rank_then_chronological',
-            ],
-            'recommendations' => [
-                ['m4_candidate_index' => 0, 'semantic_score' => 0.872341, 'combined_rank' => 1],
-                ['m4_candidate_index' => 1, 'semantic_score' => 0.654321, 'combined_rank' => 2],
-            ],
-        ],
-    ];
+    $workerResponse = rankClipsSuccessPayload(rankClipsRequestPayload());
 
     $action = new class([$workerResponse]) extends ProcessMediaAction
     {
-        private array $workerResponses;
-
         public ?float $capturedTimeout = null;
 
-        public function __construct(array $workerResponses)
-        {
-            $this->workerResponses = $workerResponses;
-        }
+        public function __construct(private array $workerResponses) {}
 
         protected function createProcess(array $command): Process
         {
@@ -312,8 +591,8 @@ it('uses configured clip_ranking_timeout_seconds', function () {
 
                 public function run(?callable $callback = null, array $env = []): int
                 {
-                    // Record the applied timeout at the point run() executes,
-                    // after rankClips has applied the configured setTimeout.
+                    // Recorded at run() time, after rankClips applied the
+                    // configured setTimeout.
                     $this->action->capturedTimeout = $this->getTimeout();
 
                     return 0;
@@ -334,7 +613,7 @@ it('uses configured clip_ranking_timeout_seconds', function () {
                     return '';
                 }
 
-                public function getExitCode(): int
+                public function getExitCode(): ?int
                 {
                     return 0;
                 }
@@ -347,17 +626,68 @@ it('uses configured clip_ranking_timeout_seconds', function () {
     expect($action->capturedTimeout)->toBe(45.0);
 });
 
-it('rejects invalid timeout configuration', function () {
-    config(['media.clip_ranking_timeout_seconds' => 200]); // > 120
+it('rejects invalid timeout configuration before creating a process', function (mixed $timeout) {
+    config(['media.clip_ranking_timeout_seconds' => $timeout]);
 
-    $contract = createRankClipsContract();
+    $action = new class extends ProcessMediaAction
+    {
+        public bool $processCreated = false;
 
-    $action = createMockableAction([]);
+        protected function createProcess(array $command): Process
+        {
+            $this->processCreated = true;
+            throw new \RuntimeException('createProcess must not be called for invalid configuration');
+        }
+    };
 
-    $this->expectException(ProcessMediaException::class);
-    $this->expectExceptionMessage('Invalid clip ranking timeout configuration');
-    $action->rankClips($contract);
-});
+    $failure = null;
+    try {
+        $action->rankClips(createRankClipsContract());
+    } catch (\Throwable $exception) {
+        $failure = $exception;
+    }
+
+    $this->assertInstanceOf(ProcessMediaException::class, $failure);
+    expect($failure->getMessage())->toBe('invalid_configuration')
+        ->and($failure->stderr)->toBe('')
+        ->and($action->processCreated)->toBeFalse();
+})->with([
+    'zero' => [0],
+    'negative' => [-1],
+    'above maximum' => [200],
+    'float' => [1.5],
+    'garbage' => ['abc'],
+]);
+
+it('rejects an unset or unknown provider selection before creating a process', function (mixed $selection) {
+    config(['media.clip_ranking_provider' => $selection]);
+
+    $action = new class extends ProcessMediaAction
+    {
+        public bool $processCreated = false;
+
+        protected function createProcess(array $command): Process
+        {
+            $this->processCreated = true;
+            throw new \RuntimeException('createProcess must not be called for an unknown selection');
+        }
+    };
+
+    $failure = null;
+    try {
+        $action->rankClips(createRankClipsContract());
+    } catch (\Throwable $exception) {
+        $failure = $exception;
+    }
+
+    $this->assertInstanceOf(ProcessMediaException::class, $failure);
+    expect($failure->getMessage())->toBe('invalid_configuration')
+        ->and($action->processCreated)->toBeFalse();
+})->with([
+    'unset' => [null],
+    'unknown' => ['random'],
+    'real provider identity instead of selector' => ['cross_encoder_ranking_provider'],
+]);
 
 /*
 |--------------------------------------------------------------------------
@@ -388,8 +718,8 @@ it('probe action still works', function () {
 
     $result = $action->probe($contract);
 
-    expect($result['status'])->toBe('success');
-    expect($result['probe']['duration_ms'])->toBe(120000);
+    expect($result['status'])->toBe('success')
+        ->and($result['probe']['duration_ms'])->toBe(120000);
 });
 
 it('analyze_clips action still works', function () {
@@ -406,7 +736,7 @@ it('analyze_clips action still works', function () {
             'target_duration_ms' => 10000,
             'max_duration_ms' => 20000,
             'max_candidates' => 20,
-            'weights' => ['duration_fit' => 50, 'speech_coverage' => 30, 'boundary_alignment' => 20],
+            'weights' => ['duration_fit' => 50, 'speech_coverage' => 0, 'boundary_alignment' => 0],
         ],
     ]);
 
@@ -444,6 +774,6 @@ it('analyze_clips action still works', function () {
 
     $result = $action->analyzeClips($contract);
 
-    expect($result['status'])->toBe('success');
-    expect($result['analysis']['algorithm'])->toBe('scene_timing_baseline');
+    expect($result['status'])->toBe('success')
+        ->and($result['analysis']['algorithm'])->toBe('scene_timing_baseline');
 });
