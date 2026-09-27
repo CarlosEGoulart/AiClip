@@ -3,14 +3,11 @@
 namespace Tests\Feature\Jobs;
 
 use App\Contracts\MediaProcessingContract;
-use App\Exceptions\ProcessMediaException;
 use App\Jobs\ProcessMediaAsset;
 use App\Models\MediaClipRecommendation;
 use App\Services\ClipRecommendationValidator;
-use Illuminate\Contracts\Queue\Job;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Mockery;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use Symfony\Component\Process\Process;

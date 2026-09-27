@@ -19,9 +19,10 @@ class TestCLIExtractAudioValidContract:
     """Test CLI with valid extract_audio contracts."""
 
     def test_cli_extract_audio_valid_contract_via_file(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """CLI with --contract-file returns exit code 0 on success."""
+        require_valid_fixture("valid_sample.mp4")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(sample_contract_extract_audio, f)
             f.flush()
@@ -34,9 +35,10 @@ class TestCLIExtractAudioValidContract:
             Path(tmp_path).unlink(missing_ok=True)
 
     def test_cli_extract_audio_valid_contract_via_stdin(
-        self, sample_contract_extract_audio: dict[str, Any], capsys: pytest.CaptureFixture
+        self, sample_contract_extract_audio: dict[str, Any], capsys: pytest.CaptureFixture, require_valid_fixture
     ) -> None:
         """CLI with --contract-json returns valid JSON output."""
+        require_valid_fixture("valid_sample.mp4")
         contract_json = json.dumps(sample_contract_extract_audio)
         exit_code = main(["extract-audio", "--contract-json", contract_json])
         assert exit_code == 0
@@ -86,9 +88,10 @@ class TestCLIExtractAudioExitCodes:
     """Test CLI exit code behavior for extract-audio."""
 
     def test_cli_extract_audio_exit_code_success(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Exit code 0 on successful extraction."""
+        require_valid_fixture("valid_sample.mp4")
         contract_json = json.dumps(sample_contract_extract_audio)
         exit_code = main(["extract-audio", "--contract-json", contract_json])
         assert exit_code == 0
@@ -118,9 +121,10 @@ class TestCLIExtractAudioExitCodes:
         assert exit_code == 2
 
     def test_cli_extract_audio_exit_code_no_audio_stream(
-        self, sample_contract_video_no_audio: dict[str, Any]
+        self, sample_contract_video_no_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Exit code 1 when video has no audio stream."""
+        require_valid_fixture("video_only.mp4")
         contract_json = json.dumps(sample_contract_video_no_audio)
         exit_code = main(["extract-audio", "--contract-json", contract_json])
         assert exit_code == 1
@@ -130,9 +134,10 @@ class TestCLIExtractAudioOutput:
     """Test CLI output format for extract-audio."""
 
     def test_cli_extract_audio_success_output_is_valid_json(
-        self, sample_contract_extract_audio: dict[str, Any], capsys: pytest.CaptureFixture
+        self, sample_contract_extract_audio: dict[str, Any], capsys: pytest.CaptureFixture, require_valid_fixture
     ) -> None:
         """Successful output is valid JSON with expected structure."""
+        require_valid_fixture("valid_sample.mp4")
         contract_json = json.dumps(sample_contract_extract_audio)
         main(["extract-audio", "--contract-json", contract_json])
 

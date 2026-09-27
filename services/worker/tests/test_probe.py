@@ -18,8 +18,9 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 class TestProbeReturnsExpectedFields:
     """Test that probe returns the expected structured fields."""
 
-    def test_probe_returns_expected_fields_for_valid_media(self, sample_contract: dict[str, Any]) -> None:
+    def test_probe_returns_expected_fields_for_valid_media(self, sample_contract: dict[str, Any], require_valid_fixture) -> None:
         """Successful probe returns all expected fields with correct types."""
+        require_valid_fixture("valid_sample.mp4")
         result = probe_media(sample_contract)
 
         assert result["status"] == "success"
@@ -45,15 +46,17 @@ class TestProbeReturnsExpectedFields:
         assert isinstance(probe["size_bytes"], int)
         assert isinstance(probe["format"], str)
 
-    def test_probe_duration_is_positive(self, sample_contract: dict[str, Any]) -> None:
+    def test_probe_duration_is_positive(self, sample_contract: dict[str, Any], require_valid_fixture) -> None:
         """Duration in milliseconds should be positive for valid media."""
+        require_valid_fixture("valid_sample.mp4")
         result = probe_media(sample_contract)
 
         if result["status"] == "success":
             assert result["probe"]["duration_ms"] >= 0
 
-    def test_probe_width_and_height_are_integers(self, sample_contract: dict[str, Any]) -> None:
+    def test_probe_width_and_height_are_integers(self, sample_contract: dict[str, Any], require_valid_fixture) -> None:
         """Width and height should be positive integers when video is present."""
+        require_valid_fixture("valid_sample.mp4")
         result = probe_media(sample_contract)
 
         if result["status"] == "success" and result["probe"]["width"] is not None:
@@ -66,9 +69,9 @@ class TestProbeReturnsExpectedFields:
 class TestProbeWithDifferentMediaTypes:
     """Test probe with various media types."""
 
-    def test_probe_with_audio_only_media(self) -> None:
+    def test_probe_with_audio_only_media(self, require_valid_fixture) -> None:
         """Audio-only media should have null video_codec."""
-        # This test requires an audio-only fixture; skip if not available
+        require_valid_fixture("audio_only.mp3")
         audio_fixture = FIXTURES_DIR / "audio_only.mp3"
         if not audio_fixture.exists():
             pytest.skip("Audio-only fixture not available")
@@ -91,8 +94,9 @@ class TestProbeWithDifferentMediaTypes:
             assert result["probe"]["video_codec"] is None
             assert result["probe"]["audio_codec"] is not None
 
-    def test_probe_with_video_only_media(self) -> None:
+    def test_probe_with_video_only_media(self, require_valid_fixture) -> None:
         """Video-only media should have null audio_codec."""
+        require_valid_fixture("video_only.mp4")
         video_only_fixture = FIXTURES_DIR / "video_only.mp4"
         if not video_only_fixture.exists():
             pytest.skip("Video-only fixture not available")

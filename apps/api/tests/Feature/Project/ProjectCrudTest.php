@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\SpaTestCase;
@@ -134,7 +135,7 @@ it('allows authenticated user to list own projects', function () {
 
     // Create a project for another user
     $other = createSecondUser();
-    \App\Models\Project::create(['name' => 'Other Project', 'user_id' => $other->id]);
+    Project::create(['name' => 'Other Project', 'user_id' => $other->id]);
 
     $response = $this->spaRequest('GET', '/api/v1/projects', $cookies);
 
@@ -193,7 +194,7 @@ it('allows authenticated user to delete own project', function () {
 it('returns 404 when user tries to view another user project', function () {
     $cookies = $this->cookies;
     $other = createSecondUser();
-    $otherProject = \App\Models\Project::create(['name' => 'Secret Project', 'user_id' => $other->id]);
+    $otherProject = Project::create(['name' => 'Secret Project', 'user_id' => $other->id]);
 
     $this->spaRequest('GET', "/api/v1/projects/{$otherProject->id}", $cookies)
         ->assertNotFound();
@@ -202,7 +203,7 @@ it('returns 404 when user tries to view another user project', function () {
 it('returns 404 when user tries to delete another user project', function () {
     $cookies = $this->cookies;
     $other = createSecondUser();
-    $otherProject = \App\Models\Project::create(['name' => 'Secret Project', 'user_id' => $other->id]);
+    $otherProject = Project::create(['name' => 'Secret Project', 'user_id' => $other->id]);
 
     $this->spaRequest('DELETE', "/api/v1/projects/{$otherProject->id}", $cookies)
         ->assertNotFound();
@@ -263,6 +264,6 @@ it('ignores user_id in create request payload', function () {
     $response->assertJsonMissing(['user_id' => $other->id]);
     $response->assertJsonMissingPath('data.user_id');
 
-    $project = \App\Models\Project::where('name', 'Injected Project')->first();
+    $project = Project::where('name', 'Injected Project')->first();
     expect($project->user_id)->not->toBe($other->id);
 });
