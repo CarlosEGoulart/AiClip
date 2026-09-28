@@ -4646,3 +4646,26 @@ Static design for the consolidated content stands as previously reviewed (EXDEV 
 Remaining blockers: (1) operator-accepted execution history not independently reproduced (worker/backend/Pint/recovery); (2) E2E console/pageError/HTTP/trace/screenshot inventories unverified; (3) PR creation plus five final-head CI checks to green with human-authorized merge gate.
 
 Decision: REJECT
+
+---
+
+## Builder backend CI registry fix — 2026-09-28
+
+Narrow CI fix for Issue #64, branch `@carlosegoulart/64/feat/semantic-clip-recommendation`. No new issue, no M6. Only `.github/workflows/backend.yml` edited plus this evidence append. No commits, pushes, PRs, or merges by Builder.
+
+### Cause
+
+The Backend CI `tests` job fails before any test because GitHub runners cannot pull `quay.io/minio/*` images. CI log `gh run view 36376553449 --job 108783480531 --log` reports `unauthorized: access to the requested resource is not authorized` for the quay.io pulls. The same failure class was already proven locally for the compose `minio-init` image and fixed there with the Docker Hub registry.
+
+### Exact 2-ref change in `.github/workflows/backend.yml`
+
+1. Line 29 service image: `quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z` changed to `minio/minio:RELEASE.2025-04-22T22-12-26Z` (same pinned tag, Docker Hub registry).
+2. Lines 79-87 bucket-init step: image `quay.io/minio/mc:latest` changed to `minio/minio:RELEASE.2025-04-22T22-12-26Z` with `--entrypoint sh` retained (the MinIO server image ships `mc`, same pattern already proven in `docker-compose.yml` minio-init). The `-c "..."` command body (`mc alias set` + `mc mb --ignore-existing aiclip/aiclip-media` + `mc anonymous set private` + success echo) is byte-identical.
+
+### Verification
+
+Read of the edited hunks confirms line 29 carries `minio/minio:RELEASE.2025-04-22T22-12-26Z` and line 82 carries `minio/minio:RELEASE.2025-04-22T22-12-26Z -c "` with the command body unchanged. `git diff -- .github/workflows/backend.yml` shows exactly these two image-line hunks and no other change. `git diff --check` exits 0 with empty output, clean. CI was not run locally.
+
+### Scope
+
+Edited only `.github/workflows/backend.yml` (two image refs). `docker-compose.yml` untouched (healthy locally, Tester-approved). No governance workflow, app, test, spec, Planner, fixture, version, or tag change. No secrets inspected.
