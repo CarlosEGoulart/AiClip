@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
@@ -55,7 +56,7 @@ def extract_audio(contract: dict[str, Any]) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Create temporary file for intermediate output
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False, dir=str(output_path.parent)) as tmp:
         tmp_path = tmp.name
 
     try:
@@ -158,7 +159,6 @@ def _probe_duration(file_path: str) -> int:
             timeout=30,
         )
         if result.returncode == 0:
-            import json
             data = json.loads(result.stdout)
             duration_s = float(data.get("format", {}).get("duration", "0"))
             return int(duration_s * 1000)
