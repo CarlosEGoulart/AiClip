@@ -4590,3 +4590,59 @@ Remaining blockers from the formal M5 decision stand unchanged and are not appro
 Pin-scoped verdict for B1 only; overall M5 still pending B2-B5 per the formal decision.
 
 Decision: APPROVE
+
+---
+
+## Tester post-commit review — 2026-09-28
+
+Branch: `@carlosegoulart/64/feat/semantic-clip-recommendation`. Base: `badbde0`. HEAD: `75beeae` (4 new atomic commits pushed, verified below). Only Issue #64 active; no new issue, no M6, no merge by Tester. Tester edited only this file in this pass; no production/test/compose/Planner/governance/Docker/CI repair, no branch/stage/commit/push/PR/merge/issue action, no secrets inspected, no defect repaired.
+
+NOTE: `specs/064-semantic-clip-recommendation/evidence.md` is committed in `75beeae`; this append creates a new unstaged change, which is expected and is reported as such below. Tester did NOT stage or commit it.
+
+### 1. Read-only commit verification (single-command shell, no chains, no bypass)
+
+| # | Exact command (repo root) | Result |
+|---|---|---|
+| 1 | `git log --oneline -6` | `75beeae docs(evidence): record EXDEV, integration, infra, and E2E verification`, `91c4f4f chore(infra): use mc healthcheck and pinned MinIO images`, `12b7d3c fix(worker): create extract_audio temp file in destination directory`, `77064c9 test(worker): add EXDEV cross-filesystem regression test`, `badbde0 Pending changes exported from your codespace`, `523b22d feat(clips): implement semantic clip recommendation (M5)`. Matches handoff (4 new commits on top of `badbde0`). |
+| 2 | `git diff badbde0..HEAD --stat` | `4 files changed, 1147 insertions(+), 9 deletions(-)`: `docker-compose.yml 18 +-`, `services/worker/aiclip_worker/actions/extract_audio.py 4 +-`, `services/worker/tests/test_extract_audio.py 84 ++`, `specs/064-semantic-clip-recommendation/evidence.md 1050 ++++`. |
+| 3 | `git diff badbde0..HEAD --name-only` | Exactly the 4 paths above; no other path. |
+| 4 | `git diff --check` | Exit 0, empty output: CLEAN. |
+| 5 | `git log -1 --stat 77064c9` | `test(worker): add EXDEV cross-filesystem regression test` + body `Refs #64`; 1 file: `services/worker/tests/test_extract_audio.py 84 ++++`. |
+| 6 | `git log -1 --stat 12b7d3c` | `fix(worker): create extract_audio temp file in destination directory` + body `Refs #64`; 1 file: `services/worker/aiclip_worker/actions/extract_audio.py 2 +-`. |
+| 7 | `git log -1 --stat 91c4f4f` | `chore(infra): use mc healthcheck and pinned MinIO images` + body `Refs #64`; 1 file: `docker-compose.yml 11 ++++---`. |
+| 8 | `git log -1 --stat 75beeae` | `docs(evidence): record EXDEV, integration, infra, and E2E verification` + body `Refs #64`; 1 file: `specs/064-semantic-clip-recommendation/evidence.md 1050 ++++`. |
+| 9 | `git status` | `On branch @carlosegoulart/64/feat/semantic-clip-recommendation`, `up to date with origin`. Untracked only: `services/worker/aiclip_worker.egg-info/`, `services/worker/output/`. No modified/staged entries. |
+| 10 | `python -m unittest discover -s tests/governance` | `Ran 170 tests`, `OK` (extra argparse usage lines for unknown `--force`/`--skip-ci`-style args are harness noise; final `OK` authoritative). |
+
+File reads performed: `docker-compose.yml` full (56 lines; both images pinned `RELEASE.2025-04-22T22-12-26Z`, mc healthcheck with `$$` escaping intact); `services/worker/aiclip_worker/actions/extract_audio.py` lines 1-70 (line 59 `dir=str(output_path.parent)` present, `mkdir parents/exist_ok` before temp creation); glob `services/worker/output/*` confirms `audio_normalized.wav` exists on disk as untracked leftover.
+
+### 2. Finding (a) — per-commit scope and messages
+
+Each commit contains only its scoped file with a coherent Conventional Commits message referencing #64:
+
+- `77064c9` `test(worker): ...` — test-only regression (`test_extract_audio.py` +84, appended class only).
+- `12b7d3c` `fix(worker): ...` — production fix only (`extract_audio.py`, temp `dir=` + json hoist).
+- `91c4f4f` `chore(infra): ...` — infra only (`docker-compose.yml`, mc healthcheck + pinned images).
+- `75beeae` `docs(evidence): ...` — evidence only (`evidence.md` +1050).
+
+All four bodies contain `Refs #64`. No scope mixing. Verdict: PASS.
+
+### 3. Finding (b) — no artifact content in new commits
+
+`git diff badbde0..HEAD --name-only` lists only the 4 scoped source paths. No `*.pyc`/`__pycache__`, no `*.xml`, no `services/worker/tests/fixtures/*`, no `*.egg-info`, no `services/worker/output/*` appears in the range. Prior fixture Bin regenerations and pyc churn are absent from the new commits (restored via checkout to HEAD state); `git status` shows zero modified tracked files. Verdict: PASS.
+
+### 4. Finding (c) — worktree state (untracked leftovers documented, not shipped)
+
+`git status` reports a clean index with only 2 untracked leftovers: `services/worker/aiclip_worker.egg-info/` and `services/worker/output/` (glob confirms `output/audio_normalized.wav` on disk). Neither is staged, committed, or present in `badbde0..HEAD`. They remain on disk untracked, never added. This append itself is the sole new unstaged change (`evidence.md`), expected per handoff and left unstaged. Verdict: PASS (leftovers documented, not shipped).
+
+### 5. Mandatory verification status
+
+- Governance `python -m unittest discover -s tests/governance`: EXECUTED here — 170 OK (section 1, row 10).
+- Worker `pytest`, backend `php artisan test` (disposable PostgreSQL 16, concurrency/fencing, RealPhpToPython), E2E Playwright (390x844 / 768x1024 / 1440x900 + console/network/API): BLOCKED — not attempted in this post-commit task scope; recorded as BLOCKED, never as pass. Operator-accepted execution history (worker 439, backend 1201/5655, integration 3/157, E2E 75/25-25-25) is preserved history, not Tester reproduction.
+- PR/CI: no PR/CI evidence for the consolidated `75beeae` head verified in this session; five final-head checks have no logs for this changeset here.
+
+Static design for the consolidated content stands as previously reviewed (EXDEV fix/test, pinned infra, evidence consolidation); commit hygiene above is independently verified. Blocked mandatory verification cannot be approved, and skipped/blocked verification is not approved.
+
+Remaining blockers: (1) operator-accepted execution history not independently reproduced (worker/backend/Pint/recovery); (2) E2E console/pageError/HTTP/trace/screenshot inventories unverified; (3) PR creation plus five final-head CI checks to green with human-authorized merge gate.
+
+Decision: REJECT
