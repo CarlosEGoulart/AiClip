@@ -14,13 +14,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: aiclip_test
+          POSTGRES_DB: aiclip_test_issue64
           POSTGRES_USER: aiclip
           POSTGRES_PASSWORD: secret
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U aiclip -d aiclip_test"
+          --health-cmd "pg_isready -U aiclip -d aiclip_test_issue64"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -103,7 +103,7 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: aiclip_test
+          DB_DATABASE: aiclip_test_issue64
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
           MEDIA_DISK: media
@@ -121,7 +121,7 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: aiclip_test
+          DB_DATABASE: aiclip_test_issue64
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
           MEDIA_DISK: media
