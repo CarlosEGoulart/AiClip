@@ -4,15 +4,112 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import subprocess
+import sys
 import tempfile
+import wave
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any, Callable, Generator
 
 import pytest
 
+# Ensure aiclip_worker package is importable when running from source directory
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+
+
+def _ffmpeg_available() -> bool:
+    """Check if ffmpeg and ffprobe are available."""
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5, check=True)
+        subprocess.run(["ffprobe", "-version"], capture_output=True, timeout=5, check=True)
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+
+
+def _create_valid_wav(path: Path, duration_s: float = 1.0, sample_rate: int = 16000, channels: int = 1) -> bool:
+    """Create a valid WAV file with actual PCM silence data."""
+    try:
+        num_samples = int(duration_s * sample_rate)
+        with wave.open(str(path), "wb") as wav:
+            wav.setnchannels(channels)
+            wav.setsampwidth(2)  # 16-bit
+            wav.setframerate(sample_rate)
+            # Write silence (zeros)
+            silence = struct.pack(f"<{num_samples * channels}h", *([0] * (num_samples * channels)))
+            wav.writeframes(silence)
+        return True
+    except Exception:
+        return False
+
+
+def _create_valid_mp4(path: Path, duration_s: float = 1.0, width: int = 640, height: int = 480, has_audio: bool = True) -> bool:
+    """Create a minimal but valid MP4 using ffmpeg. Requires ffmpeg to be available."""
+    if not _ffmpeg_available():
+        return False
+    try:
+        if has_audio:
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:d={duration_s}",
+                "-f", "lavfi", "-i", f"sine=frequency=440:duration={duration_s}",
+                "-c:v", "libx264", "-c:a", "aac",
+                "-shortest",
+                "-movflags", "+faststart",
+                str(path),
+            ]
+        else:
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:d={duration_s}",
+                "-c:v", "libx264",
+                "-an",
+                "-movflags", "+faststart",
+                str(path),
+            ]
+        result = subprocess.run(cmd, capture_output=True, timeout=30, check=True)
+        return result.returncode == 0 and path.exists() and path.stat().st_size > 1000
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        return False
+
+
+def _create_valid_mp3(path: Path, duration_s: float = 1.0) -> bool:
+    """Create a minimal but valid MP3 using ffmpeg. Requires ffmpeg to be available."""
+    if not _ffmpeg_available():
+        return False
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", f"sine=frequency=440:duration={duration_s}",
+            "-c:a", "libmp3lame",
+            "-q:a", "9",
+            str(path),
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=30, check=True)
+        return result.returncode == 0 and path.exists() and path.stat().st_size > 1000
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        return False
+
+
+def _probe_works(file_path: Path) -> bool:
+    """Check if ffprobe can successfully parse the file."""
+    if not _ffmpeg_available():
+        return False
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", str(file_path)],
+            capture_output=True,
+            timeout=10,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        return False
 
 
 @pytest.fixture
@@ -204,9 +301,32 @@ def sample_contract_transcribe_no_derived_asset() -> dict[str, Any]:
     }
 
 
+@pytest.fixture(scope="session")
+def fixture_validity() -> dict[str, bool]:
+    """Return a dict mapping fixture names to whether they are valid for ffprobe."""
+    # This will be populated by create_test_fixtures (autouse session fixture)
+    return FIXTURE_VALIDITY
+
+
+@pytest.fixture
+def require_valid_fixture(fixture_validity: dict[str, bool]) -> Callable[[str], None]:
+    """Return a function that skips the test if the given fixture is not valid for ffprobe."""
+    def _check(fixture_name: str) -> None:
+        if not fixture_validity.get(fixture_name, False):
+            if not _ffmpeg_available():
+                pytest.skip(f"Fixture {fixture_name} requires ffmpeg/ffprobe which is not available in this environment")
+            else:
+                pytest.skip(f"Fixture {fixture_name} is not valid for ffprobe (creation may have failed)")
+    return _check
+
+
 @pytest.fixture(scope="session", autouse=True)
 def create_test_fixtures() -> Generator[None, None, None]:
-    """Create test fixture media files if they do not exist."""
+    """Create test fixture media files if they do not exist or are invalid.
+
+    This fixture requires ffmpeg/ffprobe to be available for MP4/MP3 fixtures.
+    WAV fixtures can be created without ffmpeg.
+    """
     fixtures_dir = FIXTURES_DIR
     fixtures_dir.mkdir(parents=True, exist_ok=True)
 
@@ -214,117 +334,66 @@ def create_test_fixtures() -> Generator[None, None, None]:
     corrupt_path = fixtures_dir / "corrupt_sample.mp4"
     video_only_path = fixtures_dir / "video_only.mp4"
     audio_only_path = fixtures_dir / "audio_only.mp3"
-
-    if not valid_path.exists():
-        # Create a minimal valid MP4 using ffmpeg
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-f", "lavfi", "-i", "color=c=black:s=640x480:d=1",
-                    "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
-                    "-c:v", "libx264", "-c:a", "aac",
-                    "-shortest",
-                    str(valid_path),
-                ],
-                capture_output=True,
-                timeout=30,
-                check=True,
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            # If ffmpeg is not available, create a minimal valid MP4 header
-            # This is a minimal ftyp box for MP4
-            valid_path.write_bytes(
-                b'\x00\x00\x00\x1c\x66\x74\x79\x70\x69\x73\x6f\x6d'
-                b'\x00\x00\x02\x00\x69\x73\x6f\x6d\x69\x73\x6f\x32'
-                b'\x6d\x70\x34\x31'
-            )
-
-    if not corrupt_path.exists():
-        # Create a corrupt file with random-ish bytes
-        corrupt_path.write_bytes(b'\x00\x01\x02\x03corrupt media data here')
-
-    if not video_only_path.exists():
-        # Create a video-only MP4 (no audio stream)
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-f", "lavfi", "-i", "color=c=black:s=640x480:d=1",
-                    "-c:v", "libx264",
-                    "-an",  # no audio
-                    str(video_only_path),
-                ],
-                capture_output=True,
-                timeout=30,
-                check=True,
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            # If ffmpeg is not available, create a minimal valid MP4 header
-            # This is a minimal ftyp box for MP4
-            video_only_path.write_bytes(
-                b'\x00\x00\x00\x1c\x66\x74\x79\x70\x69\x73\x6f\x6d'
-                b'\x00\x00\x02\x00\x69\x73\x6f\x6d\x69\x73\x6f\x32'
-                b'\x6d\x70\x34\x31'
-            )
-
-    if not audio_only_path.exists():
-        # Create an audio-only MP3 using FFmpeg lavfi sine source
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
-                    "-c:a", "libmp3lame",
-                    "-q:a", "9",
-                    str(audio_only_path),
-                ],
-                capture_output=True,
-                timeout=30,
-                check=True,
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            # If ffmpeg is not available, create a minimal MP3 header
-            audio_only_path.write_bytes(
-                b'\xff\xfb\x90\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-                b'\x00\x00\x00\x00\x00\x00'
-            )
-
-    # Create normalized_audio.wav fixture for transcription tests
     normalized_audio_path = fixtures_dir / "normalized_audio.wav"
-    if not normalized_audio_path.exists():
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
-                    "-vn",
-                    "-acodec", "pcm_s16le",
-                    "-ar", "16000",
-                    "-ac", "1",
-                    str(normalized_audio_path),
-                ],
-                capture_output=True,
-                timeout=30,
-                check=True,
-            )
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            # Create minimal WAV header
-            with open(normalized_audio_path, "wb") as f:
-                f.write(b"RIFF")
-                f.write((36).to_bytes(4, "little"))
-                f.write(b"WAVE")
-                f.write(b"fmt ")
-                f.write((16).to_bytes(4, "little"))
-                f.write((1).to_bytes(2, "little"))
-                f.write((1).to_bytes(2, "little"))
-                f.write((16000).to_bytes(4, "little"))
-                f.write((32000).to_bytes(4, "little"))
-                f.write((2).to_bytes(2, "little"))
-                f.write((16).to_bytes(2, "little"))
-                f.write(b"data")
-                f.write((0).to_bytes(4, "little"))
+
+    # Track which fixtures are valid for ffprobe
+    fixture_validity = {}
+
+    ffmpeg_is_available = _ffmpeg_available()
+
+    # Create valid MP4 with audio+video (requires ffmpeg)
+    if ffmpeg_is_available:
+        if not valid_path.exists() or not _probe_works(valid_path):
+            _create_valid_mp4(valid_path, has_audio=True)
+    else:
+        # Remove any existing invalid fallback files
+        if valid_path.exists() and valid_path.stat().st_size < 1000:
+            valid_path.unlink(missing_ok=True)
+
+    # Create corrupt file (doesn't need ffmpeg)
+    if not corrupt_path.exists():
+        corrupt_path.write_bytes(b"\x00\x01\x02\x03corrupt media data here")
+
+    # Create video-only MP4 (requires ffmpeg)
+    if ffmpeg_is_available:
+        if not video_only_path.exists() or not _probe_works(video_only_path):
+            _create_valid_mp4(video_only_path, has_audio=False)
+    else:
+        if video_only_path.exists() and video_only_path.stat().st_size < 1000:
+            video_only_path.unlink(missing_ok=True)
+
+    # Create audio-only MP3 (requires ffmpeg)
+    if ffmpeg_is_available:
+        if not audio_only_path.exists() or not _probe_works(audio_only_path):
+            _create_valid_mp3(audio_only_path)
+    else:
+        if audio_only_path.exists() and audio_only_path.stat().st_size < 1000:
+            audio_only_path.unlink(missing_ok=True)
+
+    # Create normalized audio WAV (always create valid WAV since we can do it without ffmpeg)
+    if not normalized_audio_path.exists() or not _probe_works(normalized_audio_path):
+        _create_valid_wav(normalized_audio_path, duration_s=1.0, sample_rate=16000, channels=1)
+
+    # Validate all fixtures after creation
+    for name, path in [
+        ("valid_sample.mp4", valid_path),
+        ("video_only.mp4", video_only_path),
+        ("audio_only.mp3", audio_only_path),
+        ("normalized_audio.wav", normalized_audio_path),
+    ]:
+        fixture_validity[name] = _probe_works(path)
+
+    # Store validity for tests to check
+    global FIXTURE_VALIDITY
+    FIXTURE_VALIDITY = fixture_validity
+
+    # Print fixture status for debugging
+    for name, valid in fixture_validity.items():
+        status = "VALID" if valid else "INVALID (ffmpeg not available or creation failed)"
+        print(f"Fixture {name}: {status}")
 
     yield
 
-    # Cleanup is optional; fixtures are committed or regenerated
+
+# Make FIXTURE_VALIDITY available at module level
+FIXTURE_VALIDITY = {}

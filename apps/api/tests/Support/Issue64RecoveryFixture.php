@@ -173,6 +173,7 @@ final class Issue64RecoveryFixture
         if (is_array($contract)) {
             return hash('sha256', json_encode($contract, JSON_THROW_ON_ERROR));
         }
+
         return hash('sha256', json_encode($contract->toRankClipsMetadataArray(), JSON_THROW_ON_ERROR));
     }
 

@@ -20,9 +20,10 @@ class TestExtractAudioReturnsExpectedFields:
     """Test that extract_audio returns the expected structured fields."""
 
     def test_extract_audio_returns_expected_fields_for_valid_media(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Successful extraction returns all expected fields with correct types."""
+        require_valid_fixture("valid_sample.mp4")
         result = extract_audio(sample_contract_extract_audio)
 
         assert result["status"] == "success"
@@ -55,9 +56,10 @@ class TestExtractAudioReturnsExpectedFields:
         assert extraction["format"] == "wav"
 
     def test_extract_audio_output_file_exists(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Output file should exist after successful extraction."""
+        require_valid_fixture("valid_sample.mp4")
         result = extract_audio(sample_contract_extract_audio)
 
         if result["status"] == "success":
@@ -65,9 +67,10 @@ class TestExtractAudioReturnsExpectedFields:
             assert Path(output_path).exists()
 
     def test_extract_audio_duration_matches_source(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Output duration should match source duration within tolerance."""
+        require_valid_fixture("valid_sample.mp4")
         result = extract_audio(sample_contract_extract_audio)
 
         if result["status"] == "success":
@@ -79,9 +82,10 @@ class TestExtractAudioOutputFormat:
     """Test that output is mono 16 kHz PCM WAV."""
 
     def test_extract_audio_output_is_mono_16khz_pcm_wav(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Output file is mono (1 channel), 16 kHz sample rate, PCM WAV format."""
+        require_valid_fixture("valid_sample.mp4")
         result = extract_audio(sample_contract_extract_audio)
 
         if result["status"] == "success":
@@ -138,9 +142,10 @@ class TestExtractAudioErrorHandling:
         assert "error" in result
 
     def test_extract_audio_video_no_audio_returns_error(
-        self, sample_contract_video_no_audio: dict[str, Any]
+        self, sample_contract_video_no_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Extraction from video without audio returns an error."""
+        require_valid_fixture("video_only.mp4")
         result = extract_audio(sample_contract_video_no_audio)
 
         assert result["status"] == "error"
@@ -302,9 +307,10 @@ class TestExtractAudioTemporaryFileManagement:
     """Test temporary file cleanup."""
 
     def test_extract_audio_cleans_up_on_success(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """No temporary files remain after successful extraction."""
+        require_valid_fixture("valid_sample.mp4")
         # We'll capture the output path and check that the temp directory is cleaned up
         result = extract_audio(sample_contract_extract_audio)
 

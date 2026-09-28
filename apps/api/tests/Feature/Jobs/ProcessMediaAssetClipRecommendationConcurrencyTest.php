@@ -3,12 +3,20 @@
 namespace Tests\Feature\Jobs;
 
 use App\Exceptions\ProcessMediaException;
+use App\Jobs\ProcessMediaAsset;
 use App\Models\MediaAsset;
 use App\Models\MediaClipAnalysis;
 use App\Models\MediaClipRecommendation;
+use Closure;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
+use PDOException;
+use ReflectionProperty;
+use RuntimeException;
 use Tests\Support\M5RecommendationFixture as Fixture;
 use Tests\TestCase;
 
@@ -198,4 +206,135 @@ it('lets a failed attempt retry with the current configuration and clears only M
 
     // The upstream M4 row is byte-for-byte unchanged by the retry.
     expect($m4->fresh()->getRawOriginal())->toBe($m4Before);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Bounded contention never finalizes the owner or the asset
+|--------------------------------------------------------------------------
+|
+| Spec "Claim, fencing, and recovery" point 6: SQLSTATE 55P03 is busy only
+| after rollback, so the contender makes no worker call and cannot finalize
+| the owner or the asset. Both M5 claim helpers classify 55P03 as bounded
+| contention and return normally, therefore the caller has to verify a
+| persisted resolved outcome before the four-stage check may markCompleted().
+|
+| The in-memory SQLite target never raises 55P03, so the exact SQLSTATE the
+| production classifier matches is raised at the claim's first durable write,
+| which is where a real contender observes the row lock.
+|
+*/
+
+/**
+ * A QueryException carrying PostgreSQL SQLSTATE 55P03 (lock timeout).
+ */
+function m5LockTimeout(): QueryException
+{
+    $exception = new QueryException(
+        'pgsql',
+        'update media_clip_recommendations set m4_analysis_id = 1',
+        [],
+        new PDOException('simulated lock contention'),
+    );
+
+    // QueryException copies the previous code in its constructor, so the
+    // effective `code` property is rewritten to the exact SQLSTATE the
+    // production classifier matches. PHP 8.1+ reflection reaches it without
+    // setAccessible, and the property is untyped because QueryException stores
+    // string SQLSTATEs in it during normal operation.
+    $code = new ReflectionProperty($exception::class, 'code');
+    $code->setValue($exception, '55P03');
+
+    if ((string) $exception->getCode() !== '55P03') {
+        throw new RuntimeException('SETUP_BLOCKER: SQLSTATE 55P03 could not be synthesized');
+    }
+
+    return $exception;
+}
+
+/**
+ * Make the next durable M5 write report bounded contention, exactly once.
+ *
+ * Returns a disarm callback, so a registered listener can never fire again
+ * once the attempt has finished.
+ */
+function m5ArmContention(): Closure
+{
+    $armed = true;
+
+    MediaClipRecommendation::saving(function () use (&$armed): void {
+        if ($armed) {
+            $armed = false;
+
+            throw m5LockTimeout();
+        }
+    });
+
+    return function () use (&$armed): void {
+        $armed = false;
+    };
+}
+
+it('does not finalize the asset when the worker claim is bounded contention', function () {
+    // The lock_contender fixture shape: a durable pending row already exists,
+    // so the losing contender's rollback restores `pending`, not absence.
+    $asset = Fixture::probedAsset();
+    Fixture::completedM4($asset);
+    Fixture::transcript($asset);
+    m5CreateRow($asset);
+
+    $action = Fixture::recordingAction();
+    $disarm = m5ArmContention();
+
+    try {
+        (new ProcessMediaAsset($asset, $asset->idempotency_key, $action))->handle();
+    } finally {
+        $disarm();
+    }
+
+    // A busy contender never finalizes the owner's asset...
+    expect($asset->fresh()->processing_status)->not->toBe(MediaAsset::PROCESSING_COMPLETED);
+
+    // ...never runs a worker...
+    expect($action->rankCalls)->toBe(0);
+
+    // ...and commits no ranking transition over the owner's pending row.
+    expect(Fixture::row($asset)?->status)->toBe(MediaClipRecommendation::STATUS_PENDING);
+});
+
+it('does not finalize the asset when the local outcome claim is bounded contention', function () {
+    $logs = new TestHandler;
+    Log::swap(new Logger('m5-contention', [$logs]));
+
+    // No audio stream: readiness classifies NO_AUDIO, so M5 must take the
+    // local unavailable branch and never reach the worker claim.
+    $asset = Fixture::probedAsset(null);
+    Fixture::completedM4($asset);
+    Fixture::transcript($asset, 'completed');
+    m5CreateRow($asset);
+
+    $action = Fixture::recordingAction();
+    $disarm = m5ArmContention();
+
+    try {
+        (new ProcessMediaAsset($asset, $asset->idempotency_key, $action))->handle();
+    } finally {
+        $disarm();
+    }
+
+    // Branch proof: the no-audio audio path is what licenses the local outcome.
+    $messages = array_map(
+        static fn ($record): string => (string) $record['message'],
+        $logs->getRecords(),
+    );
+    expect(implode(PHP_EOL, $messages))->toContain('no audio stream, skipping audio path');
+
+    // A busy local commit persists nothing, so the asset stays unfinalized...
+    expect($asset->fresh()->processing_status)->not->toBe(MediaAsset::PROCESSING_COMPLETED);
+
+    // ...no worker was ever invoked...
+    expect($action->rankCalls)->toBe(0);
+
+    // ...and the owner's pending row is untouched by the rolled-back claim.
+    expect(Fixture::row($asset)?->status)->toBe(MediaClipRecommendation::STATUS_PENDING);
 });
