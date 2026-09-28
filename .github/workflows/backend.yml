@@ -14,25 +14,24 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: aiclip_test
+          POSTGRES_DB: aiclip_test_issue64
           POSTGRES_USER: aiclip
           POSTGRES_PASSWORD: secret
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U aiclip -d aiclip_test"
+          --health-cmd "pg_isready -U aiclip -d aiclip_test_issue64"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
       minio:
-        image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+        image: bitnamilegacy/minio:2025.4.22-debian-12-r2
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
         ports:
           - 9000:9000
-        command: server /data --console-address :9001
         options: >-
           --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
           --health-interval 10s
@@ -79,7 +78,8 @@ jobs:
       - name: Initialize MinIO bucket
         run: |
           docker run --rm --network host --entrypoint sh \
-            quay.io/minio/mc:latest -c "
+            -e MC_CONFIG_DIR=/tmp/.mc \
+            bitnamilegacy/minio:2025.4.22-debian-12-r2 -c "
               mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
               mc mb --ignore-existing aiclip/aiclip-media &&
               mc anonymous set private aiclip/aiclip-media &&
@@ -103,7 +103,7 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: aiclip_test
+          DB_DATABASE: aiclip_test_issue64
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
           MEDIA_DISK: media
@@ -121,7 +121,7 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: aiclip_test
+          DB_DATABASE: aiclip_test_issue64
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
           MEDIA_DISK: media

@@ -52,21 +52,50 @@ faster-whisper optional dependency and model download. Real runtime scene
 detection requires the scenedetect[opencv-headless] optional dependency.
 Mandatory CI contains deterministic worker/unit coverage, mocked PySceneDetect
 adapter coverage, AND real FFmpeg-generated video + real PySceneDetect
-integration coverage. Semantic clip analysis/ranking, rendering, and social
-features do not exist yet.
+integration coverage. Rendering and social features do not exist yet. Semantic
+clip ranking exists only as the unmerged Issue #64 candidate on the recovery
+branch; mainline still carries deterministic `scene_timing_baseline` metadata
+only, and there is no recommendation UI or public recommendation API. The agent
+runtime does not allow local execution of `tests/governance/pr_enforcement.py`
+(it runs in Actions) or deletion of generated `__pycache__` files; generated
+caches must never be staged.
 
 # Current Milestone
 
-M0–M4 foundations and M4 corrective closeout completed. Issue #60 is closed
-as completed following the merge of PR #61, covering PostgreSQL concurrency,
-failure boundaries, empty-result completion and documentation. Its evidence
-remains separate from the merged #58 implementation artifacts.
+M0–M4 foundations and M4 corrective closeout completed. Issue #60 remains
+closed as completed following the merge of PR #61 (PostgreSQL concurrency,
+failure boundaries, empty-result completion and documentation), with evidence
+separate from the merged #58 artifacts. The single active implementation issue
+is #64 (M5 first slice, semantic clip recommendation). The implementation
+candidate at local head `10d882e` (rewritten 12-commit chain, tree-verified,
+governance-tested locally) carries the prior independent Tester approval, and
+the status-documentation delta was separately reviewed and approved; evidence
+holds exactly one normative verdict type, `Decision: APPROVE`. Under the
+human-approved recovery of 2026-09-28, the original branch
+`@carlosegoulart/64/feat/semantic-clip-recommendation` and PR #65 (remote head
+`857965e`) are superseded without merge and preserved: PR #65 will be closed
+unmerged, its branch and published refs are not deleted or rewritten, and no
+force push is used. The recovery branch
+`@carlosegoulart/64/feat/semantic-clip-recommendation-recovery` carries the
+same content plus the four approved status documents, and its replacement PR
+is the one active PR. CI results exist only for the superseded head `857965e`
+(backend, frontend, E2E and governance passing; pr-enforcement failing there
+on the old invalid commit message and pre-normalization evidence decisions);
+the recovery candidate is unmerged and its five final CI checks are pending.
+Nothing is merged or shipped and Issue #64 remains open.
 
 # Next Architectural Goal
 
-M5 AI Clip Recommendation is next: model-backed recommendation and semantic
-relevance, future, not active and not implemented. A standalone queue-consuming
-Python service is also a future architectural evolution, not the current CLI
-execution topology.
-After this documentation lifecycle is merged and closed, return to
-NO_ACTIVE_ISSUE and stop. Starting M5 requires separate explicit authorization.
+Finish Issue #64 through the approved recovery: publish
+`@carlosegoulart/64/feat/semantic-clip-recommendation-recovery` with an
+ordinary `git push -u` (no force, no force-with-lease, no rewriting or
+deletion of published refs), keep exactly one active PR by superseding PR #65
+without merge, then wait for the five fresh checks on the exact new head
+(Backend CI/tests, Frontend CI/test, E2E CI/e2e, governance/governance,
+governance/pr-enforcement) and stop at `CI_GREEN_WAITING_HUMAN_MERGE` (spec
+acceptance #6). Only after explicit human authorization may
+`scripts/merge_gate.py` run, the replacement PR merge, and Issue #64 close;
+then return to NO_ACTIVE_ISSUE. A standalone queue-consuming Python service
+remains a future architectural evolution, not the current CLI execution
+topology. M6 and any further M5 slices require separate explicit
+authorization after #64 closes.

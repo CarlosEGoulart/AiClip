@@ -11,7 +11,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aiclip -d aiclip"]
+      test: [ "CMD-SHELL", "pg_isready -U aiclip -d aiclip" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -28,24 +28,28 @@ services:
       - miniodata:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "--silent", "--show-error", "http://127.0.0.1:9000/minio/health/ready"]
+      test:
+        - CMD-SHELL
+        - >-
+          mc alias set health http://127.0.0.1:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && mc ready health >/dev/null 2>&1
       interval: 5s
       timeout: 5s
       retries: 5
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
-    container_name: aiclip-minio-init
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
         mc alias set aiclip http://minio:9000 minioadmin minioadmin &&
         mc mb --ignore-existing aiclip/aiclip-media &&
         mc anonymous set private aiclip/aiclip-media &&
         echo 'MinIO bucket initialized successfully'
-      "
 
 volumes:
   pgdata:

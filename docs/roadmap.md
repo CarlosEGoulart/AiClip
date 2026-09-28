@@ -51,8 +51,12 @@ following the merge of PR #61, completing M4's corrective closeout for
 concurrency, failure boundaries, validation and documentation. Its verification
 evidence remains separate and is not attributed retrospectively to #58.
 M5 AI Clip Recommendation retains model-backed recommendation and semantic
-relevance. It is the next architectural goal: future, not active or implemented.
-Starting M5 requires separate explicit authorization.
+relevance. Its first slice, Issue #64, is the single active implementation
+issue: implemented on the recovery branch, with its implementation candidate
+independently Tester-approved, unmerged — PR #65 is superseded without merge
+and its replacement PR is the one active PR. No M5 capability ships until that
+PR merges and Issue #64 closes. Further M5 slices and M6 require separate
+explicit authorization.
 
 ## Planned Milestones
 

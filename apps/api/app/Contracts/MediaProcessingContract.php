@@ -5,6 +5,8 @@ namespace App\Contracts;
 use App\Exceptions\ProcessMediaException;
 use App\Models\MediaAsset;
 use App\Services\ClipAnalysisValidator;
+use App\Services\ClipRankingProfile;
+use App\Services\ClipRecommendationValidator;
 
 class MediaProcessingContract
 {
@@ -36,7 +38,10 @@ class MediaProcessingContract
     /** @var array<int, array{start_ms: int, end_ms: int}>|null */
     public ?array $transcriptSegments = null;
 
-    /** @var array{min_duration_ms: int, target_duration_ms: int, max_duration_ms: int, max_candidates: int, weights: array{duration_fit: int, speech_coverage: int, boundary_alignment: int}}|null */
+    /** @var array<int, array{index: int, start_ms: int, end_ms: int, m4_rank: int, m4_score: float|int, transcript_text: string}>|null */
+    public ?array $candidates = null;
+
+    /** @var array{min_duration_ms: int, target_duration_ms: int, max_duration_ms: int, max_candidates: int, weights: array{duration_fit: int, speech_coverage: int, boundary_alignment: int}}|array<string, mixed>|null */
     public ?array $configuration = null;
 
     /**
@@ -61,6 +66,43 @@ class MediaProcessingContract
     }
 
     /**
+     * Build the exact rank_clips request from authoritative local inputs.
+     *
+     * The M4 numeric score crosses the boundary unchanged; no criteria, scene,
+     * transcript metadata, provider identity, storage or asset identity is
+     * added. Validation happens strictly before any process is created.
+     *
+     * @param  list<array{index: int, start_ms: int, end_ms: int, rank: int, score: float|int}>  $m4Candidates
+     * @param  list<string>  $canonicalTexts  Canonical text per candidate, in candidate order.
+     * @return array<string, mixed>
+     *
+     * @throws ProcessMediaException
+     */
+    public static function rankClipsRequest(int $durationMs, array $m4Candidates, array $canonicalTexts): array
+    {
+        $candidates = [];
+
+        foreach ($m4Candidates as $position => $candidate) {
+            $candidates[] = [
+                'index' => $candidate['index'],
+                'start_ms' => $candidate['start_ms'],
+                'end_ms' => $candidate['end_ms'],
+                'm4_rank' => $candidate['rank'],
+                'm4_score' => $candidate['score'],
+                'transcript_text' => $canonicalTexts[$position] ?? '',
+            ];
+        }
+
+        return self::fromArray([
+            'version' => ClipRecommendationValidator::CONTRACT_VERSION,
+            'action' => ClipRecommendationValidator::ACTION,
+            'media' => ['duration_ms' => $durationMs],
+            'candidates' => $candidates,
+            'configuration' => ClipRankingProfile::configuration(),
+        ])->toRankClipsMetadataArray();
+    }
+
+    /**
      * Create a contract from an array.
      *
      * @param  array<string, mixed>  $data
@@ -75,6 +117,18 @@ class MediaProcessingContract
             $contract->scenes = $data['scenes'];
             $contract->configuration = $data['configuration'];
             $contract->transcriptSegments = $data['transcript_segments'] ?? null;
+
+            return $contract;
+        }
+
+        if (($data['action'] ?? null) === 'rank_clips') {
+            $data = ClipRecommendationValidator::request($data);
+            $contract = new self;
+            $contract->action = 'rank_clips';
+            $contract->durationMs = $data['media']['duration_ms'];
+            $contract->candidates = $data['candidates'];
+            $contract->configuration = $data['configuration'];
+            $contract->transcriptSegments = null; // Not used in rank_clips
 
             return $contract;
         }
@@ -106,6 +160,12 @@ class MediaProcessingContract
     {
         // For analyze_clips, return metadata-only shape (no legacy envelope).
         if ($this->action === 'analyze_clips') {
+            return $this->toMetadataArray();
+        }
+
+        // For rank_clips, return metadata-only shape (scenes + timing),
+        // matching analyze_clips. Worker transport uses toRankClipsMetadataArray.
+        if ($this->action === 'rank_clips') {
             return $this->toMetadataArray();
         }
 
@@ -161,6 +221,27 @@ class MediaProcessingContract
     }
 
     /**
+     * Serialize the contract for metadata-only (rank_clips) transport.
+     *
+     * Produces a privacy-safe payload with only timing, candidates, and prototype query,
+     * omitting legacy storage/project/identity fields.
+     *
+     * @return array{version: string, action: string, media: array{duration_ms: int}, candidates: array, configuration: array}
+     */
+    public function toRankClipsMetadataArray(): array
+    {
+        $data = [
+            'version' => $this->version,
+            'action' => $this->action,
+            'media' => ['duration_ms' => $this->durationMs],
+            'candidates' => $this->candidates,
+            'configuration' => $this->configuration,
+        ];
+
+        return $data;
+    }
+
+    /**
      * Validate the contract.
      */
     public function validate(): bool
@@ -171,7 +252,7 @@ class MediaProcessingContract
         }
 
         // Validate action is valid
-        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes', 'analyze_clips'], true)) {
+        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes', 'analyze_clips', 'rank_clips'], true)) {
             return false;
         }
 
@@ -179,6 +260,17 @@ class MediaProcessingContract
         if ($this->action === 'analyze_clips') {
             try {
                 ClipAnalysisValidator::request($this->toMetadataArray());
+            } catch (ProcessMediaException) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // rank_clips uses metadata-only shape with candidates.
+        if ($this->action === 'rank_clips') {
+            try {
+                ClipRecommendationValidator::request($this->toRankClipsMetadataArray());
             } catch (ProcessMediaException) {
                 return false;
             }

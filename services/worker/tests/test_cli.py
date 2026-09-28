@@ -18,8 +18,9 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 class TestCLIValidContract:
     """Test CLI with valid contracts."""
 
-    def test_cli_valid_contract_via_file(self, sample_contract: dict[str, Any]) -> None:
+    def test_cli_valid_contract_via_file(self, sample_contract: dict[str, Any], require_valid_fixture) -> None:
         """CLI with --contract-file returns exit code 0 on success."""
+        require_valid_fixture("valid_sample.mp4")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(sample_contract, f)
             f.flush()
@@ -31,8 +32,9 @@ class TestCLIValidContract:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    def test_cli_valid_contract_via_stdin(self, sample_contract: dict[str, Any], capsys: pytest.CaptureFixture) -> None:
+    def test_cli_valid_contract_via_stdin(self, sample_contract: dict[str, Any], capsys: pytest.CaptureFixture, require_valid_fixture) -> None:
         """CLI with --contract-json returns valid JSON output."""
+        require_valid_fixture("valid_sample.mp4")
         contract_json = json.dumps(sample_contract)
         exit_code = main(["probe", "--contract-json", contract_json])
         assert exit_code == 0
@@ -68,8 +70,9 @@ class TestCLIInvalidContract:
 class TestCLIExitCodes:
     """Test CLI exit code behavior."""
 
-    def test_cli_exit_code_success(self, sample_contract: dict[str, Any]) -> None:
+    def test_cli_exit_code_success(self, sample_contract: dict[str, Any], require_valid_fixture) -> None:
         """Exit code 0 on successful probe."""
+        require_valid_fixture("valid_sample.mp4")
         contract_json = json.dumps(sample_contract)
         exit_code = main(["probe", "--contract-json", contract_json])
         assert exit_code == 0
@@ -95,8 +98,9 @@ class TestCLIExitCodes:
 class TestCLIOutput:
     """Test CLI output format."""
 
-    def test_cli_success_output_is_valid_json(self, sample_contract: dict[str, Any], capsys: pytest.CaptureFixture) -> None:
+    def test_cli_success_output_is_valid_json(self, sample_contract: dict[str, Any], capsys: pytest.CaptureFixture, require_valid_fixture) -> None:
         """Successful output is valid JSON with expected structure."""
+        require_valid_fixture("valid_sample.mp4")
         contract_json = json.dumps(sample_contract)
         main(["probe", "--contract-json", contract_json])
 

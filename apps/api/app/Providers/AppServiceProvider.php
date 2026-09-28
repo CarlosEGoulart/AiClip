@@ -14,7 +14,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // The clip recommendation provider is selected by
+        // config('media.clip_ranking_provider') and dispatched through the
+        // single ProcessMediaAction::rankClips worker path. No container
+        // binding for a PHP-side ranking provider exists.
     }
 
     /**

@@ -20,9 +20,10 @@ class TestExtractAudioReturnsExpectedFields:
     """Test that extract_audio returns the expected structured fields."""
 
     def test_extract_audio_returns_expected_fields_for_valid_media(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Successful extraction returns all expected fields with correct types."""
+        require_valid_fixture("valid_sample.mp4")
         result = extract_audio(sample_contract_extract_audio)
 
         assert result["status"] == "success"
@@ -55,9 +56,10 @@ class TestExtractAudioReturnsExpectedFields:
         assert extraction["format"] == "wav"
 
     def test_extract_audio_output_file_exists(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Output file should exist after successful extraction."""
+        require_valid_fixture("valid_sample.mp4")
         result = extract_audio(sample_contract_extract_audio)
 
         if result["status"] == "success":
@@ -65,9 +67,10 @@ class TestExtractAudioReturnsExpectedFields:
             assert Path(output_path).exists()
 
     def test_extract_audio_duration_matches_source(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Output duration should match source duration within tolerance."""
+        require_valid_fixture("valid_sample.mp4")
         result = extract_audio(sample_contract_extract_audio)
 
         if result["status"] == "success":
@@ -79,9 +82,10 @@ class TestExtractAudioOutputFormat:
     """Test that output is mono 16 kHz PCM WAV."""
 
     def test_extract_audio_output_is_mono_16khz_pcm_wav(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Output file is mono (1 channel), 16 kHz sample rate, PCM WAV format."""
+        require_valid_fixture("valid_sample.mp4")
         result = extract_audio(sample_contract_extract_audio)
 
         if result["status"] == "success":
@@ -138,9 +142,10 @@ class TestExtractAudioErrorHandling:
         assert "error" in result
 
     def test_extract_audio_video_no_audio_returns_error(
-        self, sample_contract_video_no_audio: dict[str, Any]
+        self, sample_contract_video_no_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """Extraction from video without audio returns an error."""
+        require_valid_fixture("video_only.mp4")
         result = extract_audio(sample_contract_video_no_audio)
 
         assert result["status"] == "error"
@@ -302,9 +307,10 @@ class TestExtractAudioTemporaryFileManagement:
     """Test temporary file cleanup."""
 
     def test_extract_audio_cleans_up_on_success(
-        self, sample_contract_extract_audio: dict[str, Any]
+        self, sample_contract_extract_audio: dict[str, Any], require_valid_fixture
     ) -> None:
         """No temporary files remain after successful extraction."""
+        require_valid_fixture("valid_sample.mp4")
         # We'll capture the output path and check that the temp directory is cleaned up
         result = extract_audio(sample_contract_extract_audio)
 
@@ -364,3 +370,87 @@ class TestExtractAudioSubprocessSafety:
         args, kwargs = mock_run.call_args
         assert isinstance(args[0], list)
         assert kwargs.get("shell", False) is not False or "shell" not in kwargs
+
+
+class TestExtractAudioCrossFilesystemPublish:
+    """Regression: the intermediate temp file must live in the destination directory.
+
+    The final publish uses os.replace (atomic rename), which raises EXDEV when
+    source and destination are on different filesystems. Creating the temp file
+    in the system temp directory therefore fails the publish whenever the
+    destination directory lives on another filesystem.
+    """
+
+    def test_cross_filesystem_publish_succeeds_without_exdev(
+        self, tmp_path: Path
+    ) -> None:
+        """Simulated cross-filesystem publish succeeds and leaves no orphan temp."""
+        import errno
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+        output_key = str(dest_dir / "audio.wav")
+        expected_bytes = b"RIFF-EXDEV-REGRESSION-PROBE"
+
+        contract = {
+            "version": "1.0.0",
+            "media_asset_id": 1,
+            "project_id": 1,
+            "storage": {
+                "disk": "media",
+                "key": "input/sample.mp4",
+                "mime_type": "video/mp4",
+            },
+            "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+            "created_at": "2026-09-16T10:00:00Z",
+            "action": "extract_audio",
+            "output_storage": {
+                "disk": "media",
+                "key": output_key,
+                "mime_type": "audio/wav",
+            },
+            "probe_data": {
+                "duration_ms": 1000,
+                "audio_codec": "aac",
+            },
+        }
+
+        recorded: dict[str, str] = {}
+        real_replace = os.replace
+
+        def fake_run(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if cmd[0] == "ffmpeg":
+                tmp_arg = cmd[-1]
+                recorded["tmp_path"] = tmp_arg
+                Path(tmp_arg).write_bytes(expected_bytes)
+                completed = MagicMock()
+                completed.returncode = 0
+                completed.stdout = ""
+                completed.stderr = ""
+                return completed
+            if cmd[0] == "ffprobe":
+                raise FileNotFoundError
+            raise AssertionError(f"unexpected subprocess call: {cmd[0]}")
+
+        def fake_replace(src: str, dst: str) -> None:
+            if Path(src).parent != Path(dst).parent:
+                raise OSError(errno.EXDEV, "Invalid cross-device link")
+            real_replace(src, dst)
+
+        with (
+            patch(
+                "aiclip_worker.actions.extract_audio.subprocess.run",
+                side_effect=fake_run,
+            ),
+            patch(
+                "aiclip_worker.actions.extract_audio.os.replace",
+                side_effect=fake_replace,
+            ),
+        ):
+            result = extract_audio(contract)
+
+        assert result["status"] == "success"
+        assert Path(output_key).read_bytes() == expected_bytes
+        assert "tmp_path" in recorded
+        assert Path(recorded["tmp_path"]).parent == dest_dir
+        assert not Path(recorded["tmp_path"]).exists()
