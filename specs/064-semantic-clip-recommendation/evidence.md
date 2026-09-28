@@ -4836,3 +4836,42 @@ The earlier append-only narratives, point-in-time marker inventories, scoped-app
 ### Final independent Tester verdict (recorded from the supplied handoff)
 
 Decision: APPROVE
+
+---
+
+## Issue #64 — Recovery delta review — 2026-09-28
+
+### Scope and authority
+
+Independent Tester review of the authorized recovery delta on branch `@carlosegoulart/64/feat/semantic-clip-recommendation-recovery` (local HEAD `10d882e`, tree `48a56b136d8f3255ed606230c56674523a0c2e3d`). This entry is append-only: no earlier evidence content, TDD section, or decision line was rewritten, and this session modified only this evidence file. No production implementation, application test, planning file, governance test, CI configuration, Docker configuration, `.opencode/**`, `scripts/merge_gate.py`, branch, commit, staging state, push, or pull request was touched.
+
+### Branch and content identity versus the previously approved candidate
+
+- `git log --format='%H %T %s' -12` shows the exact rewritten 12-commit chain beginning at `29a71e0 fix(clips): keep contended recommendation attempts unresolved` and ending at `10d882e docs(evidence): record issue 64 CI root causes and final tester approval`, whose tree is `48a56b136d8f3255ed606230c56674523a0c2e3d`.
+- Content identity with the previously approved implementation candidate therefore holds: no new implementation commits, no altered trees, no history rewrite of published refs. The recovery changes planning/status documentation and branch/PR metadata only; the four status documents are uncommitted working-tree changes at review time and are not part of tree `48a56b13`.
+- Branch name matches the mandatory pattern and the branch in use is the recovery branch, with the original branch and PR #65 preserved for supersession without merge.
+
+### Documentation delta reviewed (four status documents)
+
+- `git diff --name-only` lists exactly `README.md`, `docs/architecture.md`, `docs/project-state.md`, `docs/roadmap.md`.
+- Force push and force-with-lease appear only in negative statements ("no force push is used", "no force, no force-with-lease"); no description presents either as authorized or required.
+- CI attribution is accurate: results are claimed only for superseded head `857965e` (backend, frontend, E2E and governance passing; pr-enforcement failing there on the invalid historical commit message and pre-normalization evidence decisions), while `10d882e` is described as the local implementation candidate carrying the prior Tester approval, unmerged, with final CI pending — never as a final or CI-validated head.
+- No merge, no issue closure, and no M6 completion is claimed ("Nothing is merged or shipped and Issue #64 remains open"). No CI or test result is fabricated, and no agent-executed pr-enforcement pass is claimed (local execution of `tests/governance/pr_enforcement.py` remains permission-denied and CI-only).
+- Historical attribution is preserved: Issue #58 / PR #59 merged foundation, Issue #60 / PR #61 closeout, deterministic `scene_timing_baseline`, and the prior independent Tester approval attributed to implementation candidate `10d882e` rather than to this documentation delta.
+- The recovery candidate is stated as unmerged with its five final CI checks pending, and exactly one active PR is described (PR #65 superseded without merge; the replacement PR from the recovery branch is the single active PR).
+- Content is English-only, concise, and consistent across the four files.
+
+### Gates executed by Tester
+
+- Governance unit suite: `python -m unittest discover -s tests/governance -p 'test_*.py'` — **Ran 170 tests ... OK** (includes the `docs/project-state.md` six-heading contract, README structure checks, and `validate_sdd_bundle` across all `specs/` bundles).
+- `git diff --check` produced no output (no whitespace errors); `git diff --cached --name-only` produced no output (index empty, nothing staged).
+- `git status --porcelain` shows only the four modified status documents plus the known untracked generated caches `scripts/__pycache__/` and `tests/governance/__pycache__/`; these caches were not staged and not deleted. Nothing under `tests/governance/**`, `scripts/merge_gate.py`, `.opencode/**`, `.github/**`, or `specs/**` was modified before this append.
+- Evidence integrity before this append: exactly one verdict type — the affirmative decision line present, the negative decision-marker literal absent — and the `### RED`, `### GREEN`, `### REFACTOR` sections present.
+- Application backend, frontend, E2E, and Playwright suites were deliberately not re-run: this delta is prose-only status documentation with no application or interface behavior change, so no running-app interaction was required; application interaction checks are N/A for this delta with that reason.
+
+### Not reviewed / open items
+
+- The five fresh CI checks for the recovery head do not exist yet and are **pending**; no final-head CI result was reviewed or claimed here.
+- Pending: Planner recovery reconciliation of spec/plan/test-plan — the Planner subagent provider is currently failing, so `spec.md`, `plan.md`, and `test-plan.md` are unchanged for this recovery. This Tester did not edit them. All three files exist and are non-empty (36109, 15384, and 28982 bytes), so `validate_sdd_bundle` preconditions hold and CI is not expected to fail on them; the reconciliation remains an open Planner item to resolve before issue closure.
+
+Decision: APPROVE
