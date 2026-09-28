@@ -26,13 +26,12 @@ jobs:
           --health-retries 5
 
       minio:
-        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+        image: bitnamilegacy/minio:2025.4.22-debian-12-r2
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
         ports:
           - 9000:9000
-        command: server /data --console-address :9001
         options: >-
           --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
           --health-interval 10s
@@ -79,7 +78,8 @@ jobs:
       - name: Initialize MinIO bucket
         run: |
           docker run --rm --network host --entrypoint sh \
-            minio/minio:RELEASE.2025-04-22T22-12-26Z -c "
+            -e MC_CONFIG_DIR=/tmp/.mc \
+            bitnamilegacy/minio:2025.4.22-debian-12-r2 -c "
               mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
               mc mb --ignore-existing aiclip/aiclip-media &&
               mc anonymous set private aiclip/aiclip-media &&
