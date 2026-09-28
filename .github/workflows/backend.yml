@@ -26,7 +26,7 @@ jobs:
           --health-retries 5
 
       minio:
-        image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
@@ -79,7 +79,7 @@ jobs:
       - name: Initialize MinIO bucket
         run: |
           docker run --rm --network host --entrypoint sh \
-            quay.io/minio/mc:latest -c "
+            minio/minio:RELEASE.2025-04-22T22-12-26Z -c "
               mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
               mc mb --ignore-existing aiclip/aiclip-media &&
               mc anonymous set private aiclip/aiclip-media &&
