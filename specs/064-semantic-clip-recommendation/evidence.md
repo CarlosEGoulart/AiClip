@@ -2748,7 +2748,7 @@ vendor/bin/pint --dirty --format agent
 
 ## Independent Tester review — 2026-09-27 (M5 issue #64, staged Builder changes)
 
-**Decision: REJECT.** Tester executed every mandatory entry point available in this
+**Historical Tester review outcome: rejected this candidate.** Tester executed every mandatory entry point available in this
 session, blocked on the ones that are not, inspected the staged implementation and
 the spec/plan/test-plan bundle, and found one unexecuted source-level conformance
 finding plus an evidence-freshness gap. No production code, application test, CI or
@@ -2855,7 +2855,7 @@ statements or error envelopes; snapshot reconstruction redacts text to `recorded
 | Real-model smoke prerequisites | Documented as operator-gated in plan.md; correctly not claimed in CI |
 
 **Mandatory verification could not execute; one unexecuted conformance finding stands.
-Decision: REJECT.**
+The historical Tester review rejected this candidate.**
 
 ### Tester addendum — 2026-09-27 (further executed checks and working-tree findings)
 
@@ -3079,7 +3079,7 @@ consideration; not a defect in this changeset.
 - Prior Tester REJECT (busy-finalize defect) and Builder addendum: `evidence.md`
   lines ~2749 and ~2893; fix source-verified in `app/Jobs/ProcessMediaAsset.php`.
 
-**Decision: APPROVE**
+**Historical Tester review outcome: approved the then-reviewed candidate; this approval was superseded by the following re-review.**
 
 ---
 
@@ -3181,7 +3181,7 @@ assertion failures among the 52 host failures. No product defect was observed
 in this re-review; the rejection is driven solely by mandatory verification
 that could not execute plus the absent CI evidence.
 
-**Decision: REJECT**
+**Historical Tester re-review outcome: rejected the then-reviewed candidate.**
 
 ---
 
@@ -3310,7 +3310,7 @@ consistent with the operator totals.
   session on equivalent content; the handoff and prior scope review report no
   `apps/web` changes in this staged diff.
 
-**Decision: REJECT**
+**Historical Tester re-review outcome: rejected the staged candidate.**
 
 ## Builder corrective RED/GREEN/REFACTOR — bounded-contention fix executed, 2026-09-27
 
@@ -3605,7 +3605,7 @@ Generated artifacts are present in the worktree and, per the authoritative hando
 5. Artifact cleanup: `git rm --cached` all generated paths above, add ignore rules, re-verify `git status` clean and `git diff --check` CLEAN.
 6. Create PR (`Closes #64` with required Summary/Scope/TDD-Evidence/Tests/API/Visual/Risks/CI/Scope sections) and run the five final-head CI checks to green. No merge/closure without human authorization.
 
-**Decision: REJECT**
+**Historical Tester review outcome: rejected the candidate in the new environment.**
 
 ---
 
@@ -3865,7 +3865,7 @@ Production fix applied: NO (empty diff confirmed). Mandatory pytest
 execution: BLOCKED (not attempted per allowlist, cannot approve skipped or
 blocked verification).
 
-`Decision: REJECT`
+Historical Tester EXDEV review outcome: rejected the candidate while the fix was not applied and mandatory execution was blocked.
 
 ---
 
@@ -4053,7 +4053,7 @@ Evidence registration only. No production, test, Planner-owned, governance, Dock
 
 ## Tester review Etapas A+B — 2026-09-28
 
-Branch: `@carlosegoulart/64/feat/semantic-clip-recommendation`. HEAD: `badbde0` (matches `git log --oneline -5`: `badbde0`, `523b22d`, `f2ca27f`, `0e49b50`, `bcd5402`). Only Issue #64 active; no new issue, no M6, no merge. Tester edited only this file; no production/test/Planner/governance/Docker/CI repair, no commit/push/PR/merge, no secrets, no SQLite substitution. Prior Tester EXDEV review entry (`Decision: REJECT` when fix not applied) is preserved as history and superseded in fact (fix IS in tree); this review assesses the current tree, not the old verdict.
+Branch: `@carlosegoulart/64/feat/semantic-clip-recommendation`. HEAD: `badbde0` (matches `git log --oneline -5`: `badbde0`, `523b22d`, `f2ca27f`, `0e49b50`, `bcd5402`). Only Issue #64 active; no new issue, no M6, no merge. Tester edited only this file; no production/test/Planner/governance/Docker/CI repair, no commit/push/PR/merge, no secrets, no SQLite substitution. Prior Tester EXDEV review entry (historical rejection when fix not applied) is preserved as history and superseded in fact (fix IS in tree); this review assesses the current tree, not the old verdict.
 
 ### 1. Allowlisted executions only (exact results, single-command shell)
 
@@ -4128,7 +4128,7 @@ python -m unittest discover -s tests/governance
 
 Expect: new test passes, owning+CLI suites unregressed, full worker suite green with 0 skipped, integration 3 passed, full backend green on disposable PostgreSQL 16, Pint passed, governance 170 OK. Plus artifact cleanup (section 6), real MinIO HTTP/bucket check, Playwright three-viewport running-app review (390x844, 768x1024, 1440x900) with console/network/API review, and PR/CI evidence. No merge/closure without human authorization.
 
-`Decision: REJECT`
+Historical Tester review outcome: rejected the Etapas A+B candidate.
 
 ---
 
@@ -4290,7 +4290,7 @@ Expect: minio-init ExitCode 0 + init success log, HTTP ready, new EXDEV test pas
 
 Static design by inspection: PASS for compose direction (modulo F1 pin), EXDEV fix, EXDEV test, integration file. Mandatory pytest/backend/E2E/ExitCode verification BLOCKED; operator numbers are preserved history, not Tester reproduction. Per authority, blocked mandatory verification cannot be approved.
 
-Decision: REJECT
+Historical Tester review outcome: rejected the infrastructure + A+B candidate.
 
 ---
 
@@ -4362,7 +4362,7 @@ BLOCKED (recorded as BLOCKED, never as pass; no bypass attempted): `docker`/`com
 
 Scope of the verdict below: the one-line minio-init pin only (tag match byte-confirmed). The overall M5 lifecycle remains unapproved pending Etapa C/D + artifact cleanup + commits + PR/CI.
 
-Decision: APPROVE
+Historical scoped Tester review outcome: approved the one-line minio-init pin only.
 
 ---
 
@@ -4523,7 +4523,7 @@ B5. No PR/CI evidence for this tree. Zero CI runs for the issue-64 branch per pr
 
 Static design by inspection: PASS for EXDEV fix, EXDEV test, compose healthcheck direction + `minio-init` pin, integration file, `playwright.config.ts` no-hardcode. Blocked mandatory verification plus defect B1 prevent approval.
 
-Decision: REJECT
+Historical Tester M5 review outcome: rejected the then-reviewed candidate.
 
 ---
 
@@ -4589,7 +4589,7 @@ Remaining blockers from the formal M5 decision stand unchanged and are not appro
 
 Pin-scoped verdict for B1 only; overall M5 still pending B2-B5 per the formal decision.
 
-Decision: APPROVE
+Historical scoped Tester review outcome: approved the B1 MinIO image re-pin only.
 
 ---
 
@@ -4645,7 +4645,7 @@ Static design for the consolidated content stands as previously reviewed (EXDEV 
 
 Remaining blockers: (1) operator-accepted execution history not independently reproduced (worker/backend/Pint/recovery); (2) E2E console/pageError/HTTP/trace/screenshot inventories unverified; (3) PR creation plus five final-head CI checks to green with human-authorized merge gate.
 
-Decision: REJECT
+Historical Tester post-commit review outcome: rejected the consolidated candidate.
 
 ---
 
@@ -4669,3 +4669,170 @@ Read of the edited hunks confirms line 29 carries `minio/minio:RELEASE.2025-04-2
 ### Scope
 
 Edited only `.github/workflows/backend.yml` (two image refs). `docker-compose.yml` untouched (healthy locally, Tester-approved). No governance workflow, app, test, spec, Planner, fixture, version, or tag change. No secrets inspected.
+
+---
+
+## Builder CI root-cause chain and round review record — 2026-09-28
+
+Append-only factual record for Issue #64 on branch `@carlosegoulart/64/feat/semantic-clip-recommendation`, HEAD `857965e`. No existing line of this file was edited, removed, or reordered. No decision marker line was added, removed, or normalized: the count of lines containing the decision-marker token is 20 before and 20 after this append (counted with the repository grep tool; the shell `grep` command is not allowlisted in this session). The prior entry `## Builder backend CI registry fix — 2026-09-28` still documents the intermediate `minio/minio:RELEASE.2025-04-22T22-12-26Z` refs; that intermediate state was superseded later in the same round and is preserved unchanged as history.
+
+### 1. Provenance
+
+Verified directly in this session with allowlisted read-only git commands: `git log -1 --stat a146ce0`, `git log -1 --stat 857965e`, `git diff a146ce0^ a146ce0`, `git diff 857965e^ 857965e`, plus full reads of `.github/workflows/backend.yml` (HEAD content), `apps/api/phpunit.xml`, and `apps/api/tests/Support/Issue64RecoveryFixture.php`. CI run identifiers, durations, and suite counts in section 5 are the round's CI verification record; the `gh` CLI is permission-rejected in this session, so the runs were not re-queried here and are recorded as round record, not as session reproduction.
+
+### 2. First root cause — unreachable MinIO image (pre-existing)
+
+The Backend CI `tests` job died before any test ran: `docker pull minio/minio:RELEASE.2025-04-22T22-12-26Z` was denied three times (run `36377145512`, job `108785188629`). Registry-API verification recorded for this round: quay.io anonymous pull disabled, Docker Hub `minio/minio` repository deleted (HTTP 404), `minio/mc` HTTP 404, `bitnami/minio` 0 tags. This is why the `minio/minio` refs introduced earlier in the round could not work, and why the previous entry in this file documents image refs that no longer exist at HEAD.
+
+### 3. Fix commit `a146ce0` — reachable pinned image
+
+Commit `a146ce0` `ci(backend): pull MinIO from reachable pinned image` (`Refs #64`; `.github/workflows/backend.yml`, 3 insertions / 3 deletions — verified by `git log -1 --stat a146ce0` and `git diff a146ce0^ a146ce0`):
+
+1. Service container and bucket-init step both moved to the reachable pinned `bitnamilegacy/minio:2025.4.22-debian-12-r2`.
+2. The explicit `command: server /data --console-address :9001` was removed because the Bitnami image's default CMD already starts the server.
+3. The bucket-init `docker run` gained `-e MC_CONFIG_DIR=/tmp/.mc` because the image runs as uid 1001 with `HOME=/`, so mc's default config path is not writable.
+
+### 4. Empirical validation of fix 1 — run 36421447532
+
+Round CI record: MinIO healthcheck OK, bucket initialization OK, `MinIOIntegrationTest` 4/4 PASS. The full suite then reported `9 failed, 1192 passed`, exposing the second root cause in section 5.
+
+### 5. Second root cause — recovery fixture database guard
+
+All 9 failures were `SETUP_BLOCKER: unauthorized database configuration` raised by `Issue64RecoveryFixture::guard()` (source verified in this session: `apps/api/tests/Support/Issue64RecoveryFixture.php` throws that exact message unless `APP_ENV=testing`, default connection `pgsql`, and both the configured and the live database name are exactly `aiclip_test_issue64`). CI provisioned `aiclip_test`, so the guard fail-closed before each of those tests.
+
+### 6. Fix commit `857965e` — recovery test database provisioning
+
+Commit `857965e` `ci(backend): provision issue 64 recovery test database` (`Refs #64`; `.github/workflows/backend.yml`, 4 insertions / 4 deletions — verified by `git log -1 --stat 857965e` and `git diff 857965e^ 857965e`): `POSTGRES_DB` → `aiclip_test_issue64`, postgres healthcheck `-d` → `aiclip_test_issue64`, migrate-step `DB_DATABASE` → `aiclip_test_issue64`, test-step `DB_DATABASE` → `aiclip_test_issue64`.
+
+Environment-precedence reasoning (verified by reading `apps/api/phpunit.xml`): the `<env name="DB_CONNECTION">` and `<env name="DB_DATABASE">` entries carry no `force` attribute (only `MEDIA_CLIP_RANKING_PROVIDER` and the six `AWS_*` entries are forced), so PHPUnit's PhpHandler does not overwrite variables already present in the process environment — the GitHub Actions step `env:` block therefore wins. Laravel's Env repository is immutable once loaded, so `.env` values cannot override the step environment either.
+
+### 7. Final CI results at HEAD `857965e` (round record)
+
+| Workflow | Run / job | Result |
+|---|---|---|
+| Backend CI | run `36424132611` | `Tests: 1201 passed (5655 assertions)` in 4m4s |
+| E2E CI | run `36424132695` | PASS 2m35s — Playwright 75 passed across 3 viewports |
+| Frontend CI | run `36424132555` | PASS — vitest 187, oxlint 0, vite build OK |
+| governance | run `36424132767` | PASS |
+| pr-enforcement | run `36424132767`, job `108933795339` | FAIL — exactly 2 errors: (a) invalid commit format for `badbde0` (`Pending changes exported from your codespace` is not a Conventional Commit); (b) this evidence file must contain exactly one decision marker while it currently contains many |
+
+Decision-marker normalization is a separate post-approval step and is deliberately not performed in this append.
+
+### 8. Independent Tester reviews of this round (recorded)
+
+- MinIO image fix review (commit `a146ce0`): APPROVED as a scoped round review.
+- Recovery database provisioning review (commit `857965e`): APPROVED as a scoped round review.
+- Final independent review at `857965e`: REJECTED — pending committed runtime-artifact removal, evidence decision-marker normalization, and rewording of commit `badbde0`. Recorded here as narrative only, with no decision marker line added.
+
+### 9. Scope of this append
+
+This entry is append-only and limited to the CI root-cause chain and the round review outcomes above. No existing entry was rewritten; no decision marker was added, removed, or reordered. No application, test, workflow, governance, Docker, or Planner artifact was modified by Builder for this entry; no commit, push, pull request, merge, branch, or issue action was performed. No secrets inspected.
+
+---
+
+## Cleanup handoff — OPERATOR-PROVIDED results and current Builder inspection — 2026-09-28
+
+### Operator provenance (not reproduced by this Builder)
+
+- Continue Issue #64 / open PR #65 (`Closes #64`), branch `@carlosegoulart/64/feat/semantic-clip-recommendation`, supplied HEAD `857965ef209ac2a057e726269e2fa8f57d7441b7`; no new lifecycle. Orchestrator reported only the framework ignore rule and the pending 58-line evidence append modified initially, with nothing staged. The preceding history, including the section at lines 4675–4729, is preserved unchanged.
+- The operator interrupted the latest scoped candidate review because of harness limits. It was not approved and establishes no new decision. The preceding narrative at line 4725 is preserved history, not adopted as a verdict from that interrupted review. The two earlier scoped Tester approvals of the MinIO and database fixes really occurred in Orchestrator sessions `ses_f182011a3ffeGIyFqGnEwh4uQJ` and `ses_f17fe52bfffegdby541Teaki0v`; neither was a final issue approval.
+- The operator removed untracked `apps/api/.builder-probe`, `apps/api/storage/framework/.builder-probe`, and `services/worker/aiclip_worker.egg-info/`. This Builder did not recreate them.
+- Operator environment: psql 16.15 installed; Docker daemon available; previous worker venv absent in fresh Cloud Shell. The operator recreated `$HOME/aiclip-m5-verification/worker-venv` and installed `services/worker[dev]`. Initial full worker result: **6 failed, 410 passed, 23 skipped**; all six failures were `ModuleNotFoundError: scenedetect`. After installing `services/worker[dev,scene_detection]`, the result was **416 passed, 23 skipped in 17.79s, exit 0**.
+- Remaining skips: 16 `valid_sample.mp4` cases, 3 `video_only.mp4`, 1 `audio_only.mp3`, and 3 PySceneDetect integrations, due to absent ffmpeg/ffprobe. MCP policy blocked sudo installation; no installation or workaround was attempted by this Builder. This is not 439/439, not Tester-executed, and not full required integration GREEN. Older 439-pass evidence belongs to a different environment and remains unchanged.
+
+### CI provenance (Orchestrator reverified; not current local execution)
+
+At supplied HEAD `857965e`, Orchestrator reported:
+
+| Check | Run / job | Result |
+|---|---|---|
+| Backend CI | `36424132611` | PASS; operator/previous Tester verified 1201 tests / 5655 assertions |
+| E2E CI | `36424132695` | PASS, 75 tests |
+| Frontend CI | `36424132555` | PASS |
+| governance | run `36424132767`, job `108933795661` | PASS |
+| pr-enforcement | run `36424132767`, job `108933795339` | FAIL |
+
+These CI results are separate from the incomplete local worker integration coverage. This Builder did not query CI or rerun suites.
+
+### Current Builder inspection and permitted cleanup
+
+- Read root/API instructions, project state, the current planning bundle, the pending evidence section, relevant ignore files, and the validator's decision check. The shell tool denied the initial read-only Git inspection. That operation stopped without an alternate interpreter, command, wrapper, or tool retry. Git tracking/provenance inventory, HEAD/status/staged verification, diff/diff-check, and Git ignore matching are therefore unavailable in this session, not passing checks.
+- The ten-file tracked cleanup list and its introduction by `badbde0` are operator-provided, not independently Git-verified here. Direct file reads confirmed both requested XML files are generated JUnit reports. The patch tool removed only `apps/api/storage/framework/tester-junit.xml` and `apps/api/storage/framework/tester-junit-postpint.xml` from the working tree; no index operation was performed.
+- Eight requested bytecode paths remain HUMAN/operator cleanup blockers, untouched because they are outside Builder's permitted surface or inside protected governance tests:
+  - `scripts/__pycache__/merge_gate.cpython-314.pyc`
+  - `tests/governance/__pycache__/pr_enforcement.cpython-314.pyc`
+  - `tests/governance/__pycache__/test_agent_permissions.cpython-314.pyc`
+  - `tests/governance/__pycache__/test_enforcement.cpython-314.pyc`
+  - `tests/governance/__pycache__/test_governance.cpython-314.pyc`
+  - `tests/governance/__pycache__/test_merge_gate.cpython-314.pyc`
+  - `tests/governance/__pycache__/test_pr_enforcement.cpython-314.pyc`
+  - `tests/governance/__pycache__/validators.cpython-314.pyc`
+- Additional tracked bytecode and its classification as pre-existing base artifacts versus issue additions could not be established without the denied Git inventory. No unrelated cleanup was attempted; do not interpret this limitation as an empty inventory.
+- Retained the existing `tester-junit*.xml` rule in `apps/api/storage/framework/.gitignore`: its directory and filename prefix narrowly cover these runtime reports without ignoring media. `services/worker/.gitignore` already contains `__pycache__/`, `*.py[cod]`, and `.pytest_cache/`; no worker ignore change is needed. Root `.gitignore` was reported absent by the read tool and is outside Builder's allowed write scope. Proposed operator-only root contents are exactly:
+
+  ```gitignore
+  __pycache__/
+  *.py[cod]
+  ```
+
+  This mirrors the existing worker bytecode policy without broad binary/media ignores. Ignore rules do not untrack existing files. No root or protected-directory ignore edit was attempted.
+
+### Marker inventory and validation boundary
+
+Repository grep inspection distinguishes complete plain anchored verdict lines from formatted/embedded occurrences. Current PR enforcement calls `validate_merge_approval` at `tests/governance/pr_enforcement.py:140`; its definition at `tests/governance/validators.py:170–190` checks **substring presence** at lines 180–184, not a count of anchored lines: both verdict kinds are present, including historical formatted markers. Thus the earlier wording about requiring exactly one marker must not be interpreted as an anchored-line counting implementation.
+
+| Inventory | Before | After |
+|---|---|---|
+| Plain anchored verdict lines | 5 (2 affirmative, 3 negative) | 5 (2 affirmative, 3 negative) |
+| Additional formatted/embedded full verdict occurrences | 9 (1 affirmative, 8 negative) | 9 (1 affirmative, 8 negative) |
+| All full verdict substring occurrences | 14 (3 affirmative, 11 negative) | 14 (3 affirmative, 11 negative) |
+| All decision-label-bearing lines, including 6 non-verdict prose references | 20 | 20 |
+
+The five plain lines remain at 4293, 4365, 4526, 4592, and 4648. No normative marker was added, changed, removed, or normalized. Independent final approval remains pending; interrupted review supplies none. Any later authorized normalization must account for formatted/embedded history as well as plain lines.
+
+This is artifact/evidence cleanup only, not a new behavioral RED/GREEN/REFACTOR claim. No application, frontend, E2E, worker, or governance tests were run; no servers, databases, runtime outputs, or repository scratch files were created. Legitimate media fixtures, sources, tests, workflows, Planner files, and protected paths were not written. No real environment secrets were inspected. No staging, commit, push, branch/PR operation, or history rewrite occurred. Remaining HUMAN gates include protected-artifact cleanup and Git provenance/validation, root ignore coverage, policy-compliant provision of missing media tools and complete integration verification, independent final review, and resolution of the reported pr-enforcement failure through separately authorized roles. This handoff does not approve the work.
+
+---
+
+## Phase D — final independent Tester verdict and historical normalization — 2026-09-28
+
+### Authority and scope
+
+The human/Orchestrator handoff reports that independent Tester session `ses_f177c4f9cffe6xkvgJp5gov75q` issued final issue-level approval with zero blockers on 2026-09-28 for the 12-path cleanup candidate plus the full Issue #64 branch content at HEAD `857965e` (`857965ef209ac2a057e726269e2fa8f57d7441b7`), branch `@carlosegoulart/64/feat/semantic-clip-recommendation`, PR #65. That independent review is the sole authority for the verdict recorded below and for this explicitly authorized Phase D normalization; Builder is recording the supplied outcome, not approving its own work or claiming to have reproduced the review.
+
+At that review, pr-enforcement's commit-message leg and evidence-decision leg were known deferred gates. Tester reviewed the candidate before this normalization and did not execute it. No CI-green, merge-readiness, merge, or issue-closure claim follows from this entry.
+
+### Documentation before/after verification
+
+Builder re-read root/API instructions and verified the decision literals and substring checks by read-only grep/read in `tests/governance/validators.py:30–31,103–123,170–190`, including the actual `validate_merge_approval` call at `tests/governance/pr_enforcement.py:140`. The checks inspect whole-file substring presence, including formatted or embedded prose; this explanation paraphrases their behavior without quoting either literal.
+
+Before editing, literal grep found 3 APPROVE occurrences at lines 3082, 4365, 4592 and 11 REJECT occurrences at lines 2751, 2858, 3184, 3313, 3608, 3868, 4056, 4131, 4293, 4526, 4648. Total: 14 full verdict substrings, 5 plain anchored verdict lines, 9 additional formatted/embedded occurrences, and 20 decision-label-bearing lines (including 6 non-verdict prose references).
+
+The following table maps every former occurrence to its descriptive historical replacement; original line numbers remain stable because each replacement occupies the same line. Dates, authorship, reasons, scope, headings, supersession notes, and adjacent execution records remain in their original sections. No historical rejection became an approval, and the two pin-scoped approvals remain scoped, not final issue approvals.
+
+| Original line | Former verdict | Historical replacement (formatting omitted) |
+|---|---|---|
+| 2751 | REJECT | Historical Tester review outcome: rejected this candidate. |
+| 2858 | REJECT | The historical Tester review rejected this candidate. |
+| 3082 | APPROVE | Historical Tester review outcome: approved the then-reviewed candidate; this approval was superseded by the following re-review. |
+| 3184 | REJECT | Historical Tester re-review outcome: rejected the then-reviewed candidate. |
+| 3313 | REJECT | Historical Tester re-review outcome: rejected the staged candidate. |
+| 3608 | REJECT | Historical Tester review outcome: rejected the candidate in the new environment. |
+| 3868 | REJECT | Historical Tester EXDEV review outcome: rejected the candidate while the fix was not applied and mandatory execution was blocked. |
+| 4056 | REJECT | Embedded parenthetical now reads: historical rejection when fix not applied. |
+| 4131 | REJECT | Historical Tester review outcome: rejected the Etapas A+B candidate. |
+| 4293 | REJECT | Historical Tester review outcome: rejected the infrastructure + A+B candidate. |
+| 4365 | APPROVE | Historical scoped Tester review outcome: approved the one-line minio-init pin only. |
+| 4526 | REJECT | Historical Tester M5 review outcome: rejected the then-reviewed candidate. |
+| 4592 | APPROVE | Historical scoped Tester review outcome: approved the B1 MinIO image re-pin only. |
+| 4648 | REJECT | Historical Tester post-commit review outcome: rejected the consolidated candidate. |
+
+After normalization, read-only literal grep confirmed exactly 1 APPROVE occurrence (the final independent Tester verdict below), 0 REJECT occurrences, and 7 decision-label-bearing lines: the final verdict plus the 6 unchanged non-verdict references at lines 646, 1265, 1460, 1616, 2080, and 3743. Anchored verdict grep found 1 plain line; there are 0 additional formatted/embedded verdict occurrences and 1 full verdict substring in total. Read-tool inspection reviewed all 14 replacements and their surrounding historical context.
+
+This is a documentation inventory check, not executed behavioral RED/GREEN or test-suite evidence. One initial patch failed context verification without applying changes; grep reconfirmed all 14 original occurrences before the corrected patch. Python is permission-prohibited by the handoff and was not attempted; no tests or validators were executed. Shell inspection was previously permission-denied in this Builder session and was not retried or bypassed. Review uses the explicitly authorized read-tool inspection of affected regions, not a claimed Git diff execution. Repository-wide status, diff-check, and byte-for-byte comparison of the supplied 12-path state remain for Orchestrator verification; Builder wrote only this evidence file and did not touch the other pending paths.
+
+The earlier append-only narratives, point-in-time marker inventories, scoped-approval disclaimers, interrupted-review history, and OPERATOR-PROVIDED attribution remain historical records. In particular, the operator's 416 passed / 23 skipped result remains incomplete integration coverage, not 439/439 and not Tester execution; older results are not retroactively validated or rewritten. Existing headings and TDD structure are unchanged. No staging, commit, push, history rewrite, branch/PR operation, merge, or closure was performed.
+
+### Final independent Tester verdict (recorded from the supplied handoff)
+
+Decision: APPROVE
