@@ -6,15 +6,15 @@ AiClip is a modular application with a dedicated media worker boundary, designed
 
 The platform follows a request-response pattern for user interactions and an event-driven pattern for media processing. User actions trigger API calls that may enqueue background jobs for heavyweight processing like transcription, scene detection, and image generation. Results are stored in object storage and metadata in PostgreSQL, with the frontend polling or using websockets for status updates.
 
-## Current Execution Topology (M0–M4 mainline)
+## Current Execution Topology (M0–M5 mainline)
 
 M4 Video Understanding is completed, including Issue #58 / PR #59's merged
 deterministic candidate-analysis foundation. `scene_timing_baseline` v1.0.0
 scores/ranks timings; it is not an AI or semantic-relevance model. The M5 first
-slice (Issue #64, recovery branch) adds model-backed semantic clip ranking
-through the existing CLI subprocess topology (`rank_clips` v1.0.0, stdin-only,
-sha256-bound); it is implemented and Tester-approved but unmerged, so mainline
-execution and behavior are unchanged. Issue #60
+slice (Issue #64) added model-backed semantic clip ranking through the
+existing CLI subprocess topology (`rank_clips` v1.0.0, stdin-only,
+sha256-bound); it is merged via PR #66, so mainline execution now includes the
+semantic ranking stage. Issue #60
 is closed as completed following the merge of PR #61, completing M4's
 corrective closeout without adding recommendation, rendering or UI capabilities.
 
@@ -30,8 +30,9 @@ React → Laravel API → Laravel queue → ProcessMediaAsset
                            Laravel PostgreSQL persistence
 ```
 
-The current job chains probe, scene detection, audio extraction, transcription
-and deterministic clip analysis. Scene/transcript failures retain their defined
+The current job chains probe, scene detection, audio extraction, transcription,
+deterministic clip analysis and model-backed semantic clip ranking
+(`rank_clips` v1.0.0). Scene/transcript failures retain their defined
 independent lifecycles; no-audio/extraction-failure cases can use scene-only
 analysis. Metadata-only candidate analysis receives timing inputs, not transcript
 text. Valid executed empty results complete with full provenance; fabricated

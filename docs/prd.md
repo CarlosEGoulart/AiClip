@@ -213,7 +213,7 @@ The following are explicitly NOT included in MVP:
 ## Dependencies
 
 - Issue #1 (Governance Bootstrap): Completed
-- M1 — Application Foundation: In progress (foundation established, authentication next)
+- M1 — Application Foundation: Completed
 - External APIs: YouTube Data API, Instagram Graph API, TikTok API
 - AI Providers: Transcription service, Image generation service
 - Infrastructure: Object storage, PostgreSQL database, Queue system
