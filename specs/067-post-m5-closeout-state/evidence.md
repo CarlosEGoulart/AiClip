@@ -99,6 +99,32 @@ rule: these are not deliverables, are left untouched (no deletion, no
 ignore-rule change), and must never be staged or enter the commit/PR. Tester
 independently checks their classification.
 
+## TDD Evidence (documentation assertions)
+
+### RED
+
+Fresh manual documentary assertions D1–D11 executed against the pinned base
+`460a334888a01053a689cfe3b069bc6dd99972d4` before edits: D1/D2/D3/D5/D6/D7/
+D9/D10 failed on stale content (active/unmerged/not-shipped M5 and #64 prose,
+M5 planned row, missing M6-next naming, M1 In progress, pre-merge architecture
+wording); D4/D8 passed as invariants; D11 passed for the intermediate scope.
+Failures were content-based, not environment, syntax, fixture, or harness
+failures. Recorded in the Fresh RED section above with file/line observations.
+
+### GREEN
+
+Same D1–D11 assertions rerun independently by the read-only Builder
+documentation checker after the minimal five-document correction (README
++11/-11, architecture +7/-8, prd +1/-1, project-state +18/-36, roadmap
++18/-8): all PASS. Governance `python -m unittest discover -s
+tests/governance` → 170 tests, OK, exit 0. `git diff --check` clean.
+
+### REFACTOR
+
+No-change concision review: corrections localized, readable, and consistent
+across documents; checklist rerun after final wording; governance rerun 170
+OK. No unrelated cleanup performed.
+
 ## Independent Tester review — APPROVE
 
 Independent Tester (session `ses_f1326f45bffeBEqm9fBMZMwX4O`) executed on
