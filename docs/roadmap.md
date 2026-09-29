@@ -50,19 +50,25 @@ is deterministic, not AI recommendation. Issue #60 is closed as completed
 following the merge of PR #61, completing M4's corrective closeout for
 concurrency, failure boundaries, validation and documentation. Its verification
 evidence remains separate and is not attributed retrospectively to #58.
-M5 AI Clip Recommendation retains model-backed recommendation and semantic
-relevance. Its first slice, Issue #64, is the single active implementation
-issue: implemented on the recovery branch, with its implementation candidate
-independently Tester-approved, unmerged — PR #65 is superseded without merge
-and its replacement PR is the one active PR. No M5 capability ships until that
-PR merges and Issue #64 closes. Further M5 slices and M6 require separate
-explicit authorization.
+M5 AI Clip Recommendation is completed: its first slice, Issue #64, added
+model-backed semantic clip ranking (`rank_clips` v1.0.0) and shipped in the
+mainline via the merge of PR #66; the issue is closed as completed. PR #65 was
+superseded without merge, closed unmerged, and remains as history with both
+Issue #64 branches preserved. M4 retains deterministic candidate analysis
+(`scene_timing_baseline` v1.0.0, timing-based scores/ranks, not AI);
+`rank_clips` is model-backed semantic ranking, separate from M4 scoring.
+Further M5 slices and M6 require separate explicit authorization.
+
+## M5 — AI Clip Recommendation (completed)
+
+Completed slices:
+
+- Model-backed semantic clip recommendation stage (Issue #64, PR #66 — merged; issue closed; PR #65 superseded and closed unmerged)
 
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
-| M5 | AI Clip Recommendation |
 | M6 | Vertical Clip Rendering |
 | M7 | Clip Review Experience |
 | M8 | AI Image Studio |
@@ -72,5 +78,9 @@ explicit authorization.
 | M12 | TikTok Publishing |
 | M13 | Unified One-Click Publishing |
 | M14 | Production Hardening |
+
+M6 — Vertical Clip Rendering is the next milestone. It is future, not active,
+not authorized, and not implemented; starting it requires separate explicit
+authorization.
 
 Only one implementation issue is active at a time.
