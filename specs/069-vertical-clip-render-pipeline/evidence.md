@@ -128,3 +128,15 @@ No additional refactoring needed. The implementation follows existing patterns f
 4. Verify real FFmpeg integration with fixture video
 5. Run Playwright regression tests (no new UI)
 6. Record APPROVE or REJECT decision
+
+## Tester Decision
+
+**Decision: APPROVE**
+
+The independent Tester validated the corrected implementation and confirmed all acceptance criteria are satisfied per spec.md. The implementation correctly:
+- Removes automatic ProcessMediaAsset render stage
+- Implements dedicated RenderMediaClip job with explicit candidate_index selection
+- Requires explicit candidate_index with no default/auto-selection
+- Makes ProcessMediaAsset completion independent of render
+- Preserves all valid M4/M5 patterns (DerivedAsset, RenderProfile, RenderValidator, Python worker)
+- Passes all corrective regression tests
