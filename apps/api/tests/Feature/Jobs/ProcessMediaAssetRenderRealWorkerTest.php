@@ -18,8 +18,7 @@ uses(TestCase::class, RefreshDatabase::class);
 
 /*
 |--------------------------------------------------------------------------
-| Real worker integration tests
-| Requires FFmpeg fixture and real worker subprocess
+| Real worker integration tests - REGRESSION: ProcessMediaAsset should NOT auto-render
 |--------------------------------------------------------------------------
 */
 
@@ -176,11 +175,17 @@ function createCompletedRecommendationReal(MediaAsset $asset, MediaClipAnalysis 
 
 /*
 |--------------------------------------------------------------------------
-| TC-PMR-01: Full job with real worker subprocess, FFmpeg fixture
+| REGRESSION: ProcessMediaAsset should complete WITHOUT auto-render
 |--------------------------------------------------------------------------
 */
 
-it('completes full job with real worker and FFmpeg fixture', function () {
+/*
+|--------------------------------------------------------------------------
+| TC-PMR-REG-01: ProcessMediaAsset completes with real worker but NO auto-render
+|--------------------------------------------------------------------------
+*/
+
+it('completes asset with real worker but does NOT auto-render', function () {
     // Skip if FFmpeg not available
     $ffmpegCheck = exec('which ffmpeg');
     if (empty($ffmpegCheck)) {
@@ -209,211 +214,13 @@ it('completes full job with real worker and FFmpeg fixture', function () {
     $job->handle();
 
     $asset->refresh();
+    // Asset should complete WITHOUT render
     expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
 
+    // NO render should exist
     $render = DerivedAsset::where('media_asset_id', $asset->id)
         ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
         ->first();
 
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('completed');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMR-02: Output file exists on configured disk at expected key
-|--------------------------------------------------------------------------
-*/
-
-it('output file exists in storage at expected key', function () {
-    $ffmpegCheck = exec('which ffmpeg');
-    if (empty($ffmpegCheck)) {
-        $this->markTestSkipped('FFmpeg not available');
-    }
-
-    $fixturePath = base_path('services/worker/tests/fixtures/render_source.mp4');
-    if (!file_exists($fixturePath)) {
-        $this->markTestSkipped('FFmpeg fixture video not available');
-    }
-
-    $asset = createProbedAssetForRenderReal();
-    $sceneAnalysis = createCompletedSceneAnalysisReal($asset);
-    $clipAnalysis = createCompletedClipAnalysisReal($asset);
-    $transcript = createCompletedTranscriptReal($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendationReal($asset, $clipAnalysis, $transcript);
-
-    $storagePath = 'projects/1/assets/'.$asset->id.'/source.mp4';
-    Storage::disk('media')->put($storagePath, file_get_contents($fixturePath));
-
-    $action = app(ProcessMediaAction::class);
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key-storage', $action);
-
-    $job->handle();
-
-    $asset->refresh();
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('completed');
-
-    // Check output file exists
-    expect(Storage::disk($render->storage_disk)->exists($render->storage_key))->toBeTrue();
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMR-03: DerivedAsset render_columns populated (configuration, parameters)
-|--------------------------------------------------------------------------
-*/
-
-it('DerivedAsset render columns populated with configuration and parameters', function () {
-    $ffmpegCheck = exec('which ffmpeg');
-    if (empty($ffmpegCheck)) {
-        $this->markTestSkipped('FFmpeg not available');
-    }
-
-    $fixturePath = base_path('services/worker/tests/fixtures/render_source.mp4');
-    if (!file_exists($fixturePath)) {
-        $this->markTestSkipped('FFmpeg fixture video not available');
-    }
-
-    $asset = createProbedAssetForRenderReal();
-    $sceneAnalysis = createCompletedSceneAnalysisReal($asset);
-    $clipAnalysis = createCompletedClipAnalysisReal($asset);
-    $transcript = createCompletedTranscriptReal($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendationReal($asset, $clipAnalysis, $transcript);
-
-    $storagePath = 'projects/1/assets/'.$asset->id.'/source.mp4';
-    Storage::disk('media')->put($storagePath, file_get_contents($fixturePath));
-
-    $action = app(ProcessMediaAction::class);
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key-columns', $action);
-
-    $job->handle();
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-
-    // Check render_configuration is populated
-    expect($render->render_configuration)->toBeArray()
-        ->and($render->render_configuration)->toHaveKeys([
-            'target_width', 'target_height', 'target_fps',
-            'video_codec', 'video_bitrate_kbps',
-            'audio_codec', 'audio_bitrate_kbps',
-        ]);
-
-    // Check render_parameters is populated with all required keys
-    expect($render->render_parameters)->toBeArray()
-        ->and($render->render_parameters)->toHaveKeys([
-            'configuration', 'source_media', 'ffmpeg_version',
-            'filter_graph', 'limits',
-        ]);
-
-    // Verify configuration matches profile
-    expect($render->render_configuration)->toBe(\App\Services\RenderProfile::configuration());
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMR-04: DerivedAsset output metadata matches probe (duration, resolution, codecs)
-|--------------------------------------------------------------------------
- */
-
-it('DerivedAsset output metadata matches probe within tolerance', function () {
-    $ffmpegCheck = exec('which ffmpeg');
-    if (empty($ffmpegCheck)) {
-        $this->markTestSkipped('FFmpeg not available');
-    }
-
-    $fixturePath = base_path('services/worker/tests/fixtures/render_source.mp4');
-    if (!file_exists($fixturePath)) {
-        $this->markTestSkipped('FFmpeg fixture video not available');
-    }
-
-    $asset = createProbedAssetForRenderReal();
-    $sceneAnalysis = createCompletedSceneAnalysisReal($asset);
-    $clipAnalysis = createCompletedClipAnalysisReal($asset);
-    $transcript = createCompletedTranscriptReal($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendationReal($asset, $clipAnalysis, $transcript);
-
-    $storagePath = 'projects/1/assets/'.$asset->id.'/source.mp4';
-    Storage::disk('media')->put($storagePath, file_get_contents($fixturePath));
-
-    $action = app(ProcessMediaAction::class);
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key-metadata', $action);
-
-    $job->handle();
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('completed');
-
-    // Resolution matches configuration
-    expect($render->width)->toBe(1080);
-    expect($render->height)->toBe(1920);
-
-    // Duration within 5% of expected (10000ms)
-    $expectedDuration = 10000;
-    $tolerance = $expectedDuration * 0.05; // 5%
-    expect(abs($render->duration_ms - $expectedDuration))->toBeLessThanOrEqual($tolerance);
-
-    // Codecs
-    expect($render->codec)->toBe('libx264');
-
-    // Size > 0
-    expect($render->size_bytes)->toBeGreaterThan(0);
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMR-05: Filter graph in parameters is non-empty
-|--------------------------------------------------------------------------
- */
-
-it('filter_graph in parameters is non-empty', function () {
-    $ffmpegCheck = exec('which ffmpeg');
-    if (empty($ffmpegCheck)) {
-        $this->markTestSkipped('FFmpeg not available');
-    }
-
-    $fixturePath = base_path('services/worker/tests/fixtures/render_source.mp4');
-    if (!file_exists($fixturePath)) {
-        $this->markTestSkipped('FFmpeg fixture video not available');
-    }
-
-    $asset = createProbedAssetForRenderReal();
-    $sceneAnalysis = createCompletedSceneAnalysisReal($asset);
-    $clipAnalysis = createCompletedClipAnalysisReal($asset);
-    $transcript = createCompletedTranscriptReal($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendationReal($asset, $clipAnalysis, $transcript);
-
-    $storagePath = 'projects/1/assets/'.$asset->id.'/source.mp4';
-    Storage::disk('media')->put($storagePath, file_get_contents($fixturePath));
-
-    $action = app(ProcessMediaAction::class);
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key-filtergraph', $action);
-
-    $job->handle();
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-
-    $filterGraph = $render->render_parameters['filter_graph'] ?? '';
-    expect($filterGraph)->toBeString()
-        ->and($filterGraph)->not->toBeEmpty()
-        ->and($filterGraph)->toContain('crop=')
-        ->and($filterGraph)->toContain('scale=')
-        ->and($filterGraph)->toContain('pad=')
-        ->and($filterGraph)->toContain('fps=');
+    expect($render)->toBeNull();
 });

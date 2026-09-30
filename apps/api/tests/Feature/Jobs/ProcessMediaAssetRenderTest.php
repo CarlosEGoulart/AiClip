@@ -21,7 +21,7 @@ uses(TestCase::class, RefreshDatabase::class);
 
 /*
 |--------------------------------------------------------------------------
-| Fixtures for ProcessMediaAsset render stage tests
+| Fixtures for ProcessMediaAsset render regression tests (NEW BEHAVIOR: NO auto-render)
 |--------------------------------------------------------------------------
 */
 
@@ -119,7 +119,7 @@ function createCompletedRecommendation(MediaAsset $asset, MediaClipAnalysis $cli
         'lock_wait_seconds' => ClipRankingProfile::lockWaitSeconds(),
     ];
 
-    $recommendation = MediaClipRecommendation::create([
+    return MediaClipRecommendation::create([
         'media_asset_id' => $asset->id,
         'm4_analysis_id' => $clipAnalysis->id,
         'status' => MediaClipRecommendation::STATUS_COMPLETED,
@@ -153,10 +153,7 @@ function createCompletedRecommendation(MediaAsset $asset, MediaClipAnalysis $cli
             'm4_analysis_id' => $clipAnalysis->id,
             'm4_algorithm' => 'scene_timing_baseline',
             'm4_algorithm_version' => '1.0.0',
-            'm4_candidates' => [
-                ['index' => 0, 'start_ms' => 0, 'end_ms' => 10000, 'rank' => 1, 'score' => 1.0, 'criteria' => ['duration_fit' => 1.0, 'speech_coverage' => 0.0, 'boundary_alignment' => 0.0], 'source_scene_indexes' => [0]],
-                ['index' => 1, 'start_ms' => 10000, 'end_ms' => 20000, 'rank' => 2, 'score' => 0.5, 'criteria' => ['duration_fit' => 1.0, 'speech_coverage' => 0.0, 'boundary_alignment' => 0.0], 'source_scene_indexes' => [1]],
-            ],
+            'm4_candidates' => $clipAnalysis->candidates,
             'duration_ms' => 30000,
             'transcript_state' => 'completed_valid',
             'projection_version' => '1.0.0',
@@ -177,8 +174,6 @@ function createCompletedRecommendation(MediaAsset $asset, MediaClipAnalysis $cli
         ],
         'execution_parameters' => $executionParameters,
     ]);
-
-    return $recommendation;
 }
 
 /*
@@ -268,11 +263,17 @@ class RecordingRenderAction extends ProcessMediaAction
 
 /*
 |--------------------------------------------------------------------------
-| TC-PMA-01: M5 completed/ranked, valid candidate_index → render invoked, completes
+| REGRESSION TESTS - ProcessMediaAsset should NOT auto-render (NEW BEHAVIOR)
 |--------------------------------------------------------------------------
 */
 
-it('renders clip when M5 completed with valid candidate_index', function () {
+/*
+|--------------------------------------------------------------------------
+| TC-PMA-REG-01: ProcessMediaAsset completes after M5 WITHOUT render stage
+|--------------------------------------------------------------------------
+*/
+
+it('completes asset after M5 WITHOUT auto-render', function () {
     $asset = createProbedAsset();
     $sceneAnalysis = createCompletedSceneAnalysis($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
@@ -285,543 +286,143 @@ it('renders clip when M5 completed with valid candidate_index', function () {
     $job->handle();
 
     $asset->refresh();
+    // Asset should complete WITHOUT render being invoked
     expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
 
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('completed');
-    expect($render->candidate_index)->toBe(0);
-    expect(count($action->renderCalls))->toBe(1);
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-02: M5 completed/ranked, candidate_index out of bounds → failed attempt
-|--------------------------------------------------------------------------
-*/
-
-it('fails render when candidate_index out of bounds', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-
-    // Create recommendation with only 2 candidates
-    $recommendation = MediaClipRecommendation::create([
-        'media_asset_id' => $asset->id,
-        'm4_analysis_id' => $clipAnalysis->id,
-        'status' => MediaClipRecommendation::STATUS_COMPLETED,
-        'outcome' => MediaClipRecommendation::OUTCOME_RANKED,
-        'algorithm' => 'transcript_semantic_recommendation',
-        'algorithm_version' => '1.0.0',
-        'parameters' => ClipRankingProfile::parameters(ClipRankingProfile::configuration(), false, true),
-        'recommendations' => [
-            [
-                'm4_candidate_index' => 0,
-                'start_ms' => 0,
-                'end_ms' => 10000,
-                'm4_rank' => 1,
-                'm4_score' => 1.0,
-                'semantic_score' => 0.95,
-                'semantic_rank' => 1,
-                'reason' => null,
-            ],
-            [
-                'm4_candidate_index' => 1,
-                'start_ms' => 10000,
-                'end_ms' => 20000,
-                'm4_rank' => 2,
-                'm4_score' => 0.5,
-                'semantic_score' => 0.75,
-                'semantic_rank' => 2,
-                'reason' => null,
-            ],
-        ],
-        'input_snapshot' => [
-            'm4_analysis_id' => $clipAnalysis->id,
-            'm4_algorithm' => 'scene_timing_baseline',
-            'm4_algorithm_version' => '1.0.0',
-            'm4_candidates' => $clipAnalysis->candidates,
-            'duration_ms' => 30000,
-            'transcript_state' => 'completed_valid',
-            'projection_version' => '1.0.0',
-            'text_hashes' => [
-                ['index' => 0, 'sha256' => hash('sha256', 'First segment')],
-                ['index' => 1, 'sha256' => hash('sha256', 'Second segment')],
-            ],
-            'request_sha256' => hash('sha256', 'test'),
-        ],
-        'execution_parameters' => [
-            'timeout_seconds' => 60,
-            'lock_wait_seconds' => 65,
-        ],
-    ]);
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $job->handle();
-
-    $asset->refresh();
-    // Asset should still complete because render failure is a controlled upstream failure
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('failed');
-    expect($render->render_error)->toBe('invalid_candidate_index');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-03: M5 completed/ranked, candidate has null semantic_score → failed attempt
-|--------------------------------------------------------------------------
-*/
-
-it('fails render when selected candidate has null semantic_score', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-
-    // Create recommendation where candidate 0 has null semantic_score
-    $recommendation = MediaClipRecommendation::create([
-        'media_asset_id' => $asset->id,
-        'm4_analysis_id' => $clipAnalysis->id,
-        'status' => MediaClipRecommendation::STATUS_COMPLETED,
-        'outcome' => MediaClipRecommendation::OUTCOME_RANKED,
-        'algorithm' => 'transcript_semantic_recommendation',
-        'algorithm_version' => '1.0.0',
-        'parameters' => ClipRankingProfile::parameters(ClipRankingProfile::configuration(), false, true),
-        'recommendations' => [
-            [
-                'm4_candidate_index' => 0,
-                'start_ms' => 0,
-                'end_ms' => 10000,
-                'm4_rank' => 1,
-                'm4_score' => 1.0,
-                'semantic_score' => null, // NULL SCORE
-                'semantic_rank' => 1,
-                'reason' => 'no_candidate_text',
-            ],
-            [
-                'm4_candidate_index' => 1,
-                'start_ms' => 10000,
-                'end_ms' => 20000,
-                'm4_rank' => 2,
-                'm4_score' => 0.5,
-                'semantic_score' => 0.75,
-                'semantic_rank' => 2,
-                'reason' => null,
-            ],
-        ],
-        'input_snapshot' => [
-            'm4_analysis_id' => $clipAnalysis->id,
-            'm4_algorithm' => 'scene_timing_baseline',
-            'm4_algorithm_version' => '1.0.0',
-            'm4_candidates' => $clipAnalysis->candidates,
-            'duration_ms' => 30000,
-            'transcript_state' => 'completed_valid',
-            'projection_version' => '1.0.0',
-            'text_hashes' => [
-                ['index' => 0, 'sha256' => hash('sha256', 'First segment')],
-                ['index' => 1, 'sha256' => hash('sha256', 'Second segment')],
-            ],
-            'request_sha256' => hash('sha256', 'test'),
-        ],
-        'execution_parameters' => [
-            'timeout_seconds' => 60,
-            'lock_wait_seconds' => 65,
-        ],
-    ]);
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $job->handle();
-
-    $asset->refresh();
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('failed');
-    expect($render->render_error)->toBe('invalid_candidate_index');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-04: M5 pending → not_ready, job retries (max 3, 5s delay)
-|--------------------------------------------------------------------------
-*/
-
-it('returns not_ready when M5 pending', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-
-    // Create PENDING recommendation
-    MediaClipRecommendation::create([
-        'media_asset_id' => $asset->id,
-        'm4_analysis_id' => $clipAnalysis->id,
-        'status' => MediaClipRecommendation::STATUS_PENDING,
-    ]);
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $thrown = null;
-    try {
-        $job->handle();
-    } catch (ProcessMediaException $e) {
-        $thrown = $e;
-    }
-
-    expect($thrown)->not->toBeNull();
-    expect($thrown->getMessage())->toBe('upstream_not_ready');
-    expect($job->attempts())->toBe(1);
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-05: M5 failed → render attempt claimed, marked failed
-|--------------------------------------------------------------------------
-*/
-
-it('fails render when M5 failed', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-
-    MediaClipRecommendation::create([
-        'media_asset_id' => $asset->id,
-        'm4_analysis_id' => $clipAnalysis->id,
-        'status' => MediaClipRecommendation::STATUS_FAILED,
-        'error' => 'ranking_failed',
-    ]);
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $job->handle();
-
-    $asset->refresh();
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('failed');
-    expect($render->render_error)->toBe('upstream_recommendation_failed');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-06: M5 unavailable → render attempt claimed, marked failed
-|--------------------------------------------------------------------------
-*/
-
-it('fails render when M5 unavailable', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-
-    MediaClipRecommendation::create([
-        'media_asset_id' => $asset->id,
-        'm4_analysis_id' => $clipAnalysis->id,
-        'status' => MediaClipRecommendation::STATUS_UNAVAILABLE,
-        'reason' => 'no_candidate_text',
-    ]);
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $job->handle();
-
-    $asset->refresh();
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('failed');
-    expect($render->render_error)->toBe('upstream_recommendation_unavailable');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-07: M5 missing after resolved → failed attempt
-|--------------------------------------------------------------------------
-*/
-
-it('fails render when M5 missing after resolved', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-
-    // No MediaClipRecommendation row at all
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $job->handle();
-
-    $asset->refresh();
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('failed');
-    expect($render->render_error)->toBe('upstream_recommendation_missing');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-08: Existing completed DerivedAsset (same candidate+profile) → reused, no worker call
-|--------------------------------------------------------------------------
-*/
-
-it('reuses existing completed render, no worker call', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
-
-    // Pre-create completed render
-    DerivedAsset::create([
-        'media_asset_id' => $asset->id,
-        'type' => DerivedAsset::TYPE_RENDERED_CLIP,
-        'candidate_index' => 0,
-        'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
-        'status' => 'completed',
-        'storage_disk' => 'media',
-        'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
-        'mime_type' => 'video/mp4',
-        'size_bytes' => 1024000,
-        'duration_ms' => 10000,
-        'width' => 1080,
-        'height' => 1920,
-        'codec' => 'libx264',
-        'render_configuration' => RenderProfile::configuration(),
-        'render_parameters' => ['test' => 'data'],
-    ]);
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $job->handle();
-
+    // NO render should have been invoked
     expect(count($action->renderCalls))->toBe(0);
 
+    // NO DerivedAsset render should exist
     $render = DerivedAsset::where('media_asset_id', $asset->id)
         ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
         ->first();
 
-    expect($render->status)->toBe('completed');
+    expect($render)->toBeNull();
 });
 
 /*
 |--------------------------------------------------------------------------
-| TC-PMA-09: Existing completed DerivedAsset, different configuration → version_conflict
+| TC-PMA-REG-02: No clipRenderResolved flag exists on MediaAsset
 |--------------------------------------------------------------------------
 */
 
-it('fails with version_conflict when existing render has different configuration', function () {
+it('MediaAsset has no clipRenderResolved accessor', function () {
     $asset = createProbedAsset();
     $sceneAnalysis = createCompletedSceneAnalysis($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
 
-    // Pre-create completed render with DIFFERENT profile version
-    DerivedAsset::create([
-        'media_asset_id' => $asset->id,
-        'type' => DerivedAsset::TYPE_RENDERED_CLIP,
-        'candidate_index' => 0,
-        'render_profile_version' => 'ffmpeg_vertical_baseline:2.0.0', // Different version
-        'status' => 'completed',
-        'storage_disk' => 'media',
-        'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
-        'mime_type' => 'video/mp4',
-        'size_bytes' => 1024000,
-        'duration_ms' => 10000,
-        'width' => 1080,
-        'height' => 1920,
-        'codec' => 'libx264',
-    ]);
+    // The clipRenderResolved accessor should not exist
+    expect(property_exists($asset, 'clipRenderResolved'))->toBeFalse();
+    
+    // Accessing it should not work (no accessor)
+    $action = new RecordingRenderAction();
+    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
+    $job->handle();
+
+    $asset->refresh();
+    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-PMA-REG-03: Existing upstream stages (probe, scene, audio, M4, M5) unchanged
+|--------------------------------------------------------------------------
+*/
+
+it('preserves existing upstream stages - probe, scene, audio, M4, M5 all work', function () {
+    $asset = createProbedAsset();
+    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $clipAnalysis = createCompletedClipAnalysis($asset);
+    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
 
     $action = new RecordingRenderAction();
     $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
+    $job->handle();
 
-    $thrown = null;
-    try {
-        $job->handle();
-    } catch (ProcessMediaException $e) {
-        $thrown = $e;
-    }
+    $asset->refresh();
+    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
 
-    expect($thrown)->not->toBeNull();
-    expect($thrown->getMessage())->toBe('render_version_conflict');
+    // All upstream data should be intact
+    expect($asset->probe_result)->not->toBeEmpty();
+    expect($asset->duration_ms)->toBe(30000);
+
+    $sceneAnalysis->refresh();
+    expect($sceneAnalysis->status)->toBe(MediaSceneAnalysis::STATUS_COMPLETED);
+
+    $clipAnalysis->refresh();
+    expect($clipAnalysis->status)->toBe(MediaClipAnalysis::STATUS_COMPLETED);
+
+    $transcript->refresh();
+    expect($transcript->status)->toBe(MediaTranscript::STATUS_COMPLETED);
+
+    $recommendation->refresh();
+    expect($recommendation->status)->toBe(MediaClipRecommendation::STATUS_COMPLETED);
+    expect($recommendation->outcome)->toBe(MediaClipRecommendation::OUTCOME_RANKED);
 });
 
 /*
 |--------------------------------------------------------------------------
-| TC-PMA-10: Concurrent claim - first job locks, second gets busy
+| TC-PMA-REG-04: Asset finalization does NOT require render
 |--------------------------------------------------------------------------
 */
 
-it('returns busy for concurrent claim (second job gets busy)', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+it('asset completes with only existing resolved stages (no render required)', function () {
+    // Test with various upstream scenarios - all should complete without render
+
+    // Scenario 1: Full pipeline with M5 ranked
+    $asset1 = createProbedAsset();
+    $scene1 = createCompletedSceneAnalysis($asset1);
+    $clip1 = createCompletedClipAnalysis($asset1);
+    $transcript1 = createCompletedTranscript($asset1, $scene1);
+    $rec1 = createCompletedRecommendation($asset1, $clip1, $transcript1);
 
     $action1 = new RecordingRenderAction();
-    $action2 = new RecordingRenderAction();
-
-    $job1 = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action1);
-    $job2 = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action2);
-
-    // Run job1 first (it will get the lock)
+    $job1 = new \App\Jobs\ProcessMediaAsset($asset1, 'test-key-1', $action1);
     $job1->handle();
 
-    // Run job2 (should get busy)
-    $job2->handle();
+    $asset1->refresh();
+    expect($asset1->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
+    expect(count($action1->renderCalls))->toBe(0);
 
-    // Job2 should not have invoked the worker
-    expect(count($action2->renderCalls))->toBe(0);
-
-    // Asset should still be completed by job1
-    $asset->refresh();
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render->status)->toBe('completed');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-12: Worker process crash → transaction rolls back, pending/failed recoverable
-|--------------------------------------------------------------------------
-*/
-
-it('recovers from worker crash (transaction rollback)', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
-
-    $action = new RecordingRenderAction();
-    $action->shouldFail = true;
-    $action->failCode = 'render_failed';
-
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $job->handle();
-
-    $asset->refresh();
-    // Asset should complete because render failure is controlled upstream failure
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('failed');
-    expect($render->render_error)->toBe('render_failed');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-13: Invalid duration (missing probe) → failed attempt
-|--------------------------------------------------------------------------
-*/
-
-it('fails render when probe data missing', function () {
-    $asset = createProbedAsset(['probe_result' => [], 'duration_ms' => 0]);
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-
-    $job->handle();
-
-    $asset->refresh();
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render)->not->toBeNull();
-    expect($render->status)->toBe('failed');
-    expect($render->render_error)->toBe('invalid_input');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-14: Asset finalization - clipRenderResolved true only for completed/failed/terminal
-|--------------------------------------------------------------------------
-*/
-
-it('clipRenderResolved is true only for completed or failed render', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
-
-    // No render yet
-    expect($asset->clipRenderResolved)->toBeFalse();
-
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-    $job->handle();
-
-    $asset->refresh();
-    expect($asset->clipRenderResolved)->toBeTrue();
-
-    // Test with failed render
-    $asset2 = createProbedAsset(['id' => null]); // Will get new ID
-    $sceneAnalysis2 = createCompletedSceneAnalysis($asset2);
-    $clipAnalysis2 = createCompletedClipAnalysis($asset2);
-    $transcript2 = createCompletedTranscript($asset2, $sceneAnalysis2);
-
-    MediaClipRecommendation::create([
+    // Scenario 2: No audio (audio path skipped)
+    $asset2 = createProbedAsset(['probe_result' => [
+        'duration_ms' => 30000,
+        'width' => 1920,
+        'height' => 1080,
+        'video_codec' => 'h264',
+        'audio_codec' => null, // No audio
+    ]]);
+    $scene2 = createCompletedSceneAnalysis($asset2);
+    $clip2 = createCompletedClipAnalysis($asset2);
+    $rec2 = MediaClipRecommendation::create([
         'media_asset_id' => $asset2->id,
-        'm4_analysis_id' => $clipAnalysis2->id,
-        'status' => MediaClipRecommendation::STATUS_FAILED,
-        'error' => 'ranking_failed',
+        'm4_analysis_id' => $clip2->id,
+        'status' => MediaClipRecommendation::STATUS_COMPLETED,
+        'outcome' => MediaClipRecommendation::OUTCOME_RANKED,
+        'algorithm' => 'transcript_semantic_recommendation',
+        'algorithm_version' => '1.0.0',
+        'parameters' => ClipRankingProfile::parameters(ClipRankingProfile::configuration(), false, false),
+        'recommendations' => [
+            ['m4_candidate_index' => 0, 'start_ms' => 0, 'end_ms' => 10000, 'm4_rank' => 1, 'm4_score' => 1.0, 'semantic_score' => 0.95, 'semantic_rank' => 1, 'reason' => null],
+        ],
+        'input_snapshot' => [
+            'm4_analysis_id' => $clip2->id,
+            'm4_algorithm' => 'scene_timing_baseline',
+            'm4_algorithm_version' => '1.0.0',
+            'm4_candidates' => $clip2->candidates,
+            'duration_ms' => 30000,
+            'transcript_state' => 'no_audio',
+            'projection_version' => '1.0.0',
+            'text_hashes' => [['index' => 0, 'sha256' => hash('sha256', '')]],
+            'request_sha256' => hash('sha256', 'test'),
+        ],
+        'execution_parameters' => [
+            'timeout_seconds' => 60,
+            'lock_wait_seconds' => 65,
+        ],
     ]);
 
     $action2 = new RecordingRenderAction();
@@ -829,57 +430,44 @@ it('clipRenderResolved is true only for completed or failed render', function ()
     $job2->handle();
 
     $asset2->refresh();
-    expect($asset2->clipRenderResolved)->toBeTrue();
-});
+    expect($asset2->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
+    expect(count($action2->renderCalls))->toBe(0);
 
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-15: Asset completion requires clipRenderResolved + all upstream resolved
-|--------------------------------------------------------------------------
-*/
+    // Scenario 3: M5 no candidates (empty)
+    $asset3 = createProbedAsset();
+    $scene3 = createCompletedSceneAnalysis($asset3);
+    $clip3 = createCompletedClipAnalysis($asset3);
+    $rec3 = MediaClipRecommendation::create([
+        'media_asset_id' => $asset3->id,
+        'm4_analysis_id' => $clip3->id,
+        'status' => MediaClipRecommendation::STATUS_COMPLETED,
+        'outcome' => MediaClipRecommendation::OUTCOME_NO_CANDIDATES,
+        'algorithm' => 'transcript_semantic_recommendation',
+        'algorithm_version' => '1.0.0',
+        'parameters' => ClipRankingProfile::parameters(ClipRankingProfile::configuration(), false, false),
+        'recommendations' => [],
+        'input_snapshot' => [
+            'm4_analysis_id' => $clip3->id,
+            'm4_algorithm' => 'scene_timing_baseline',
+            'm4_algorithm_version' => '1.0.0',
+            'm4_candidates' => [],
+            'duration_ms' => 30000,
+            'transcript_state' => 'completed_empty',
+            'projection_version' => '1.0.0',
+            'text_hashes' => [],
+            'request_sha256' => hash('sha256', 'test'),
+        ],
+        'execution_parameters' => [
+            'timeout_seconds' => 60,
+            'lock_wait_seconds' => 65,
+        ],
+    ]);
 
-it('asset completes only when all stages including render resolved', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $action3 = new RecordingRenderAction();
+    $job3 = new \App\Jobs\ProcessMediaAsset($asset3, 'test-key-3', $action3);
+    $job3->handle();
 
-    $action = new RecordingRenderAction();
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-    $job->handle();
-
-    $asset->refresh();
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-});
-
-/*
-|--------------------------------------------------------------------------
-| TC-PMA-16: Controlled upstream failure (render failed) → asset can still complete
-|--------------------------------------------------------------------------
-*/
-
-it('asset completes even when render fails (controlled upstream failure)', function () {
-    $asset = createProbedAsset();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
-    $clipAnalysis = createCompletedClipAnalysis($asset);
-    $transcript = createCompletedTranscript($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
-
-    $action = new RecordingRenderAction();
-    $action->shouldFail = true;
-    $action->failCode = 'render_failed';
-
-    $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key', $action);
-    $job->handle();
-
-    $asset->refresh();
-    // Asset should still complete - render failure is a controlled upstream failure
-    expect($asset->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
-
-    $render = DerivedAsset::where('media_asset_id', $asset->id)
-        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
-        ->first();
-
-    expect($render->status)->toBe('failed');
+    $asset3->refresh();
+    expect($asset3->processing_status)->toBe(MediaAsset::PROCESSING_COMPLETED);
+    expect(count($action3->renderCalls))->toBe(0);
 });

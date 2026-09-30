@@ -43,7 +43,7 @@ Excluded:
 - Captions, subtitle generation, SRT/VTT, caption burn-in, styling, editor
 - Face tracking, MediaPipe, OpenCV, face-aware crop, AI smart reframing, subject tracking
 - Configurable focal point UI
-- Automatic `semantic_rank=1` rendering (or top-N) — candidate is explicitly selected by index
+- **Automatic `semantic_rank=1` rendering (or top-N) — candidate is explicitly selected by index**
 - Multiple clips per render job
 - Multiple aspect ratios (9:16 only for baseline)
 - Multi-segment concatenation / B-roll insertion
@@ -203,19 +203,50 @@ Use PostgreSQL transaction-scoped exclusive row locking, not merely `firstOrCrea
 
 The intentional trade-off is a database transaction held for at most one short metadata validation plus bounded FFmpeg process (default worker timeout 300 seconds), avoiding a new distributed lease/recovery subsystem. `rendering` is visible to the owning transaction; outside readers see the previous pending/failed state until commit. There is no new progress UI/API depending on committed rendering state. Test the claim with separate PostgreSQL connections/processes, not sequential Eloquent objects alone.
 
-## `ProcessMediaAsset` integration and final completion
+## Render job boundary: `RenderMediaClip`
 
-Preserve current order/independence: probe, scene path, audio/extraction/transcript path, clip analysis (M4), clip recommendation (M5), **then** clip rendering (M6.1), then asset finalization. Upstream failures retain their defined independent lifecycles.
+M6.1 implements a **dedicated, reusable render job** that is **explicitly invoked** with an authoritative candidate reference. This job is **not** an automatic stage in `ProcessMediaAsset`.
 
-Introduce explicit `clipRenderResolved`:
-- True only for persisted completed render (including executed/validated single-clip output), persisted failed attempt, or terminal completed reuse.
-- False for not-ready inputs or another invocation's active claim. No skipped stage may masquerade as completed render.
-- Normal `probed -> completed` asset transition requires `sceneDetectionResolved && audioPathResolved && clipAnalysisResolved && clipRecommendationResolved && clipRenderResolved`.
-- Controlled upstream failures are resolved stages: asset can complete while the failed child render records its reason, consistent with existing scene/transcript/recommendation semantics. "Asset completed" means processing resolved, not all analyses succeeded.
+### Job: `RenderMediaClip`
 
-On rerun, reuse valid persisted probe/recommendation metadata for already-completed/terminal stages rather than invoking fresh work whose data cannot legally persist. A failed render attempt may retry without resetting the asset's terminal state; completed renders never reexecute. Assets lacking a valid persisted probe must not be used to fabricate render input.
+- **Purpose**: Render exactly one clip from an explicitly selected M5 candidate.
+- **Invocation**: Internal caller (service, command, or future M7 workflow) provides:
+  - `MediaAsset` ID
+  - `MediaClipRecommendation` ID
+  - `candidate_index` (integer, 0..K-1) — **no default, no auto-selection**
+- **Behavior**:
+  1. Independently re-reads M5 recommendation and M4 analysis authority from database.
+  2. Verifies the selected candidate exists, has non-null `semantic_score`, and bounds match the persisted snapshot.
+  3. Verifies source media is accessible (probe, storage).
+  4. Builds render contract with explicit `candidate_index` and configuration from `RenderProfile`.
+  5. Invokes worker `render-clips` action via `ProcessMediaAction`.
+  6. Validates result independently via `RenderValidator`.
+  7. Persists `DerivedAsset` with `type=clip_rendered`, `candidate_index`, `render_profile_version`, configuration, parameters.
+  8. Returns `DerivedAsset` on success; throws sanitized exception on failure.
+- **Idempotency**: Re-invocation with same `(media_asset_id, recommendation_id, candidate_index, render_profile_version)` returns existing completed `DerivedAsset` without re-executing worker.
+- **Concurrency**: Row-level lock on `DerivedAsset` (same pattern as M4/M5). Competing invocations return `busy`.
+- **Failure modes**: All sanitized error codes per readiness table above. No partial results.
 
-For genuinely active upstream pending/detecting/transcribing/ranking states at render evaluation, return not-ready and release/retry the existing job using its bounded three-attempt policy (5-second delay when applicable). Do not complete the asset. Exhausted unresolved upstream processing produces a sanitized failed render attempt (`upstream_not_ready`) and fails a nonterminal asset, preserving upstream data rather than leaving it processing indefinitely. Already-terminal asset states remain unchanged. Busy duplicate delivery may return without finalizing; the owning job and its queue retry/failure handling own progress. Missing/deleted assets are safe no-ops, never recreated. Late failure callbacks must not corrupt completed snapshots.
+### ProcessMediaAsset integration
+
+**`ProcessMediaAsset` does NOT automatically invoke rendering after M5.**  
+**`ProcessMediaAsset` completion does NOT depend on `clipRenderResolved`.**  
+**No `clipRenderResolved` flag is introduced in `ProcessMediaAsset`.**
+
+The existing `ProcessMediaAsset` flow remains unchanged after M5:
+- probe → scene detection → audio extraction/transcription → clip analysis (M4) → clip recommendation (M5) → asset finalization
+- Asset finalization requires only the existing resolved stages (probe, scene, audio, clip analysis, clip recommendation).
+- Rendering is a **separate, explicitly invoked capability** that M7 (or an internal admin command) will drive.
+
+If an internal caller wishes to render after `ProcessMediaAsset` completes, it invokes `RenderMediaClip` separately. The asset's terminal state is unaffected by render success or failure.
+
+### Rerun and reuse semantics
+
+- `RenderMediaClip` reuses valid persisted `DerivedAsset` for the same `(media_asset_id, recommendation_id, candidate_index, render_profile_version)`.
+- A failed render attempt may be retried by re-invoking `RenderMediaClip` (clears error, re-attempts).
+- Completed renders never re-execute.
+- If M5 recommendation changes (new `recommendation_id` or different candidate bounds), the unique key differs → new render row created.
+- Assets lacking a valid persisted probe must not be used to fabricate render input.
 
 ## Observable acceptance criteria
 

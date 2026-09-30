@@ -33,7 +33,7 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 ### 1.3 Model updates: `MediaAsset`
 
 - [ ] **1.3.1** Add `renderedClips()` hasMany relationship scoped to `type = 'clip_rendered'`.
-- [ ] **1.3.2** Add `clipRenderResolved` accessor/logic for asset finalization (Phase 5).
+- [ ] **1.3.2** **REMOVED**: No `clipRenderResolved` accessor/logic — rendering is not part of ProcessMediaAsset completion.
 
 ### 1.4 Model updates: `MediaClipRecommendation`
 
@@ -141,35 +141,50 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 - [ ] **4.4.5** Decode JSON (object not list), validate via `RenderValidator::result()`.
 - [ ] **4.4.6** Error handling: classified failures → `ProcessMediaException` with fixed codes; unexpected → `clip_render_aborted`.
 
-## Phase 5 — ProcessMediaAsset Integration
+## Phase 5 — Dedicated Render Job: `RenderMediaClip`
 
-### 5.1 Clip Render stage in job
+### 5.1 Job class (`app/Jobs/RenderMediaClip.php`)
 
-- [ ] **5.1.1** Add `clipRenderResolved` flag and logic after M5 stage (around line 1055 in `ProcessMediaAsset.php`).
-- [ ] **5.1.2** Check existing `DerivedAsset` for this asset with `type='clip_rendered'` and matching `candidate_index` + `render_profile_version`.
-- [ ] **5.1.3** Terminal reuse: if completed and matches current configuration/recommendation authority → skip.
-- [ ] **5.1.4** Version conflict: different M5 authority or configuration → `render_version_conflict` (non-retryable).
-- [ ] **5.1.5** Readiness checks:
-  - M5 completed/ranked with candidates and valid `candidate_index` → ready.
-  - M5 completed/unavailable/failed/missing → claim attempt, mark failed with appropriate error.
-  - M5 pending/ranking/not_ready → `not_ready` retry (max 3, 5s delay).
-  - No M5 row after M5 resolved → `upstream_recommendation_missing`.
-  - Invalid `candidate_index` or null `semantic_score` → `invalid_candidate_index`.
-- [ ] **5.1.6** Build render contract: duration, recommendation (with candidates), candidate_index, configuration from `RenderProfile::configuration()`, source media info from probe.
-- [ ] **5.1.7** Atomic claim transaction (mirror M4/M5 pattern):
-  - Insert-or-ignore pending row on `DerivedAsset` (status=pending).
-  - Lock for update, reread.
-  - If completed → reuse.
-  - Transition to rendering, capture input_snapshot, execution_parameters.
-  - Invoke `ProcessMediaAction::renderClips()`.
-  - Validate result, mark completed or mark failed inside transaction.
-  - Handle lock timeout → `busy` return.
-  - Handle abort → `clip_render_aborted`.
+- [ ] **5.1.1** Create `RenderMediaClip` job implementing `ShouldQueue`.
+- [ ] **5.1.2** Constructor accepts: `mediaAssetId`, `recommendationId`, `candidateIndex`.
+- [ ] **5.1.3** `handle()` method:
+  - Load `MediaAsset`, `MediaClipRecommendation` with candidates.
+  - Verify ownership/project chain.
+  - Verify M5 status=completed, outcome=ranked.
+  - Verify `candidateIndex` in bounds, candidate has non-null `semantic_score`.
+  - Verify source media probe exists and storage accessible.
+  - Check existing `DerivedAsset` for `(media_asset_id, type='clip_rendered', candidate_index, render_profile_version)`.
+  - If completed and matches current authority/configuration → return existing (idempotent reuse).
+  - If version conflict (different M5 authority or config) → throw `RenderVersionConflictException`.
+  - Atomic claim transaction (mirror M4/M5 pattern):
+    - Insert-or-ignore pending `DerivedAsset` row.
+    - Lock for update, reread.
+    - If completed → return existing.
+    - Transition to `rendering`, capture input_snapshot, execution_parameters.
+    - Build render contract via `MediaProcessingContract::renderClipsRequest()`.
+    - Invoke `ProcessMediaAction::renderClips()`.
+    - Validate result via `RenderValidator::result()` and `validateCompletion()`.
+    - Mark completed or failed inside transaction.
+    - Handle lock timeout → throw `RenderBusyException`.
+    - Handle abort → throw `RenderAbortedException`.
+  - Return completed `DerivedAsset`.
 
-### 5.2 Asset finalization update
+### 5.2 Exception classes
 
-- [ ] **5.2.1** Update asset completion condition to include `clipRenderResolved`.
-- [ ] **5.2.2** Preserve existing behavior: controlled upstream failures are resolved stages; asset can complete while failed render records reason.
+- [ ] **5.2.1** `RenderBusyException` — concurrent claim contention.
+- [ ] **5.2.2** `RenderVersionConflictException` — authority/config mismatch.
+- [ ] **5.2.3** `InvalidCandidateIndexException` — out of bounds or null semantic_score.
+- [ ] **5.2.4** `UpstreamRecommendationUnavailableException` — M5 missing/failed/unavailable.
+- [ ] **5.2.5** `RenderFailedException` — worker/validation failure with sanitized code.
+
+### 5.3 Internal invocation entry points (M6.1 scope)
+
+- [ ] **5.3.1** Artisan command `media:render-clip {mediaAssetId} {recommendationId} {candidateIndex}` — for manual/internal invocation during M6.1.
+- [ ] **5.3.2** Service method `RenderMediaClipService::dispatchRender(...)` — programmatic dispatch for future M7 integration.
+
+**No automatic invocation from `ProcessMediaAsset`.**  
+**No `clipRenderResolved` in asset finalization.**  
+**`ProcessMediaAsset` remains unchanged after M5 stage.**
 
 ## Phase 6 — Configuration
 
@@ -205,8 +220,9 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 
 ### 7.4 Laravel feature/integration tests
 
-- [ ] **7.4.1** `ProcessMediaAssetRenderTest.php` — full job execution with mocked worker (recording action), all readiness states, retry logic, terminal reuse, version conflict, invalid candidate_index, concurrency (lock contention).
-- [ ] **7.4.2** `ProcessMediaAssetRenderRealWorkerTest.php` — real worker subprocess (requires FFmpeg fixture), validates end-to-end persistence, DerivedAsset creation, output file in storage.
+- [ ] **7.4.1** `RenderMediaClipJobTest.php` — full job execution with mocked worker (recording action), all readiness states, retry logic, terminal reuse, version conflict, invalid candidate_index, concurrency (lock contention).
+- [ ] **7.4.2** `RenderMediaClipJobRealWorkerTest.php` — real worker subprocess (requires FFmpeg fixture), validates end-to-end persistence, DerivedAsset creation, output file in storage.
+- [ ] **7.4.3** `ProcessMediaAssetRegressionTest.php` — confirm ProcessMediaAsset completes without render stage, existing upstream stages unchanged.
 
 ### 7.5 E2E / Playwright tests
 
@@ -216,8 +232,8 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 
 ### 8.1 Project state update
 
-- [ ] **8.1.1** Update `docs/project-state.md`: M6.1 in progress, rendering pipeline added.
-- [ ] **8.1.2** Update `docs/architecture.md`: Current execution topology includes render stage.
+- [ ] **8.1.1** Update `docs/project-state.md`: M6.1 in progress, rendering pipeline added as explicit job.
+- [ ] **8.1.2** Update `docs/architecture.md`: Current execution topology includes RenderMediaClip job (separate from ProcessMediaAsset).
 
 ### 8.2 Architecture decision record (if needed)
 
@@ -261,7 +277,7 @@ P0.1–P0.5
     ↓
 4.1 → 4.2 → 4.3 → 4.4
     ↓
-5.1 → 5.2
+5.1 → 5.2 → 5.3
     ↓
 6.1 → 6.2
     ↓
@@ -282,7 +298,7 @@ P0.1–P0.5
 | 2 | Contract/Schema | Low |
 | 3 | Renderer/FFmpeg | High (core logic) |
 | 4 | Laravel Orchestration | Medium-High |
-| 5 | Job Integration | Medium |
+| 5 | RenderMediaClip Job | Medium-High |
 | 6 | Config | Low |
 | 7 | Tests | High (coverage breadth) |
 | 8 | Docs | Low |
@@ -310,3 +326,6 @@ P0.1–P0.5
 - Transcription/scene re-generation
 - Multiple clips per render job
 - Automatic top-N candidate selection
+- ProcessMediaAsset automatic render stage
+- clipRenderResolved in asset completion
+- Hardcoded candidate_index=0 / semantic_rank=1 default

@@ -7,13 +7,15 @@ This test plan derives exclusively from `specs/069-vertical-clip-render-pipeline
 ## Test Scope
 
 **In scope (M6.1 atomic):**
-- Single candidate render by explicit `candidate_index`
+- Single candidate render by explicit `candidate_index` via `RenderMediaClip` job
 - Center-crop only (9:16) vertical reframe
 - Deterministic `ffmpeg_vertical_baseline` v1.0.0 profile
 - No captions, no face tracking, no smart crop variants
 - Persistence via `DerivedAsset` with `type=clip_rendered`
 - Unique constraint: `(media_asset_id, type, candidate_index, render_profile_version)`
 - All readiness/failure cases for M5 upstream
+- Idempotent reuse, version conflict, concurrency protection
+- Explicit invocation — no automatic ProcessMediaAsset integration
 
 **Out of scope (explicit):**
 - Captions, subtitle generation, burn-in, styling
@@ -22,6 +24,9 @@ This test plan derives exclusively from `specs/069-vertical-clip-render-pipeline
 - Multiple clips per render job (top-N, semantic_rank=1 auto-selection)
 - Transcript segment handling
 - Clip review UI, social publishing, frontend/API changes
+- Automatic render stage in ProcessMediaAsset
+- clipRenderResolved flag in asset completion
+- Hardcoded candidate_index=0 / semantic_rank=1 default
 
 ## Test Categories
 
@@ -183,36 +188,45 @@ This test plan derives exclusively from `specs/069-vertical-clip-render-pipeline
 
 ### 5. Laravel Feature/Integration Tests
 
-#### 5.1 ProcessMediaAsset Render Stage — `ProcessMediaAssetRenderTest.php`
+#### 5.1 RenderMediaClip Job — `RenderMediaClipJobTest.php`
 
 | Test ID | Scenario | Expected |
 |---|---|---|
-| TC-PMA-01 | M5 completed/ranked, valid candidate_index → render invoked, completes | DerivedAsset completed |
-| TC-PMA-02 | M5 completed/ranked, candidate_index out of bounds → failed attempt | DerivedAsset failed, error=invalid_candidate_index |
-| TC-PMA-03 | M5 completed/ranked, candidate has null semantic_score → failed attempt | DerivedAsset failed, error=invalid_candidate_index |
-| TC-PMA-04 | M5 pending → not_ready, job retries (max 3, 5s delay) | Job released, retry counted |
-| TC-PMA-05 | M5 failed → render attempt claimed, marked failed | DerivedAsset failed, error=upstream_recommendation_failed |
-| TC-PMA-06 | M5 unavailable → render attempt claimed, marked failed | DerivedAsset failed, error=upstream_recommendation_unavailable |
-| TC-PMA-07 | M5 missing after resolved → failed attempt | DerivedAsset failed, error=upstream_recommendation_missing |
-| TC-PMA-08 | Existing completed DerivedAsset (same candidate+profile) → reused, no worker call | Reused, no process spawn |
-| TC-PMA-09 | Existing completed DerivedAsset, different configuration → version_conflict | Failed, error=render_version_conflict |
-| TC-PMA-10 | Concurrent claim: first job locks, second gets busy | Second returns busy, no corruption |
-| TC-PMA-11 | Lock timeout → busy return | Busy, no state change |
-| TC-PMA-12 | Worker process crash → transaction rolls back, pending/failed recoverable | Retry works |
-| TC-PMA-13 | Invalid duration (missing probe) → failed attempt | DerivedAsset failed, error=invalid_input |
-| TC-PMA-14 | Asset finalization: clipRenderResolved=true only for completed/failed/terminal | Accessor logic correct |
-| TC-PMA-15 | Asset completion requires clipRenderResolved + all upstream resolved | Transition logic correct |
-| TC-PMA-16 | Controlled upstream failure (render failed) → asset can still complete | Asset completed, render failed recorded |
+| TC-RMJ-01 | M5 completed/ranked, valid candidate_index → job completes, DerivedAsset created | DerivedAsset completed, output persisted |
+| TC-RMJ-02 | M5 completed/ranked, candidate_index out of bounds → job fails | DerivedAsset failed, error=invalid_candidate_index |
+| TC-RMJ-03 | M5 completed/ranked, candidate has null semantic_score → job fails | DerivedAsset failed, error=invalid_candidate_index |
+| TC-RMJ-04 | M5 pending/ranking/not_ready → job throws UpstreamRecommendationUnavailableException | Exception thrown, no DerivedAsset created |
+| TC-RMJ-05 | M5 failed → job throws UpstreamRecommendationFailedException | Exception thrown |
+| TC-RMJ-06 | M5 unavailable/missing → job throws UpstreamRecommendationUnavailableException | Exception thrown |
+| TC-RMJ-07 | M5 missing after resolved → job throws UpstreamRecommendationMissingException | Exception thrown |
+| TC-RMJ-08 | Existing completed DerivedAsset (same candidate+profile) → reused, no worker call | Returns existing, no process spawn |
+| TC-RMJ-09 | Existing completed DerivedAsset, different M5 authority/config → version_conflict | Throws RenderVersionConflictException |
+| TC-RMJ-10 | Concurrent claim: first job locks, second gets busy | Second throws RenderBusyException, no corruption |
+| TC-RMJ-11 | Lock timeout → RenderBusyException | Busy, no state change |
+| TC-RMJ-12 | Worker process crash → transaction rolls back, pending/failed recoverable | Retry works |
+| TC-RMJ-13 | Invalid duration (missing probe) → job throws InvalidInputException | Exception thrown |
+| TC-RMJ-14 | Job idempotency: re-dispatch same params → returns same DerivedAsset | No duplicate, no re-render |
+| TC-RMJ-15 | Failed attempt retry: re-dispatch after failure → new attempt, clears error | New rendering attempt |
 
-#### 5.2 Real Worker Integration — `ProcessMediaAssetRenderRealWorkerTest.php`
+#### 5.2 Real Worker Integration — `RenderMediaClipJobRealWorkerTest.php`
 
 | Test ID | Scenario | Expected |
 |---|---|---|
-| TC-PMR-01 | Full job with real worker subprocess, FFmpeg fixture | DerivedAsset completed, file in storage |
-| TC-PMR-02 | Output file exists on configured disk at expected key | Storage::exists() true |
-| TC-PMR-03 | DerivedAsset render_columns populated (configuration, parameters) | JSON matches spec |
-| TC-PMR-04 | DerivedAsset output metadata matches probe (duration, resolution, codecs) | Within tolerance |
-| TC-PMR-05 | Filter graph in parameters is non-empty | Confirmed |
+| TC-RMR-01 | Full job with real worker subprocess, FFmpeg fixture | DerivedAsset completed, file in storage |
+| TC-RMR-02 | Output file exists on configured disk at expected key | Storage::exists() true |
+| TC-RMR-03 | DerivedAsset render_columns populated (configuration, parameters) | JSON matches spec |
+| TC-RMR-04 | DerivedAsset output metadata matches probe (duration, resolution, codecs) | Within tolerance |
+| TC-RMR-05 | Filter graph in parameters is non-empty | Confirmed |
+| TC-RMR-06 | Different candidate_index produces distinct DerivedAsset row | Two rows, different candidate_index |
+
+#### 5.3 ProcessMediaAsset Regression — `ProcessMediaAssetRegressionTest.php`
+
+| Test ID | Scenario | Expected |
+|---|---|---|
+| TC-PMA-REG-01 | ProcessMediaAsset completes after M5 without render stage | Asset completes, no render attempted |
+| TC-PMA-REG-02 | No clipRenderResolved flag exists on MediaAsset | Confirmed absent |
+| TC-PMA-REG-03 | Existing upstream stages (probe, scene, audio, M4, M5) unchanged | All pass as before |
+| TC-PMA-REG-04 | Asset finalization does not require render | Asset completes with only existing resolved stages |
 
 ### 6. E2E / Playwright Tests
 
@@ -247,17 +261,18 @@ All test scenarios above must pass. Tester must approve running behavior via Pla
 
 | Spec Section | Test Categories |
 |---|---|
-| Authoritative inputs & readiness | 5.1 (TC-PMA-01 through TC-PMA-16) |
+| Authoritative inputs & readiness | 5.1 (TC-RMJ-01 through TC-RMJ-15) |
 | Algorithm: configuration | 1.1, 1.2, 4.1 |
 | Algorithm: clip selection | 1.1 (TC-WCV-08 to TC-WCV-10), 2.2 |
 | Algorithm: filter graph | 2.1 |
 | Algorithm: output naming | 2.3 |
 | Algorithm: result serialization | 1.1 (TC-WCV-21 to TC-WCV-26), 4.2 |
 | Errors & privacy | 1.1, 2.4 |
-| Persistence: DerivedAsset extension | 4.3, 5.1 (TC-PMA-08, TC-PMA-09) |
-| Validation: independent Laravel | 4.2, 5.1 (TC-PMA-01 through TC-PMA-13) |
-| Lifecycle & concurrency | 5.1 (TC-PMA-10, TC-PMA-11, TC-PMA-12) |
-| ProcessMediaAsset integration | 5.1 (all) |
+| Persistence: DerivedAsset extension | 4.3, 5.1 (TC-RMJ-08, TC-RMJ-09) |
+| Validation: independent Laravel | 4.2, 5.1 (TC-RMJ-01 through TC-RMJ-13) |
+| Lifecycle & concurrency | 5.1 (TC-RMJ-10, TC-RMJ-11, TC-RMJ-12) |
+| RenderMediaClip job boundary | 5.1 (all), 5.2 |
+| ProcessMediaAsset non-integration | 5.3 (all) |
 | Security & UX | 6.1 (TC-PW-01 through TC-PW-03) |
 
 ## Out of Scope Test Scenarios (Do Not Implement)
@@ -270,3 +285,6 @@ All test scenarios above must pass. Tester must approve running behavior via Pla
 - Candidate auto-selection by semantic_rank tests
 - Clip review UI tests
 - Social publishing integration tests
+- ProcessMediaAsset automatic render stage tests
+- clipRenderResolved flag tests
+- Hardcoded candidate_index=0 / semantic_rank=1 default tests
