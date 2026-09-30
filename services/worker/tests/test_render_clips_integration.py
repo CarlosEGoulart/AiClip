@@ -144,6 +144,8 @@ def test_real_ffmpeg_on_fixture_horizontal_video():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     # Run render
@@ -196,6 +198,8 @@ def test_output_duration_matches_candidate_bounds():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
@@ -229,6 +233,8 @@ def test_output_has_correct_codecs():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
@@ -258,6 +264,8 @@ def test_output_bitrate_matches_configuration():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
@@ -298,6 +306,8 @@ def test_output_file_size_positive():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
@@ -325,6 +335,8 @@ def test_filter_graph_recorded_in_parameters():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
@@ -357,6 +369,8 @@ def test_ffmpeg_version_recorded():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
@@ -386,6 +400,8 @@ def test_source_media_metadata_in_parameters():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
@@ -419,6 +435,8 @@ def test_limits_object_present():
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
@@ -449,6 +467,8 @@ def test_different_candidate_index_different_output_key():
             video_codec=contract_0["source_media"]["video_codec"],
             audio_codec=contract_0["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract_0["media_asset_id"]),
+        recommendation_id=str(contract_0["recommendation_id"]),
     )
 
     result_0 = renderer.render(input_data_0, config)
@@ -467,6 +487,8 @@ def test_different_candidate_index_different_output_key():
             video_codec=contract_1["source_media"]["video_codec"],
             audio_codec=contract_1["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract_1["media_asset_id"]),
+        recommendation_id=str(contract_1["recommendation_id"]),
     )
 
     result_1 = renderer.render(input_data_1, config)
@@ -500,8 +522,9 @@ def test_cli_render_clips_integration():
     stdin_data = json.dumps(contract).encode()
 
     with patch("sys.stdin.buffer", new_callable=lambda: BytesIO(stdin_data)):
-        with patch("sys.stdout", new_callable=lambda: BytesIO()) as mock_stdout:
-            exit_code = run_cli([])
+        with patch("sys.stdin.isatty", return_value=False):
+            with patch("sys.stdout", new_callable=lambda: BytesIO()) as mock_stdout:
+                exit_code = run_cli([])
 
     assert exit_code == 0, f"CLI exited with code {exit_code}"
 
@@ -549,6 +572,8 @@ def test_render_different_candidates(candidate_index: int):
             video_codec=contract["source_media"]["video_codec"],
             audio_codec=contract["source_media"]["audio_codec"],
         ),
+        media_asset_id=str(contract["media_asset_id"]),
+        recommendation_id=str(contract["recommendation_id"]),
     )
 
     result = renderer.render(input_data, config)
