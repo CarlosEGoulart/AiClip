@@ -111,7 +111,7 @@ function createCompletedTranscriptForRender(MediaAsset $asset, MediaSceneAnalysi
     ]);
 }
 
-function createCompletedRecommendation(MediaAsset $asset, MediaClipAnalysis $clipAnalysis, MediaTranscript $transcript): MediaClipRecommendation
+function createCompletedRecommendationForRender(MediaAsset $asset, MediaClipAnalysis $clipAnalysis, MediaTranscript $transcript): MediaClipRecommendation
 {
     $executionParameters = [
         'timeout_seconds' => ClipRankingProfile::timeoutSeconds(),
@@ -277,7 +277,7 @@ it('renders clip when explicitly dispatched with valid candidate_index', functio
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     $action = new RecordingRenderAction();
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
@@ -307,7 +307,7 @@ it('fails when candidate_index out of bounds', function () {
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     $action = new RecordingRenderAction();
     $job = new RenderMediaClip($asset->id, $recommendation->id, 5, $action); // Out of bounds (only 2 candidates)
@@ -538,7 +538,7 @@ it('reuses existing completed render, no worker call', function () {
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     // Pre-create completed render
     DerivedAsset::create([
@@ -586,7 +586,7 @@ it('throws version_conflict when existing render has different M5 authority', fu
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     // Pre-create completed render with DIFFERENT profile version
     DerivedAsset::create([
@@ -630,7 +630,7 @@ it('produces different output for different candidate_index', function () {
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     $action = new RecordingRenderAction();
 
@@ -673,7 +673,7 @@ it('rejects negative candidate_index', function () {
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     $action = new RecordingRenderAction();
     $job = new RenderMediaClip($asset->id, $recommendation->id, -1, $action);
@@ -700,7 +700,7 @@ it('is idempotent - re-dispatch returns same DerivedAsset', function () {
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     $action = new RecordingRenderAction();
 
@@ -725,7 +725,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     $action = new RecordingRenderAction();
     $action->shouldFail = true;
@@ -773,7 +773,7 @@ it('throws when asset has invalid probe data', function () {
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
     $action = new RecordingRenderAction();
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
