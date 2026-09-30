@@ -108,6 +108,7 @@
         "candidate_index": { "type": "integer", "minimum": 0 }
       }
     },
+    "candidate_index": { "type": "integer", "minimum": 0 },
     "configuration": {
       "type": "object",
       "description": "Configuration for analyze_clips or rank_clips action.",
