@@ -55,6 +55,8 @@ def valid_render_input(candidate_index: int = 0) -> RenderInput:
             video_codec="h264",
             audio_codec="aac",
         ),
+        media_asset_id="1",
+        recommendation_id="1",
     )
 
 
@@ -306,6 +308,8 @@ def test_selected_candidate_null_semantic_score_raises():
             video_codec="h264",
             audio_codec="aac",
         ),
+        media_asset_id="1",
+        recommendation_id="1",
     )
     config = default_config()
 

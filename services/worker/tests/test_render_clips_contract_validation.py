@@ -73,6 +73,8 @@ def valid_render_clips_contract(candidate_index: int = 0) -> dict:
         },
         "configuration": RENDER_CONFIGURATION,
         "source_media": VALID_SOURCE_MEDIA,
+        "media_asset_id": 1,
+        "recommendation_id": 1,
     }
 
 
