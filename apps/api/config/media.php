@@ -144,4 +144,32 @@ return [
 
     'clip_ranking_provider' => env('MEDIA_CLIP_RANKING_PROVIDER'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Clip Rendering Configuration (M6.1)
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for the baseline vertical clip render pipeline.
+    | The rendering profile is pinned: only the operational timeout is
+    | environment driven. There is no automatic environment detection and
+    | no fallback profile.
+    |
+    */
+
+    'render_timeout_seconds' => env('MEDIA_RENDER_TIMEOUT_SECONDS', '300'),
+
+    'render_target_width' => (int) env('MEDIA_RENDER_TARGET_WIDTH', 1080),
+
+    'render_target_height' => (int) env('MEDIA_RENDER_TARGET_HEIGHT', 1920),
+
+    'render_target_fps' => (int) env('MEDIA_RENDER_TARGET_FPS', 30),
+
+    'render_video_codec' => env('MEDIA_RENDER_VIDEO_CODEC', 'libx264'),
+
+    'render_video_bitrate_kbps' => (int) env('MEDIA_RENDER_VIDEO_BITRATE_KBPS', 5000),
+
+    'render_audio_codec' => env('MEDIA_RENDER_AUDIO_CODEC', 'aac'),
+
+    'render_audio_bitrate_kbps' => (int) env('MEDIA_RENDER_AUDIO_BITRATE_KBPS', 128),
+
 ];

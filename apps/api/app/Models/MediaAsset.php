@@ -196,6 +196,15 @@ class MediaAsset extends Model
     }
 
     /**
+     * Get the rendered clips for this media asset.
+     */
+    public function renderedClips(): HasMany
+    {
+        return $this->hasMany(DerivedAsset::class)
+            ->where('type', DerivedAsset::TYPE_RENDERED_CLIP);
+    }
+
+    /**
      * Get the transcript for this media asset.
      */
     public function transcript(): HasOne
@@ -225,5 +234,22 @@ class MediaAsset extends Model
     public function clipRecommendation(): HasOne
     {
         return $this->hasOne(MediaClipRecommendation::class);
+    }
+
+    /**
+     * Determine if the clip render stage is resolved.
+     *
+     * Resolved means: completed render, failed render attempt, or terminal reuse.
+     * Not resolved means: not ready (upstream pending) or another job's active claim.
+     */
+    public function getClipRenderResolvedAttribute(): bool
+    {
+        $render = $this->renderedClips()->first();
+
+        if ($render === null) {
+            return false;
+        }
+
+        return in_array($render->status, ['completed', 'failed'], true);
     }
 }
