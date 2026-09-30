@@ -22,7 +22,7 @@ uses(TestCase::class, RefreshDatabase::class);
 |--------------------------------------------------------------------------
 */
 
-function createProbedAssetForRenderReal(array $overrides = []): MediaAsset
+function pmaCreateProbedAssetForRenderReal(array $overrides = []): MediaAsset
 {
     return MediaAsset::factory()->create(array_merge([
         'processing_status' => MediaAsset::PROCESSING_PROBED,
@@ -39,7 +39,7 @@ function createProbedAssetForRenderReal(array $overrides = []): MediaAsset
     ], $overrides));
 }
 
-function createCompletedSceneAnalysisReal(MediaAsset $asset): MediaSceneAnalysis
+function pmaCreateCompletedSceneAnalysisReal(MediaAsset $asset): MediaSceneAnalysis
 {
     return MediaSceneAnalysis::create([
         'media_asset_id' => $asset->id,
@@ -54,7 +54,7 @@ function createCompletedSceneAnalysisReal(MediaAsset $asset): MediaSceneAnalysis
     ]);
 }
 
-function createCompletedClipAnalysisReal(MediaAsset $asset): MediaClipAnalysis
+function pmaCreateCompletedClipAnalysisReal(MediaAsset $asset): MediaClipAnalysis
 {
     return MediaClipAnalysis::create([
         'media_asset_id' => $asset->id,
@@ -79,7 +79,7 @@ function createCompletedClipAnalysisReal(MediaAsset $asset): MediaClipAnalysis
     ]);
 }
 
-function createCompletedTranscriptReal(MediaAsset $asset, MediaSceneAnalysis $sceneAnalysis): MediaTranscript
+function pmaCreateCompletedTranscriptReal(MediaAsset $asset, MediaSceneAnalysis $sceneAnalysis): MediaTranscript
 {
     $derivedAsset = \App\Models\DerivedAsset::create([
         'media_asset_id' => $asset->id,
@@ -109,7 +109,7 @@ function createCompletedTranscriptReal(MediaAsset $asset, MediaSceneAnalysis $sc
     ]);
 }
 
-function createCompletedRecommendationReal(MediaAsset $asset, MediaClipAnalysis $clipAnalysis, MediaTranscript $transcript): MediaClipRecommendation
+function pmaCreateCompletedRecommendationReal(MediaAsset $asset, MediaClipAnalysis $clipAnalysis, MediaTranscript $transcript): MediaClipRecommendation
 {
     $executionParameters = [
         'timeout_seconds' => ClipRankingProfile::timeoutSeconds(),
@@ -192,11 +192,11 @@ it('completes asset with real worker but does NOT auto-render', function () {
         $this->markTestSkipped('FFmpeg not available in test environment');
     }
 
-    $asset = createProbedAssetForRenderReal();
-    $sceneAnalysis = createCompletedSceneAnalysisReal($asset);
-    $clipAnalysis = createCompletedClipAnalysisReal($asset);
-    $transcript = createCompletedTranscriptReal($asset, $sceneAnalysis);
-    $recommendation = createCompletedRecommendationReal($asset, $clipAnalysis, $transcript);
+    $asset = pmaCreateProbedAssetForRenderReal();
+    $sceneAnalysis = pmaCreateCompletedSceneAnalysisReal($asset);
+    $clipAnalysis = pmaCreateCompletedClipAnalysisReal($asset);
+    $transcript = pmaCreateCompletedTranscriptReal($asset, $sceneAnalysis);
+    $recommendation = pmaCreateCompletedRecommendationReal($asset, $clipAnalysis, $transcript);
 
     // Create test fixture video if needed
     $fixturePath = base_path('services/worker/tests/fixtures/render_source.mp4');

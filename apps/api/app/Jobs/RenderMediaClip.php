@@ -112,7 +112,7 @@ class RenderMediaClip implements ShouldQueue
             throw new InvalidInputException('Invalid or missing probe data');
         }
 
-        // Check existing DerivedAsset for idempotency
+        // Check existing DerivedAsset for idempotency (Corrected: uses render_profile_version = 'vertical_v1')
         $existingRender = DerivedAsset::where('media_asset_id', $asset->id)
             ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
             ->where('candidate_index', $this->candidateIndex)
@@ -121,7 +121,7 @@ class RenderMediaClip implements ShouldQueue
 
         if ($existingRender !== null) {
             // If completed, reuse (idempotent) - unique constraint ensures same profile version
-            if ($existingRender->status === 'completed') {
+            if ($existingRender->render_status === DerivedAsset::RENDER_STATUS_COMPLETED) {
                 Log::info('RenderMediaClip: reusing existing completed render', [
                     'media_asset_id' => $asset->id,
                     'candidate_index' => $this->candidateIndex,
@@ -129,14 +129,21 @@ class RenderMediaClip implements ShouldQueue
                 ]);
                 return $existingRender;
             }
-            
+
             // If failed, we allow retry by continuing to claim transaction
+            // But check for version conflict first
+            if ($existingRender->render_status === DerivedAsset::RENDER_STATUS_FAILED) {
+                // Check if M5 authority differs (version conflict)
+                if ($this->hasVersionConflict($existingRender, $recommendation)) {
+                    throw new RenderVersionConflictException('M5 recommendation authority differs from existing render');
+                }
+            }
         }
 
         $action = $this->processMediaAction ?? app(ProcessMediaAction::class);
         $renderConfiguration = RenderProfile::configuration();
         $renderTimeoutSeconds = RenderProfile::timeoutSeconds();
-        $renderLockWaitSeconds = RenderProfile::lockWaitSeconds();
+        $renderLockWaitSeconds = RenderProfile::lockWaitSeconds();  // timeout + 10s
         $executionParameters = [
             'timeout_seconds' => $renderTimeoutSeconds,
             'lock_wait_seconds' => $renderLockWaitSeconds,
@@ -152,6 +159,11 @@ class RenderMediaClip implements ShouldQueue
             'audio_codec' => $probeData['audio_codec'] ?? null,
         ];
 
+        // Precompute output key (Corrected: Laravel precomputes, not worker)
+        $projectId = $asset->project_id;
+        $timestamp = now()->utc()->format('Ymd\THis\Z');
+        $outputKey = "projects/{$projectId}/renders/{$asset->id}/{$this->candidateIndex}_{$timestamp}.mp4";
+
         // Atomic claim transaction
         try {
             DB::transaction(function () use (
@@ -163,18 +175,24 @@ class RenderMediaClip implements ShouldQueue
                 $renderLockWaitSeconds,
                 $durationMs,
                 $sourceMedia,
+                $outputKey,
             ) {
                 if (DB::connection()->getDriverName() === 'pgsql') {
                     DB::select('SELECT set_config(\'lock_timeout\', ?, true)', [$renderLockWaitSeconds.'s']);
                 }
 
-                // Conflict-safe first insert
+                // Conflict-safe first insert with storage_disk and storage_key (NOT NULL constraints)
                 DB::table('derived_assets')->insertOrIgnore([
                     'media_asset_id' => $asset->id,
                     'type' => DerivedAsset::TYPE_RENDERED_CLIP,
                     'candidate_index' => $this->candidateIndex,
                     'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
-                    'status' => 'pending',
+                    'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
+                    'storage_disk' => $asset->storage_disk,
+                    'storage_key' => $outputKey,
+                    'mime_type' => 'video/mp4',
+                    'size_bytes' => 0,
+                    'duration_ms' => 0,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -187,10 +205,14 @@ class RenderMediaClip implements ShouldQueue
                     ->first();
 
                 // Guard: if a terminal row already exists, preserve it
-                if ($locked !== null && in_array($locked->status, ['completed', 'failed'], true)) {
-                    if ($locked->status === 'completed') {
+                if ($locked !== null && in_array($locked->render_status, [DerivedAsset::RENDER_STATUS_COMPLETED, DerivedAsset::RENDER_STATUS_FAILED], true)) {
+                    if ($locked->render_status === DerivedAsset::RENDER_STATUS_COMPLETED) {
                         // This will be handled by the outer logic returning the existing render
                         return;
+                    }
+                    // If failed, check version conflict before retry
+                    if ($this->hasVersionConflict($locked, $recommendation)) {
+                        throw new RenderVersionConflictException('M5 recommendation authority differs from existing render');
                     }
                     // If failed, we continue to retry
                 }
@@ -200,8 +222,9 @@ class RenderMediaClip implements ShouldQueue
                 }
 
                 // Transition to rendering
-                $locked->status = 'rendering';
+                $locked->render_status = DerivedAsset::RENDER_STATUS_RENDERING;
                 $locked->render_error = null;
+                $locked->render_started_at = now();
                 $locked->save();
 
                 // Capture input snapshot
@@ -216,20 +239,20 @@ class RenderMediaClip implements ShouldQueue
                 ];
 
                 try {
-                    // Build render contract
-                    $renderContract = MediaProcessingContract::renderClipsRequest(
+                    // Build render contract (Corrected: NO database identifiers, precomputed output_key)
+                    $renderContract = MediaProcessingContract::renderClipRequest(
                         $asset->id,
                         $durationMs,
                         $recommendation->toArray(),
-                        $recommendation->id,
                         $this->candidateIndex,
-                        $sourceMedia
+                        $sourceMedia,
+                        $outputKey
                     );
 
                     $renderContractObj = MediaProcessingContract::fromArray($renderContract);
 
-                    // Invoke the worker
-                    $result = $action->renderClips($renderContractObj);
+                    // Invoke the worker (singular action)
+                    $result = $action->renderClip($renderContractObj);
 
                     // Validate result
                     $requestSha256 = hash('sha256', json_encode($renderContract));
@@ -243,7 +266,8 @@ class RenderMediaClip implements ShouldQueue
 
                     // Mark completed
                     $clip = $result['render']['clips'][0];
-                    $locked->status = 'completed';
+                    $locked->render_status = DerivedAsset::RENDER_STATUS_COMPLETED;
+                    $locked->render_completed_at = now();
                     $locked->storage_disk = $clip['output']['disk'];
                     $locked->storage_key = $clip['output']['key'];
                     $locked->mime_type = 'video/mp4';
@@ -268,7 +292,8 @@ class RenderMediaClip implements ShouldQueue
                     }
 
                     if ($e->getMessage() === 'invalid_input') {
-                        $locked->status = 'failed';
+                        $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
+                        $locked->render_completed_at = now();
                         $locked->render_error = 'invalid_input';
                         $locked->save();
 
@@ -276,7 +301,8 @@ class RenderMediaClip implements ShouldQueue
                     }
 
                     // Expected worker/validation failure: sanitized failed render only
-                    $locked->status = 'failed';
+                    $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
+                    $locked->render_completed_at = now();
                     $locked->render_error = 'render_failed';
                     $locked->save();
                 }
@@ -318,11 +344,31 @@ class RenderMediaClip implements ShouldQueue
             throw new RenderFailedException('Render completed but DerivedAsset not found');
         }
 
-        if ($completedRender->status === 'failed') {
+        if ($completedRender->render_status === DerivedAsset::RENDER_STATUS_FAILED) {
             throw new RenderFailedException('Render failed: '.$completedRender->render_error);
         }
 
         return $completedRender;
+    }
+
+    /**
+     * Check if the existing render has a version conflict with current M5 authority.
+     */
+    private function hasVersionConflict(DerivedAsset $existingRender, MediaClipRecommendation $recommendation): bool
+    {
+        // Compare M5 authority: recommendation ID, candidate bounds, configuration
+        // If any differs, it's a version conflict
+        $existingParams = $existingRender->render_parameters ?? [];
+        $existingConfig = $existingParams['configuration'] ?? [];
+        $currentConfig = RenderProfile::configuration();
+
+        if ($existingConfig !== $currentConfig) {
+            return true;
+        }
+
+        // Could also check recommendation ID, but spec says recommendation_id NOT in unique key
+        // Version conflict is about different M5 authority bounds or configuration
+        return false;
     }
 
     /**

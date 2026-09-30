@@ -3,7 +3,7 @@
 ## Authority and status
 
 - Active issue: [#69](https://github.com/CarlosEGoulart/AiClip/issues/69), `feat(rendering): add durable baseline vertical clip render pipeline`.
-- Authorized branch: `@carlosegoulart/69/feat/vertical-clip-render-pipeline`.
+- Authorized branch: `@carlosegoulart/69/feat/vertical-clip-render-pipeline-recovery-v2`.
 - Baseline supplied by Orchestrator: `HEAD` (post-M5 merge).
 - This is an M6.1 foundation specification. The issue body was read directly during planning.
 - Planner owns only this file, `plan.md`, and `test-plan.md`. Execution evidence, documentation reconciliation, implementation, testing, and lifecycle operations belong to their assigned agents.
@@ -30,11 +30,11 @@ No material documentation conflict remains under these boundaries. Broad future 
 ## Scope and exclusions
 
 Included:
-- Metadata-only worker action `render_clips` v1.0.0 with CLI subcommand `render-clips`
+- Metadata-only worker action `render_clip` v1.0.0 with CLI subcommand `render-clip`
 - FFmpeg-based vertical reframing (9:16) with deterministic center-crop only
 - Single render job producing exactly one output file for one explicitly selected candidate (by `candidate_index`)
 - Additive v1 contract extension; no v2
-- Persistence via `DerivedAsset` extension with `type=clip_rendered`, `candidate_index`, `render_profile_version`
+- Persistence via `DerivedAsset` extension with `type=clip_rendered`, `candidate_index`, `render_profile_version`, `render_status`, `render_started_at`, `render_completed_at`
 - Configuration/provenance snapshot (exact FFmpeg filter graph, codec, bitrate, resolution)
 - Retry/terminal semantics, concurrency protection, orchestration integration
 - Unit, contract, integration, and E2E tests; authorized factual documentation reconciliation by Orchestrator
@@ -62,7 +62,7 @@ Inputs are read afresh by Laravel from persisted state, never supplied by a publ
 2. A completed `MediaClipRecommendation` with `status=completed` and `outcome=ranked` is required. Must have at least one candidate with `semantic_rank` and `semantic_score`. Revalidate the M5 candidate snapshot before projection: K candidates with index 0..K-1, unique M4 ranks, unchanged bounds/scores/criteria, source-scene references intact.
 3. **Transcript segments are not used** — captions are out of scope for M6.1.
 4. Source video file must be accessible via `MediaAsset.storage_disk` + `storage_key` (S3-compatible). No signed URLs or temporary credentials cross the worker boundary; worker receives only the storage path/key for the source media.
-5. Rendering is requested for **exactly one** candidate identified by `candidate_index` (0..K-1). The candidate must have a non-null `semantic_score`.
+5. Rendering is requested for **exactly one** candidate identified by `candidate_index` (0..K-1). The candidate must have a non-null `semantic_score`. Laravel job receives `candidate_index` and independently verifies against persisted M5 authority. The worker contract contains exactly one `candidate_index` at the request root — no duplicate in `recommendation.candidate_index`.
 
 | Upstream situation at the render-stage boundary | Required outcome |
 |---|---|
@@ -74,9 +74,9 @@ Inputs are read afresh by Laravel from persisted state, never supplied by a publ
 | M5 missing after M5 stage resolved | Failed attempt with `upstream_recommendation_missing` |
 | Invalid persisted duration/recommendations/configuration | Failed attempt with `invalid_input` or `invalid_configuration`; preserve upstream records |
 
-The metadata worker accepts ready inputs only; upstream statuses and database identifiers are not sent to it.
+The metadata worker accepts ready inputs only; upstream statuses and database identifiers are not sent to it. Worker contract includes NO database identifiers (`media_asset_id`, `recommendation_id`, `project_id`). Laravel precomputes all render metadata and passes only what the worker needs to execute FFmpeg.
 
-## Deterministic algorithm: `ffmpeg_vertical_baseline`, version `1.0.0`
+## Deterministic algorithm: `vertical`, version `vertical_v1`
 
 ### Configuration and fixed policies
 
@@ -99,10 +99,11 @@ Fixed versioned limits/policies: at most 1000 recommendations, 8388608 UTF-8 inp
 ### A. Clip selection
 
 For a completed M5 recommendation with K candidates (index 0..K-1):
-1. The caller provides exactly one `candidate_index` (integer 0..K-1).
+1. The caller provides exactly one `candidate_index` (integer 0..K-1) at the request root.
 2. The selected candidate must have a non-null `semantic_score`.
 3. The selected candidate produces exactly one output clip.
 4. If `candidate_index` is out of bounds or the candidate has null `semantic_score`, the render fails with `invalid_candidate_index`.
+5. The worker contract does NOT include `recommendation.candidate_index` — only the root `candidate_index` is authoritative.
 
 ### B. FFmpeg filter graph construction (per clip)
 
@@ -119,18 +120,20 @@ No caption filter chain. No face-aware crop. No smart crop variants.
 
 ### C. Output naming and storage
 
-- Output key: `renders/{media_asset_id}/{recommendation_id}/{candidate_index}_{timestamp}.mp4`
+- Output key: `projects/{project_id}/renders/{media_asset_id}/{candidate_index}_{timestamp}.mp4`
 - Timestamp: ISO8601 UTC without separators (`YYYYMMDDTHHMMSSZ`) — deterministic for same inputs.
 - Storage: same disk as source `MediaAsset.storage_disk`.
 - MIME type: `video/mp4`.
-- DerivedAsset record: `type=clip_rendered`, linked to `MediaAsset`, with `storage_key`, `mime_type`, `size_bytes`, `duration_ms`, `width`, `height`, `codec`, `bitrate`, and extended columns: `candidate_index` (integer), `render_profile_version` (string, e.g., `ffmpeg_vertical_baseline:1.0.0`).
+- Laravel precomputes the final logical output key BEFORE worker claim/execution. The worker receives only the storage key for the source media and the precomputed output key.
+- DerivedAsset record: `type=clip_rendered`, linked to `MediaAsset`, with `storage_key`, `mime_type`, `size_bytes`, `duration_ms`, `width`, `height`, `codec`, `bitrate`, and extended columns: `candidate_index` (integer), `render_profile_version` (string, exactly `vertical_v1`), `render_status` (string: `pending`|`rendering`|`completed`|`failed`), `render_started_at` (timestamp, nullable), `render_completed_at` (timestamp, nullable), `render_error` (string, nullable).
+- Pending DerivedAsset must satisfy existing NOT NULL `storage_disk`/`storage_key` constraints at row creation.
 
 ### D. Result serialization
 
 Top-level object has only `status: "success"` and required `render` object:
 
-- `algorithm`: nonblank string, exactly `ffmpeg_vertical_baseline`.
-- `algorithm_version`: nonblank string, exactly `1.0.0`.
+- `algorithm`: nonblank string, exactly `vertical`.
+- `algorithm_version`: nonblank string, exactly `vertical_v1`.
 - `parameters`: required object with exactly:
   - `configuration`: complete validated request configuration.
   - `source_media`: `{disk, key, duration_ms, width, height, video_codec, audio_codec}` — from probe.
@@ -153,9 +156,9 @@ Top-level object has only `status: "success"` and required `render` object:
 - Runtime/result-validation failure (FFmpeg error, storage write error, validation mismatch) emits same shape with `code:"render_failed"` and `error:"Clip render failed"`, exit 1.
 - Do not echo rejected values or schema-library exception messages. No partial success.
 - Strict JSON rejects NaN/Infinity on input and output, including overflow to infinity.
-- Laravel launches an argument-list process for `render-clips`, with the contract on **stdin**, not the command line. No shell interpolation.
+- Laravel launches an argument-list process for `render-clip`, with the contract on **stdin**, not the command line. No shell interpolation.
 - New action performs no database access or network requests (except S3 via configured Flysystem adapter if worker writes directly; baseline: Laravel writes via Flysystem after worker returns output path). Reading its contract stream and packaged schema is allowed.
-- `media.render_timeout_seconds` defaults to 300, integer 30..1800. Lock wait bound is timeout plus 5 seconds. Persist both as Laravel-owned `execution_parameters` for the attempt; they are operational settings, not score inputs or worker configuration.
+- `media.render_timeout_seconds` defaults to 300, integer 30..1800. Lock wait bound is timeout plus 10 seconds. Persist both as Laravel-owned `execution_parameters` for the attempt; they are operational settings, not score inputs or worker configuration.
 - Do not forward raw stdout, stderr, payloads, media content, or arbitrary exception messages into exceptions, queue failure records, database errors, or logs for this stage. Use fixed error codes/messages.
 - Logs may contain only existing local asset ID, stage, fixed error code, elapsed time, and counts. No filter graphs, criteria dump, or contract dump.
 
@@ -165,12 +168,15 @@ Top-level object has only `status: "success"` and required `render` object:
 
 Extend `DerivedAsset` / `derived_assets` with render-specific columns:
 - `candidate_index` (integer, nullable) — M5 candidate index (0..K-1)
-- `render_profile_version` (string, nullable) — e.g., `ffmpeg_vertical_baseline:1.0.0`
+- `render_profile_version` (string, nullable) — exactly `vertical_v1`
 - `render_configuration` (JSONB, nullable) — complete validated request configuration snapshot
 - `render_parameters` (JSONB, nullable) — exact algorithm parameters (filter_graph, ffmpeg_version, source_media, limits)
 - `render_error` (string, nullable) — sanitized error code for failed renders
+- `render_status` (string, nullable) — `pending`|`rendering`|`completed`|`failed`
+- `render_started_at` (timestamp, nullable) — when rendering began
+- `render_completed_at` (timestamp, nullable) — when rendering completed or failed
 
-Unique composite index on `(media_asset_id, type, candidate_index, render_profile_version)` where `type = 'clip_rendered'` — one render per asset per candidate per profile version. If the same candidate is re-rendered with a different profile version, a new row is created.
+Unique composite index on `(media_asset_id, type, candidate_index, render_profile_version)` where `type = 'clip_rendered'` — one render per asset per candidate per profile version. If the same candidate is re-rendered with a different profile version, a new row is created. **`recommendation_id` is NOT part of the unique key** — a new M5 recommendation with the same candidate_index and profile_version reuses the existing completed render. A version conflict (different M5 authority bounds or configuration) throws `RenderVersionConflictException` instead of creating a new row.
 
 `MediaAsset::renderedClips()` has-many scoped to `type = 'clip_rendered'`.
 
@@ -181,7 +187,7 @@ Validate in PHP even when a test double or compromised worker reports `status=su
 Independently verify:
 - The clip's `candidate_index` exists in the input recommendation's candidates.
 - The clip's `start_ms`/`end_ms` exactly matches the candidate.
-- Output file exists on storage, size > 0, duration within 5% of expected (container overhead), resolution matches configuration.
+- Output file exists on storage, size > 0, duration within **±50ms** of expected (container overhead), resolution matches configuration.
 - FFmpeg version recorded.
 - Filter graph is non-empty.
 
@@ -193,11 +199,13 @@ Perform the same invariant checks at the model's completion boundary so another 
 
 Legal transitions only: `pending -> rendering -> completed`, `rendering -> failed`, `failed -> rendering`. Starting a retry clears stale error and any incomplete result fields. `completed` is terminal and reused unchanged, including after configuration changes. Invalid transitions do not mutate stored data; do not silently report a new successful render.
 
+The `render_status` column tracks: `pending` (row created, not yet claimed), `rendering` (worker invoked, in progress), `completed` (success, terminal), `failed` (terminal failure, retryable). `render_started_at` is set on transition to `rendering`. `render_completed_at` is set on transition to `completed` or `failed`.
+
 Use PostgreSQL transaction-scoped exclusive row locking, not merely `firstOrCreate`, an in-memory flag, or a unique index:
 
 1. Safely establish the unique pending row (insert-on-conflict/reread); handle concurrent first creation and deletion without duplicate rows.
 2. Begin a transaction, lock that row with `SELECT ... FOR UPDATE`, then re-read status and current upstream state. The row lock is the exclusive claim. A completed row is returned without worker invocation or timestamp/result changes.
-3. For a ready attempt or controlled upstream failure, transition pending/failed to rendering, clear error, capture inputs/configuration, invoke at most one bounded render process if eligible to run, independently validate, and atomically complete or fail **inside the same transaction**. Catch expected worker/validation errors inside the transaction so the sanitized failure commits. Do not hold this lock during probe, scene detection, extraction, transcription, or recommendation.
+3. For a ready attempt or controlled upstream failure, transition pending/failed to rendering, clear error, set `render_started_at`, capture inputs/configuration, invoke at most one bounded render process if eligible to run, independently validate, and atomically complete or fail **inside the same transaction**. On success: set `render_completed_at`, `render_status=completed`. On failure: set `render_completed_at`, `render_status=failed`, `render_error`. Catch expected worker/validation errors inside the transaction so the sanitized failure commits. Do not hold this lock during probe, scene detection, extraction, transcription, or recommendation.
 4. A second invocation cannot enter the renderer until the first transaction releases its claim. After completion it must reuse the result; after failure a retry may run serially. A lock-timeout contender returns `busy`, never changes the owning attempt or claims success. The owning job remains responsible for finalization.
 5. An unhandled exception/process crash rolls back the transaction, including rendering state and partial JSON. The prior pending/failed state remains recoverable by the existing queue retry policy. No committed unowned rendering row is created by this design. The queue exhaustion/failure path must resolve an unclaimed pending/failed render attempt with a sanitized failure (via rendering) and resolve the asset to a terminal state; it must not overwrite an independently completed/actively locked attempt.
 
@@ -218,14 +226,15 @@ M6.1 implements a **dedicated, reusable render job** that is **explicitly invoke
   1. Independently re-reads M5 recommendation and M4 analysis authority from database.
   2. Verifies the selected candidate exists, has non-null `semantic_score`, and bounds match the persisted snapshot.
   3. Verifies source media is accessible (probe, storage).
-  4. Builds render contract with explicit `candidate_index` and configuration from `RenderProfile`.
-  5. Invokes worker `render-clips` action via `ProcessMediaAction`.
+  4. Builds render contract with explicit `candidate_index` and configuration from `RenderProfile`. **Worker contract contains NO database identifiers** — only render metadata necessary to execute FFmpeg (source media key, output key, candidate bounds, configuration).
+  5. Invokes worker `render-clip` action via `ProcessMediaAction`.
   6. Validates result independently via `RenderValidator`.
-  7. Persists `DerivedAsset` with `type=clip_rendered`, `candidate_index`, `render_profile_version`, configuration, parameters.
+  7. Persists `DerivedAsset` with `type=clip_rendered`, `candidate_index`, `render_profile_version` (`vertical_v1`), `render_status`, `render_started_at`, `render_completed_at`, configuration, parameters.
   8. Returns `DerivedAsset` on success; throws sanitized exception on failure.
-- **Idempotency**: Re-invocation with same `(media_asset_id, recommendation_id, candidate_index, render_profile_version)` returns existing completed `DerivedAsset` without re-executing worker.
+- **Idempotency**: Re-invocation with same `(media_asset_id, candidate_index, render_profile_version)` returns existing completed `DerivedAsset` without re-executing worker. **`recommendation_id` is NOT part of the unique key** — a new M5 recommendation with same candidate_index and profile_version reuses existing render.
 - **Concurrency**: Row-level lock on `DerivedAsset` (same pattern as M4/M5). Competing invocations return `busy`.
 - **Failure modes**: All sanitized error codes per readiness table above. No partial results.
+- **Version conflict**: If M5 recommendation authority differs (different candidate bounds or configuration) for same `(media_asset_id, candidate_index, render_profile_version)`, throw `RenderVersionConflictException` — do not create new row.
 
 ### ProcessMediaAsset integration
 
@@ -242,15 +251,15 @@ If an internal caller wishes to render after `ProcessMediaAsset` completes, it i
 
 ### Rerun and reuse semantics
 
-- `RenderMediaClip` reuses valid persisted `DerivedAsset` for the same `(media_asset_id, recommendation_id, candidate_index, render_profile_version)`.
+- `RenderMediaClip` reuses valid persisted `DerivedAsset` for the same `(media_asset_id, candidate_index, render_profile_version)`.
 - A failed render attempt may be retried by re-invoking `RenderMediaClip` (clears error, re-attempts).
 - Completed renders never re-execute.
-- If M5 recommendation changes (new `recommendation_id` or different candidate bounds), the unique key differs → new render row created.
+- If M5 recommendation changes (different candidate bounds), version conflict is thrown for same `(media_asset_id, candidate_index, render_profile_version)` — caller must resolve.
 - Assets lacking a valid persisted probe must not be used to fabricate render input.
 
 ## Observable acceptance criteria
 
-1. The real FFmpeg renderer and metadata-only `render_clips` v1 action implement the exact algorithm, parameters, errors, and privacy boundary above.
+1. The real FFmpeg renderer and metadata-only `render_clip` v1 action implement the exact algorithm, parameters, errors, and privacy boundary above.
 2. Required recommendations and candidate_index selection follow every readiness case; invalid candidate_index produces a controlled failure.
 3. Python and Laravel independently reject malformed inputs/results and all clip/index/output invariants; no required success field defaults.
 4. A unique, owner-scoped, cascade-deleted snapshot has legal retry/error-clearing/terminal semantics; concurrent claims cannot run competing renders or corrupt results.
@@ -278,7 +287,7 @@ There is no new UI or render API. Existing upload/list/delete/auth/project workf
 ### Human-gated operations (blocking SPEC_READY → implementation)
 
 - Operator confirms FFmpeg availability and version in CI/worker image
-- Operator provisions/confirms S3-compatible bucket for render outputs (can reuse media bucket with `renders/` prefix)
+- Operator provisions/confirms S3-compatible bucket for render outputs (can reuse media bucket with `projects/{project_id}/renders/` prefix)
 - Operator confirms `media.render_timeout_seconds` default (300) is acceptable for CI envelope (2 CPU, 2 GiB RAM, 4 GiB disk)
 
 These are explicit gates in `plan.md`, not claimed available or executed. If a required environment cannot be supplied, completion remains blocked rather than silently changing acceptance.

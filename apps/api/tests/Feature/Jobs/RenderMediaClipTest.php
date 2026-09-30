@@ -177,7 +177,7 @@ function createCompletedRecommendationForRender(MediaAsset $asset, MediaClipAnal
 
 /*
 |--------------------------------------------------------------------------
-| Mock worker action for recording render calls
+| Mock worker action for recording render calls (Corrected: singular action)
 |--------------------------------------------------------------------------
 */
 
@@ -193,9 +193,9 @@ class RecordingRenderActionForRender extends ProcessMediaAction
         $this->renderResults = $renderResults;
     }
 
-    public function renderClips(\App\Contracts\MediaProcessingContract $contract): array
+    public function renderClip(\App\Contracts\MediaProcessingContract $contract): array
     {
-        $request = $contract->toRenderClipsMetadataArray();
+        $request = $contract->toRenderClipMetadataArray();
         $this->renderCalls[] = $request;
 
         if ($this->shouldFail) {
@@ -203,13 +203,13 @@ class RecordingRenderActionForRender extends ProcessMediaAction
         }
 
         if (empty($this->renderResults)) {
-            // Return default success
+            // Return default success with CORRECTED values
             $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
             return [
                 'status' => 'success',
                 'render' => [
-                    'algorithm' => \App\Services\RenderValidator::ALGORITHM,
-                    'algorithm_version' => \App\Services\RenderValidator::ALGORITHM_VERSION,
+                    'algorithm' => \App\Services\RenderValidator::ALGORITHM, // 'vertical'
+                    'algorithm_version' => \App\Services\RenderValidator::ALGORITHM_VERSION, // 'vertical_v1'
                     'parameters' => [
                         'configuration' => \App\Services\RenderProfile::configuration(),
                         'source_media' => [
@@ -240,7 +240,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
                             'duration_ms' => $request['recommendation']['candidates'][$request['candidate_index']]['end_ms'] - $request['recommendation']['candidates'][$request['candidate_index']]['start_ms'],
                             'output' => [
                                 'disk' => 'media',
-                                'key' => 'renders/1/1/'.$request['candidate_index'].'_20260101T000000Z.mp4',
+                                'key' => $request['output_key'], // Precomputed by Laravel
                                 'size_bytes' => 1024000,
                                 'duration_ms' => $request['recommendation']['candidates'][$request['candidate_index']]['end_ms'] - $request['recommendation']['candidates'][$request['candidate_index']]['start_ms'],
                                 'width' => 1080,
@@ -262,7 +262,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
 
 /*
 |--------------------------------------------------------------------------
-| RED PHASE TESTS - These should FAIL initially because RenderMediaClip job doesn't exist yet
+| RED PHASE TESTS - These test the CORRECTED design requirements
 |--------------------------------------------------------------------------
 */
 
@@ -290,10 +290,18 @@ it('renders clip when explicitly dispatched with valid candidate_index', functio
         ->first();
 
     expect($render)->not->toBeNull();
-    expect($render->status)->toBe('completed');
+    expect($render->render_status)->toBe('completed');
     expect($render->candidate_index)->toBe(0);
     expect(count($action->renderCalls))->toBe(1);
     expect($action->renderCalls[0]['candidate_index'])->toBe(0);
+    // Verify no database identifiers in worker request
+    expect($action->renderCalls[0])->not->toHaveKey('media_asset_id');
+    expect($action->renderCalls[0])->not->toHaveKey('recommendation_id');
+    expect($action->renderCalls[0])->not->toHaveKey('project_id');
+    // Verify output_key is precomputed by Laravel
+    expect($action->renderCalls[0])->toHaveKey('output_key');
+    // Verify singular action
+    expect($action->renderCalls[0]['action'])->toBe('render_clip');
 });
 
 /*
@@ -545,8 +553,8 @@ it('reuses existing completed render, no worker call', function () {
         'media_asset_id' => $asset->id,
         'type' => DerivedAsset::TYPE_RENDERED_CLIP,
         'candidate_index' => 0,
-        'render_profile_version' => \App\Services\RenderProfile::RENDER_PROFILE_VERSION,
-        'status' => 'completed',
+        'render_profile_version' => \App\Services\RenderProfile::RENDER_PROFILE_VERSION, // 'vertical_v1'
+        'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
         'storage_disk' => 'media',
         'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
         'mime_type' => 'video/mp4',
@@ -571,7 +579,7 @@ it('reuses existing completed render, no worker call', function () {
         ->where('candidate_index', 0)
         ->first();
 
-    expect($render->status)->toBe('completed');
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
     expect($result->id)->toBe($render->id);
 });
 
@@ -593,8 +601,8 @@ it('throws version_conflict when existing render has different M5 authority', fu
         'media_asset_id' => $asset->id,
         'type' => DerivedAsset::TYPE_RENDERED_CLIP,
         'candidate_index' => 0,
-        'render_profile_version' => 'ffmpeg_vertical_baseline:2.0.0', // Different version
-        'status' => 'completed',
+        'render_profile_version' => 'vertical_v2', // Different version
+        'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
         'storage_disk' => 'media',
         'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
         'mime_type' => 'video/mp4',
@@ -660,6 +668,9 @@ it('produces different output for different candidate_index', function () {
     expect($render0)->not->toBeNull();
     expect($render1)->not->toBeNull();
     expect($render0->id)->not->toBe($render1->id);
+    // Verify output keys differ by candidate_index
+    expect($render0->storage_key)->toContain('0_');
+    expect($render1->storage_key)->toContain('1_');
 });
 
 /*
@@ -748,7 +759,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
         ->where('candidate_index', 0)
         ->first();
 
-    expect($render->status)->toBe('failed');
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
     expect($render->render_error)->toBe('render_failed');
 
     // Now retry with success
@@ -757,7 +768,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
     $result2 = $job2->handle();
 
     $render->refresh();
-    expect($render->status)->toBe('completed');
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
     expect($render->render_error)->toBeNull();
     expect(count($action2->renderCalls))->toBe(1);
 });
@@ -787,4 +798,214 @@ it('throws when asset has invalid probe data', function () {
 
     expect($thrown)->not->toBeNull();
     expect($thrown->getMessage())->toBe('invalid_input');
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-15: Worker contract privacy - NO database identifiers in worker request
+|--------------------------------------------------------------------------
+*/
+
+it('worker contract contains NO database identifiers', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender();
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+    $job->handle();
+
+    expect(count($action->renderCalls))->toBe(1);
+    $call = $action->renderCalls[0];
+
+    // Verify NO database identifiers in worker contract
+    expect($call)->not->toHaveKey('media_asset_id');
+    expect($call)->not->toHaveKey('recommendation_id');
+    expect($call)->not->toHaveKey('project_id');
+
+    // Verify singular action
+    expect($call['action'])->toBe('render_clip');
+
+    // Verify output_key is precomputed by Laravel
+    expect($call)->toHaveKey('output_key');
+    expect($call['output_key'])->toMatch('/^projects\/\d+\/renders\/\d+\/0_\d{8}T\d{6}Z\.mp4$/');
+
+    // Verify recommendation has NO candidate_index inside
+    expect($call['recommendation'])->not->toHaveKey('candidate_index');
+
+    // Verify single candidate_index at root
+    expect($call)->toHaveKey('candidate_index');
+    expect($call['candidate_index'])->toBe(0);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-16: Lock wait = timeout + 10s (Corrected from +5s)
+|--------------------------------------------------------------------------
+*/
+
+it('uses lock wait = timeout + 10s', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender();
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+    $job->handle();
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    $params = $render->render_parameters;
+    expect($params)->toHaveKey('execution_parameters');
+    $execParams = $params['execution_parameters'];
+    expect($execParams['lock_wait_seconds'])->toBe($execParams['timeout_seconds'] + 10);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-17: Duration tolerance ±50ms (NOT 5%)
+|--------------------------------------------------------------------------
+*/
+
+it('validates duration within ±50ms tolerance', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    // Create a result with duration slightly off (within 50ms)
+    $action = new RecordingRenderActionForRender([
+        [
+            'status' => 'success',
+            'render' => [
+                'algorithm' => 'vertical',
+                'algorithm_version' => 'vertical_v1',
+                'parameters' => [
+                    'configuration' => \App\Services\RenderProfile::configuration(),
+                    'source_media' => [
+                        'disk' => 'media',
+                        'key' => 'projects/1/assets/1/source.mp4',
+                        'duration_ms' => 30000,
+                        'width' => 1920,
+                        'height' => 1080,
+                        'video_codec' => 'h264',
+                        'audio_codec' => 'aac',
+                    ],
+                    'ffmpeg_version' => 'ffmpeg version 6.0',
+                    'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
+                    'limits' => [
+                        'max_recommendations' => 1000,
+                        'max_input_bytes' => 8388608,
+                        'max_duration_ms' => 2147483647,
+                    ],
+                    'request_sha256' => hash('sha256', 'test'),
+                ],
+                'clips' => [
+                    [
+                        'candidate_index' => 0,
+                        'semantic_rank' => 1,
+                        'semantic_score' => 0.95,
+                        'start_ms' => 0,
+                        'end_ms' => 10000,
+                        'duration_ms' => 10000,
+                        'output' => [
+                            'disk' => 'media',
+                            'key' => 'projects/1/renders/1/0_20260101T000000Z.mp4',
+                            'size_bytes' => 1024000,
+                            'duration_ms' => 10040, // Within ±50ms of expected 10000
+                            'width' => 1080,
+                            'height' => 1920,
+                            'video_codec' => 'libx264',
+                            'audio_codec' => 'aac',
+                            'video_bitrate_kbps' => 5000,
+                            'audio_bitrate_kbps' => 128,
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+    $result = $job->handle();
+
+    expect($result->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-18: Legacy media_asset_id at root preserved for backward compat
+|--------------------------------------------------------------------------
+*/
+
+it('legacy media_asset_id at root is NOT in new render_clip request (privacy boundary)', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender();
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+    $job->handle();
+
+    $call = $action->renderCalls[0];
+    // The new render_clip contract should NOT have media_asset_id
+    // (Legacy root schema has it, but the new definition should not)
+    expect($call)->not->toHaveKey('media_asset_id');
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-19: Algorithm = 'vertical', algorithm_version = 'vertical_v1' (NOT ffmpeg_vertical_baseline:1.0.0)
+|--------------------------------------------------------------------------
+*/
+
+it('uses correct algorithm and version in worker response', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender();
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+    $result = $job->handle();
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    $params = $render->render_parameters;
+    expect($params['algorithm'])->toBe('vertical');
+    expect($params['algorithm_version'])->toBe('vertical_v1');
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-20: Profile version = 'vertical_v1' (NOT ffmpeg_vertical_baseline:1.0.0)
+|--------------------------------------------------------------------------
+*/
+
+it('uses correct render_profile_version vertical_v1', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender();
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+    $result = $job->handle();
+
+    expect($result->render_profile_version)->toBe('vertical_v1');
 });

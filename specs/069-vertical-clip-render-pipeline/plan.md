@@ -7,9 +7,9 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 ## Phase 0 — Prerequisites (Human-gated, blocking)
 
 - [ ] **P0.1** Operator confirms FFmpeg 6.x+ availability in worker container/image (`ffmpeg -version` in CI).
-- [ ] **P0.2** Operator provisions/confirms S3-compatible bucket for render outputs (reuse media bucket with `renders/` prefix).
+- [ ] **P0.2** Operator provisions/confirms S3-compatible bucket for render outputs (reuse media bucket with `projects/{project_id}/renders/` prefix).
 - [ ] **P0.3** Operator confirms `media.render_timeout_seconds` default 300s is acceptable for CI envelope (2 CPU, 2 GiB RAM, 4 GiB disk).
-- [ ] **P0.4** Orchestrator confirms branch `@carlosegoulart/69/feat/vertical-clip-render-pipeline` exists and is clean.
+- [ ] **P0.4** Orchestrator confirms branch `@carlosegoulart/69/feat/vertical-clip-render-pipeline-recovery-v2` exists and is clean.
 - [ ] **P0.5** Orchestrator confirms `specs/069-vertical-clip-render-pipeline/` directory exists (created by Orchestrator).
 
 > **Gate:** No implementation tasks may begin until all P0 items are checked by Operator/Orchestrator.
@@ -19,15 +19,15 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 ### 1.1 Migration: Extend `derived_assets` table
 
 - [ ] **1.1.1** Create migration `add_render_columns_to_derived_assets_table`.
-- [ ] **1.1.2** Add columns: `candidate_index` (integer, nullable), `render_profile_version` (string, nullable), `render_configuration` (JSONB, nullable), `render_parameters` (JSONB, nullable), `render_error` (string, nullable).
+- [ ] **1.1.2** Add columns: `candidate_index` (integer, nullable), `render_profile_version` (string, nullable), `render_configuration` (JSONB, nullable), `render_parameters` (JSONB, nullable), `render_error` (string, nullable), `render_status` (string, nullable), `render_started_at` (timestamp, nullable), `render_completed_at` (timestamp, nullable).
 - [ ] **1.1.3** Add unique composite index on `(media_asset_id, type, candidate_index, render_profile_version)` where `type = 'clip_rendered'`.
 - [ ] **1.1.4** Run migration; verify schema in PostgreSQL.
 
 ### 1.2 Model: `DerivedAsset` updates
 
 - [ ] **1.2.1** Add `TYPE_RENDERED_CLIP = 'clip_rendered'` constant.
-- [ ] **1.2.2** Add fillable for new render columns.
-- [ ] **1.2.3** Add casts for JSONB columns.
+- [ ] **1.2.2** Add fillable for new render columns (`candidate_index`, `render_profile_version`, `render_configuration`, `render_parameters`, `render_error`, `render_status`, `render_started_at`, `render_completed_at`).
+- [ ] **1.2.3** Add casts for JSONB columns and date casts for `render_started_at`, `render_completed_at`.
 - [ ] **1.2.4** Add `renderedClips()` scope on `MediaAsset` relationship (where `type = TYPE_RENDERED_CLIP`).
 
 ### 1.3 Model updates: `MediaAsset`
@@ -44,19 +44,21 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 ### 2.1 Contract schema extension
 
 - [ ] **2.1.1** Edit `services/worker/contracts/media_processing_v1.json`:
-  - Add `render_clips_request` definition under `definitions`.
-  - Add `render_clips_response` definition under `definitions`.
-  - Request fields: version, action, media{duration_ms}, recommendation{candidates[], candidate_index}, configuration, source_media{disk, key, width, height, video_codec, audio_codec}.
+  - Add `render_clip_request` definition under `definitions` (additive, preserves legacy required fields at root including `media_asset_id`).
+  - Add `render_clip_response` definition under `definitions`.
+  - Request fields: version, action, media_asset_id, media{duration_ms}, recommendation{candidates[]}, candidate_index (root, single), configuration, source_media{disk, key, width, height, video_codec, audio_codec}, output_key.
   - Response: status, render{algorithm, algorithm_version, parameters, clips[]}.
-- [ ] **2.1.2** Keep backward compatibility; v1.0.0 version unchanged.
+  - NO database identifiers in worker contract: no `recommendation_id`, no `project_id`.
+- [ ] **2.1.2** Keep backward compatibility; v1.0.0 version unchanged; legacy required fields at root preserved.
 - [ ] **2.1.3** Remove `transcript_segments` from request (captions out of scope).
+- [ ] **2.1.4** Worker contract contains exactly one `candidate_index` at request root — no duplicate in `recommendation.candidate_index`.
 
 ### 2.2 Contract validation (`services/worker/aiclip_worker/contracts.py`)
 
-- [ ] **2.2.1** Add `RENDER_CLIPS_VERSION = "1.0.0"`, `RENDER_CLIPS_ACTION = "render_clips"`.
-- [ ] **2.2.2** Add `RENDER_CLIPS_REQUEST_KEYS`, `RENDER_CLIPS_RECOMMENDATION_KEYS`, `RENDER_CLIPS_MEDIA_KEYS`, `RENDER_CLIPS_CONFIG_KEYS`, `RENDER_CLIPS_SOURCE_MEDIA_KEYS`.
-- [ ] **2.2.3** Add `validate_render_clips_contract(contract)` with schema + runtime validation (mirror `validate_rank_clips_contract`).
-- [ ] **2.2.4** Update `validate_contract()` to route `render_clips` to new validator.
+- [ ] **2.2.1** Add `RENDER_CLIP_VERSION = "1.0.0"`, `RENDER_CLIP_ACTION = "render_clip"`.
+- [ ] **2.2.2** Add `RENDER_CLIP_REQUEST_KEYS`, `RENDER_CLIP_RECOMMENDATION_KEYS`, `RENDER_CLIP_MEDIA_KEYS`, `RENDER_CLIP_CONFIG_KEYS`, `RENDER_CLIP_SOURCE_MEDIA_KEYS`.
+- [ ] **2.2.3** Add `validate_render_clip_contract(contract)` with schema + runtime validation (mirror `validate_rank_clips_contract`).
+- [ ] **2.2.4** Update `validate_contract()` to route `render_clip` to new validator.
 
 ### 2.3 Configuration profile (`services/worker/aiclip_worker/rendering.py` — new file)
 
@@ -71,8 +73,8 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 - [ ] **3.1.1** Create `services/worker/aiclip_worker/rendering.py`:
   - `VerticalClipRenderer` ABC with `render(validated_input, configuration) -> RenderResult`.
   - `FFmpegVerticalClipRenderer` implementation.
-  - `RenderInput` dataclass: `duration_ms`, `recommendation` (with candidates), `candidate_index`, `source_media{disk, key, width, height, video_codec, audio_codec}`.
-  - `RenderResult` dataclass: `parameters`, `clips[]` (single element), `algorithm`, `algorithm_version`.
+  - `RenderInput` dataclass: `duration_ms`, `recommendation` (with candidates), `candidate_index`, `source_media{disk, key, width, height, video_codec, audio_codec}`, `output_key`.
+  - `RenderResult` dataclass: `parameters`, `clips[]` (single element), `algorithm` (exactly `vertical`), `algorithm_version` (exactly `vertical_v1`).
   - `RenderCandidate` dataclass for input candidates.
   - `RenderedClip` dataclass for output clip.
 
@@ -100,13 +102,13 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 
 ### 3.5 Output naming & metadata
 
-- [ ] **3.5.1** Generate output key: `renders/{media_asset_id}/{recommendation_id}/{candidate_index}_{timestamp}.mp4`.
-- [ ] **3.5.2** Timestamp: UTC ISO8601 without separators.
+- [ ] **3.5.1** Worker receives precomputed output key from Laravel: `projects/{project_id}/renders/{media_asset_id}/{candidate_index}_{timestamp}.mp4`.
+- [ ] **3.5.2** Timestamp: UTC ISO8601 without separators (Laravel generates, worker uses as-is).
 - [ ] **3.5.3** Build single clip metadata object per spec (no caption fields).
 
-### 3.6 CLI action: `render-clips`
+### 3.6 CLI action: `render-clip`
 
-- [ ] **3.6.1** Create `services/worker/aiclip_worker/actions/render_clips.py`.
+- [ ] **3.6.1** Create `services/worker/aiclip_worker/actions/render_clip.py`.
 - [ ] **3.6.2** `run_cli(argv)` mirrors `analyze_clips.py` pattern: stdin JSON, bounded input, strict JSON output, exit codes 0/1/2.
 - [ ] **3.6.3** Register subcommand in `services/worker/aiclip_worker/cli.py`.
 
@@ -116,27 +118,27 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 
 - [ ] **4.1.1** Static `configuration()` returning the 7 configurable fields with defaults.
 - [ ] **4.1.2** Static `timeoutSeconds()` → `config('media.render_timeout_seconds', 300)` with strict integer 30..1800 validation (canonical decimal string grammar per M5 pattern).
-- [ ] **4.1.3** Static `lockWaitSeconds()` = `timeoutSeconds() + 5`.
+- [ ] **4.1.3** Static `lockWaitSeconds()` = `timeoutSeconds() + 10`.
 
 ### 4.2 Validator (`app/Services/RenderValidator.php` — new)
 
 - [ ] **4.2.1** `request(array $data)` — validate request before process creation (mirror `ClipRecommendationValidator::request()`).
-- [ ] **4.2.2** `result(object $output, array $request)` — validate worker response, compare to captured request, SHA256 binding.
-- [ ] **4.2.3** `validateCompletion(array $result, array $inputSnapshot, array $executionParameters)` — model-level validation for `DerivedAsset` completion.
+- [ ] **4.2.2** `result(object $output, array $request)` — validate worker response, compare to captured request, SHA256 binding. Verify `algorithm === 'vertical'` and `algorithm_version === 'vertical_v1'`.
+- [ ] **4.2.3** `validateCompletion(array $result, array $inputSnapshot, array $executionParameters)` — model-level validation for `DerivedAsset` completion. Verify duration within ±50ms of expected.
 - [ ] **4.2.4** Independent rederivation: verify clip's candidate_index, bounds, output file metadata, filter graph presence.
 
 ### 4.3 MediaProcessingContract extensions
 
 - [ ] **4.3.1** Add `toRenderMetadataArray()` method (privacy-safe payload).
-- [ ] **4.3.2** Add static `renderClipsRequest()` building request from authoritative inputs (duration, recommendation, candidate_index, configuration, source media info from probe).
-- [ ] **4.3.3** Update `validate()` to handle `render_clips` action.
-- [ ] **4.3.4** Update `fromArray()` to parse `render_clips` via `RenderValidator::request()`.
+- [ ] **4.3.2** Add static `renderClipRequest()` building request from authoritative inputs (duration, recommendation, candidate_index, configuration, source media info from probe, precomputed output_key). NO database identifiers in worker payload.
+- [ ] **4.3.3** Update `validate()` to handle `render_clip` action.
+- [ ] **4.3.4** Update `fromArray()` to parse `render_clip` via `RenderValidator::request()`.
 
-### 4.4 ProcessMediaAction::renderClips()
+### 4.4 ProcessMediaAction::renderClip()
 
-- [ ] **4.4.1** Add `renderClips(MediaProcessingContract $contract): array` method.
+- [ ] **4.4.1** Add `renderClip(MediaProcessingContract $contract): array` method.
 - [ ] **4.4.2** Validate contract, timeout config (strict integer 30..1800).
-- [ ] **4.4.3** Create process with `render-clips` subcommand, stdin contract JSON.
+- [ ] **4.4.3** Create process with `render-clip` subcommand, stdin contract JSON.
 - [ ] **4.4.4** Set timeout, run, capture output (bounded).
 - [ ] **4.4.5** Decode JSON (object not list), validate via `RenderValidator::result()`.
 - [ ] **4.4.6** Error handling: classified failures → `ProcessMediaException` with fixed codes; unexpected → `clip_render_aborted`.
@@ -153,18 +155,21 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
   - Verify M5 status=completed, outcome=ranked.
   - Verify `candidateIndex` in bounds, candidate has non-null `semantic_score`.
   - Verify source media probe exists and storage accessible.
-  - Check existing `DerivedAsset` for `(media_asset_id, type='clip_rendered', candidate_index, render_profile_version)`.
+  - Get `project_id` from MediaAsset's project relationship.
+  - Precompute output key: `projects/{project_id}/renders/{media_asset_id}/{candidate_index}_{timestamp}.mp4`.
+  - Check existing `DerivedAsset` for `(media_asset_id, type='clip_rendered', candidate_index, render_profile_version='vertical_v1')`.
   - If completed and matches current authority/configuration → return existing (idempotent reuse).
-  - If version conflict (different M5 authority or config) → throw `RenderVersionConflictException`.
+  - If version conflict (different M5 authority bounds or configuration) → throw `RenderVersionConflictException`.
   - Atomic claim transaction (mirror M4/M5 pattern):
-    - Insert-or-ignore pending `DerivedAsset` row.
+    - Insert-or-ignore pending `DerivedAsset` row with `storage_disk`, `storage_key` (precomputed), `render_status='pending'`.
     - Lock for update, reread.
     - If completed → return existing.
-    - Transition to `rendering`, capture input_snapshot, execution_parameters.
-    - Build render contract via `MediaProcessingContract::renderClipsRequest()`.
-    - Invoke `ProcessMediaAction::renderClips()`.
+    - Transition to `rendering`, set `render_started_at`, clear error, capture input_snapshot, execution_parameters.
+    - Build render contract via `MediaProcessingContract::renderClipRequest()` (includes precomputed output_key, NO database identifiers).
+    - Invoke `ProcessMediaAction::renderClip()`.
     - Validate result via `RenderValidator::result()` and `validateCompletion()`.
-    - Mark completed or failed inside transaction.
+    - On success: set `render_completed_at`, `render_status='completed'`.
+    - On failure: set `render_completed_at`, `render_status='failed'`, `render_error`.
     - Handle lock timeout → throw `RenderBusyException`.
     - Handle abort → throw `RenderAbortedException`.
   - Return completed `DerivedAsset`.
@@ -172,10 +177,13 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 ### 5.2 Exception classes
 
 - [ ] **5.2.1** `RenderBusyException` — concurrent claim contention.
-- [ ] **5.2.2** `RenderVersionConflictException` — authority/config mismatch.
+- [ ] **5.2.2** `RenderVersionConflictException` — authority/config mismatch for same unique key.
 - [ ] **5.2.3** `InvalidCandidateIndexException` — out of bounds or null semantic_score.
 - [ ] **5.2.4** `UpstreamRecommendationUnavailableException` — M5 missing/failed/unavailable.
-- [ ] **5.2.5** `RenderFailedException` — worker/validation failure with sanitized code.
+- [ ] **5.2.5** `UpstreamRecommendationFailedException` — M5 failed.
+- [ ] **5.2.6** `UpstreamRecommendationMissingException` — M5 missing after resolved.
+- [ ] **5.2.7** `InvalidInputException` — invalid duration/probe.
+- [ ] **5.2.8** `RenderFailedException` — worker/validation failure with sanitized code.
 
 ### 5.3 Internal invocation entry points (M6.1 scope)
 
@@ -201,14 +209,14 @@ This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec
 
 ### 7.1 Worker unit tests (`services/worker/tests/`)
 
-- [ ] **7.1.1** `test_render_clips_contract_validation.py` — schema + runtime validation (valid, invalid version, invalid action, missing fields, unknown fields, invalid config, invalid recommendation, invalid candidate_index, limits).
-- [ ] **7.1.2** `test_ffmpeg_vertical_renderer.py` — filter graph construction (center crop, scale, fps), candidate selection by index, output naming.
-- [ ] **7.1.3** `test_cli_render_clips.py` — CLI transport (stdin, stdout, exit codes, error envelopes, NaN rejection, size bounds).
+- [ ] **7.1.1** `test_render_clip_contract_validation.py` — schema + runtime validation (valid, invalid version, invalid action, missing fields, unknown fields, invalid config, invalid recommendation, invalid candidate_index, limits, duplicate candidate_index forbidden, database identifiers forbidden).
+- [ ] **7.1.2** `test_ffmpeg_vertical_renderer.py` — filter graph construction (center crop, scale, fps), candidate selection by index, output naming (worker uses precomputed key).
+- [ ] **7.1.3** `test_cli_render_clip.py` — CLI transport (stdin, stdout, exit codes, error envelopes, NaN rejection, size bounds).
 - [ ] **7.1.4** `test_render_configuration.py` — configuration validation, defaults, bounds, enums.
 
 ### 7.2 Worker integration tests (real FFmpeg)
 
-- [ ] **7.2.1** `test_render_clips_integration.py` — real FFmpeg on fixture video, verify output file exists, correct resolution (1080x1920), duration matches candidate bounds.
+- [ ] **7.2.1** `test_render_clip_integration.py` — real FFmpeg on fixture video, verify output file exists, correct resolution (1080x1920), duration matches candidate bounds (±50ms), algorithm="vertical", algorithm_version="vertical_v1".
 - [ ] **7.2.2** Fixture: `tests/fixtures/render_source.mp4` (short horizontal video with audio).
 - [ ] **7.2.3** Test with different candidate indices.
 

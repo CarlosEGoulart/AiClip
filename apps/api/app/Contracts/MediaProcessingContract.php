@@ -57,6 +57,8 @@ class MediaProcessingContract
     /** @var array{min_duration_ms: int, target_duration_ms: int, max_duration_ms: int, max_candidates: int, weights: array{duration_fit: int, speech_coverage: int, boundary_alignment: int}}|array<string, mixed>|null */
     public ?array $configuration = null;
 
+    public ?string $outputKey = null;
+
     /**
      * Create a contract from a MediaAsset model.
      */
@@ -79,28 +81,32 @@ class MediaProcessingContract
     }
 
     /**
-     * Build the exact render_clips request from authoritative local inputs.
+     * Build the exact render_clip request from authoritative local inputs (Corrected design).
      *
      * The M5 recommendation is re-read and validated before projection.
      * Validation happens strictly before any process is created.
      *
+     * Worker contract contains NO database identifiers — only render metadata
+     * necessary to execute FFmpeg (source media key, precomputed output key,
+     * candidate bounds, configuration).
+     *
      * @param  int  $mediaAssetId  The media asset ID
      * @param  int  $durationMs
      * @param  array<string, mixed>  $recommendation  Completed M5 recommendation with candidates
-     * @param  int  $recommendationId  The recommendation ID
      * @param  int  $candidateIndex  Explicitly selected candidate index
      * @param  array{disk: string, key: string, width: int, height: int, video_codec: string, audio_codec: string|null}  $sourceMedia
+     * @param  string  $outputKey  Precomputed by Laravel: projects/{project_id}/renders/{media_asset_id}/{candidate_index}_{timestamp}.mp4
      * @return array<string, mixed>
      *
      * @throws ProcessMediaException
      */
-    public static function renderClipsRequest(
+    public static function renderClipRequest(
         int $mediaAssetId,
         int $durationMs,
         array $recommendation,
-        int $recommendationId,
         int $candidateIndex,
-        array $sourceMedia
+        array $sourceMedia,
+        string $outputKey
     ): array {
         // Validate recommendation has candidates and candidate_index is valid
         if (! isset($recommendation['recommendations']) || ! is_array($recommendation['recommendations'])) {
@@ -129,20 +135,20 @@ class MediaProcessingContract
 
         $recommendationData = [
             'candidates' => $renderCandidates,
-            'candidate_index' => $candidateIndex,
+            // NO candidate_index inside recommendation — only at root
         ];
 
-        return self::fromArray([
+        return [
             'version' => RenderValidator::CONTRACT_VERSION,
-            'action' => RenderValidator::ACTION,
+            'action' => RenderValidator::ACTION,  // 'render_clip' (singular)
             'media' => ['duration_ms' => $durationMs],
             'recommendation' => $recommendationData,
             'candidate_index' => $candidateIndex,
             'configuration' => RenderProfile::configuration(),
             'source_media' => $sourceMedia,
-            'media_asset_id' => $mediaAssetId,
-            'recommendation_id' => $recommendationId,
-        ])->toRenderClipsMetadataArray();
+            'output_key' => $outputKey,
+            // NO media_asset_id, recommendation_id, project_id in worker contract
+        ];
     }
 
     /**
@@ -226,6 +232,23 @@ class MediaProcessingContract
             return $contract;
         }
 
+        // Corrected: singular render_clip action
+        if (($data['action'] ?? null) === 'render_clip') {
+            $data = RenderValidator::request($data);
+            $contract = new self;
+            $contract->action = 'render_clip';
+            $contract->version = $data['version'];
+            $contract->durationMs = $data['media']['duration_ms'];
+            $contract->recommendation = $data['recommendation'];
+            $contract->candidateIndex = $data['candidate_index'];
+            $contract->configuration = $data['configuration'];
+            $contract->sourceMedia = $data['source_media'];
+            $contract->outputKey = $data['output_key'];
+
+            return $contract;
+        }
+
+        // Legacy: render_clips (for backward compatibility)
         if (($data['action'] ?? null) === 'render_clips') {
             $data = RenderValidator::request($data);
             $contract = new self;
@@ -276,6 +299,11 @@ class MediaProcessingContract
         // matching analyze_clips. Worker transport uses toRankClipsMetadataArray.
         if ($this->action === 'rank_clips') {
             return $this->toMetadataArray();
+        }
+
+        // For render_clip, return metadata-only shape (Corrected: singular, no DB IDs, precomputed output_key)
+        if ($this->action === 'render_clip') {
+            return $this->toRenderClipMetadataArray();
         }
 
         // Legacy envelope for probe, extract_audio, transcribe, detect_scenes.
@@ -351,10 +379,32 @@ class MediaProcessingContract
     }
 
     /**
-     * Serialize the contract for metadata-only (render_clips) transport.
+     * Serialize the contract for metadata-only (render_clip) transport (Corrected).
      *
      * Produces a privacy-safe payload with only timing, recommendation, candidate index,
-     * configuration, and source media info, omitting legacy storage/project/identity fields.
+     * configuration, source media info, and precomputed output_key,
+     * omitting legacy storage/project/identity fields.
+     *
+     * @return array{version: string, action: string, media: array{duration_ms: int}, recommendation: array, candidate_index: int, configuration: array, source_media: array, output_key: string}
+     */
+    public function toRenderClipMetadataArray(): array
+    {
+        $data = [
+            'version' => $this->version,
+            'action' => $this->action,
+            'media' => ['duration_ms' => $this->durationMs],
+            'recommendation' => $this->recommendation,
+            'candidate_index' => $this->candidateIndex,
+            'configuration' => $this->configuration,
+            'source_media' => $this->sourceMedia,
+            'output_key' => $this->outputKey,
+        ];
+
+        return $data;
+    }
+
+    /**
+     * Serialize the contract for metadata-only (render_clips) transport (Legacy).
      *
      * @return array{version: string, action: string, media: array{duration_ms: int}, recommendation: array, candidate_index: int, configuration: array, source_media: array, media_asset_id: int, recommendation_id: int}
      */
@@ -386,7 +436,7 @@ class MediaProcessingContract
         }
 
         // Validate action is valid
-        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes', 'analyze_clips', 'rank_clips', 'render_clips'], true)) {
+        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes', 'analyze_clips', 'rank_clips', 'render_clips', 'render_clip'], true)) {
             return false;
         }
 
@@ -412,7 +462,18 @@ class MediaProcessingContract
             return true;
         }
 
-        // render_clips uses metadata-only shape with recommendation and candidate_index.
+        // Corrected: singular render_clip uses metadata-only shape with recommendation and candidate_index.
+        if ($this->action === 'render_clip') {
+            try {
+                RenderValidator::request($this->toRenderClipMetadataArray());
+            } catch (ProcessMediaException) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // Legacy: render_clips uses metadata-only shape with recommendation and candidate_index.
         if ($this->action === 'render_clips') {
             try {
                 RenderValidator::request($this->toRenderClipsMetadataArray());

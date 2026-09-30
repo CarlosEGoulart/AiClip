@@ -1,4 +1,4 @@
-"""Vertical clip rendering with FFmpeg."""
+"""Vertical clip rendering with FFmpeg (Corrected Design per spec.md)."""
 
 from __future__ import annotations
 
@@ -74,6 +74,11 @@ DEFAULT_FFMPEG_TIMEOUT = 300  # seconds
 FFMPEG_TIMEOUT_MIN = 30
 FFMPEG_TIMEOUT_MAX = 1800
 
+# Corrected profile identity (spec.md)
+RENDER_PROFILE_VERSION = "vertical_v1"
+ALGORITHM = "vertical"
+ALGORITHM_VERSION = "vertical_v1"
+
 
 @dataclass
 class RenderCandidate:
@@ -98,13 +103,12 @@ class SourceMediaInfo:
 
 @dataclass
 class RenderInput:
-    """Validated input for rendering."""
+    """Validated input for rendering (Corrected: NO database identifiers)."""
     duration_ms: int
     recommendation: dict[str, Any]
     candidate_index: int
     source_media: SourceMediaInfo
-    media_asset_id: str
-    recommendation_id: str
+    output_key: str  # Precomputed by Laravel
 
 
 @dataclass
@@ -135,9 +139,9 @@ class RenderParameters:
 
 @dataclass
 class RenderResult:
-    """Render result."""
-    algorithm: str = "ffmpeg_vertical_baseline"
-    algorithm_version: str = "1.0.0"
+    """Render result (Corrected: algorithm = 'vertical', algorithm_version = 'vertical_v1')."""
+    algorithm: str = ALGORITHM
+    algorithm_version: str = ALGORITHM_VERSION
     parameters: RenderParameters | None = None
     clips: list[RenderedClip] = field(default_factory=list)
 
@@ -221,7 +225,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         source_width: int,
         source_height: int,
     ) -> str:
-        """Build the FFmpeg filter graph for vertical reframe."""
+        """Build the FFmpeg filter graph for vertical reframe (center-crop baseline)."""
         # Center crop to 9:16 aspect ratio
         # crop=ih*9/16:ih:(iw-ih*9/16)/2:0
         crop_width = f"ih*{9}/16"
@@ -353,7 +357,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         }
 
     def render(self, validated_input: RenderInput, configuration: RenderConfiguration) -> RenderResult:
-        """Render the vertical clip."""
+        """Render the vertical clip (Corrected: uses precomputed output_key)."""
         # Select candidate by index
         candidates = validated_input.recommendation.get("candidates", [])
         if validated_input.candidate_index < 0 or validated_input.candidate_index >= len(candidates):
@@ -379,13 +383,11 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         if candidate.end_ms <= candidate.start_ms or candidate.end_ms > validated_input.duration_ms:
             raise InvalidCandidateIndex("candidate end_ms invalid")
 
-        # Build output key
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        output_key = f"renders/{validated_input.media_asset_id}/{validated_input.recommendation_id}/{candidate.index}_{timestamp}.mp4"
+        # Use precomputed output key from Laravel (NOT generated in worker)
+        output_key = validated_input.output_key
 
         # Get source media path from storage (Flysystem would be used in real implementation)
         # For now, assume local file path based on disk/key
-        # In real implementation, Laravel would download from S3 to a temp file and pass the path
         input_path = validated_input.source_media.key  # This should be a local path in worker context
 
         # Build filter graph
@@ -436,7 +438,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                 duration_ms=candidate.end_ms - candidate.start_ms,
                 output={
                     "disk": validated_input.source_media.disk,
-                    "key": output_key,
+                    "key": output_key,  # Precomputed by Laravel
                     "size_bytes": output_meta["size_bytes"],
                     "duration_ms": output_meta["duration_ms"],
                     "width": output_meta["width"],
@@ -477,14 +479,13 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
 
 
 def _validate_input(contract: dict[str, Any]) -> RenderInput:
-    """Validate and convert contract to RenderInput."""
+    """Validate and convert contract to RenderInput (Corrected: NO database identifiers)."""
     # This is called after contract validation, so we assume basic structure is valid
     media = contract["media"]
     recommendation = contract["recommendation"]
     candidate_index = contract["candidate_index"]
     source_media = contract["source_media"]
-    media_asset_id = contract["media_asset_id"]
-    recommendation_id = contract["recommendation_id"]
+    output_key = contract["output_key"]  # Precomputed by Laravel
 
     return RenderInput(
         duration_ms=media["duration_ms"],
@@ -498,13 +499,12 @@ def _validate_input(contract: dict[str, Any]) -> RenderInput:
             video_codec=source_media["video_codec"],
             audio_codec=source_media.get("audio_codec"),
         ),
-        media_asset_id=media_asset_id,
-        recommendation_id=recommendation_id,
+        output_key=output_key,
     )
 
 
-def render_clips(contract: dict[str, Any], configuration: RenderConfiguration, ffmpeg_timeout: int) -> dict[str, Any]:
-    """Main render_clips entry point."""
+def render_clip(contract: dict[str, Any], configuration: RenderConfiguration, ffmpeg_timeout: int) -> dict[str, Any]:
+    """Main render_clip entry point (SINGULAR action)."""
     validated_input = _validate_input(contract)
 
     renderer = FFmpegVerticalClipRenderer(ffmpeg_timeout=ffmpeg_timeout)
@@ -514,8 +514,8 @@ def render_clips(contract: dict[str, Any], configuration: RenderConfiguration, f
     return {
         "status": "success",
         "render": {
-            "algorithm": result.algorithm,
-            "algorithm_version": result.algorithm_version,
+            "algorithm": result.algorithm,  # "vertical"
+            "algorithm_version": result.algorithm_version,  # "vertical_v1"
             "parameters": {
                 "configuration": result.parameters.configuration,
                 "source_media": result.parameters.source_media,

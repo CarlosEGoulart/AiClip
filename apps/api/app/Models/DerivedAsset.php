@@ -10,11 +10,11 @@ class DerivedAsset extends Model
     const TYPE_AUDIO_NORMALIZED = 'audio_normalized';
     const TYPE_RENDERED_CLIP = 'clip_rendered';
 
-    // Status constants for clip_rendered type
-    const STATUS_PENDING = 'pending';
-    const STATUS_RENDERING = 'rendering';
-    const STATUS_COMPLETED = 'completed';
-    const STATUS_FAILED = 'failed';
+    // Render-specific status constants (NOT generic 'status')
+    const RENDER_STATUS_PENDING = 'pending';
+    const RENDER_STATUS_RENDERING = 'rendering';
+    const RENDER_STATUS_COMPLETED = 'completed';
+    const RENDER_STATUS_FAILED = 'failed';
 
     protected $fillable = [
         'media_asset_id',
@@ -27,12 +27,14 @@ class DerivedAsset extends Model
         'sample_rate',
         'channels',
         'codec',
-        'status',
         'candidate_index',
         'render_profile_version',
         'render_configuration',
         'render_parameters',
         'render_error',
+        'render_status',
+        'render_started_at',
+        'render_completed_at',
     ];
 
     protected function casts(): array
@@ -47,6 +49,8 @@ class DerivedAsset extends Model
             'height' => 'integer',
             'render_configuration' => 'array',
             'render_parameters' => 'array',
+            'render_started_at' => 'datetime',
+            'render_completed_at' => 'datetime',
         ];
     }
 
@@ -68,7 +72,7 @@ class DerivedAsset extends Model
      */
     public function isTerminal(): bool
     {
-        return in_array($this->status, [self::STATUS_COMPLETED, self::STATUS_FAILED], true);
+        return in_array($this->render_status, [self::RENDER_STATUS_COMPLETED, self::RENDER_STATUS_FAILED], true);
     }
 
     /**
@@ -77,7 +81,8 @@ class DerivedAsset extends Model
     public function markRendering(): void
     {
         $this->update([
-            'status' => self::STATUS_RENDERING,
+            'render_status' => self::RENDER_STATUS_RENDERING,
+            'render_started_at' => now(),
         ]);
     }
 
@@ -89,7 +94,8 @@ class DerivedAsset extends Model
     public function markCompleted(array $result): void
     {
         $this->update([
-            'status' => self::STATUS_COMPLETED,
+            'render_status' => self::RENDER_STATUS_COMPLETED,
+            'render_completed_at' => now(),
             'storage_disk' => $result['storage_disk'] ?? $this->storage_disk,
             'storage_key' => $result['storage_key'] ?? $this->storage_key,
             'mime_type' => $result['mime_type'] ?? 'video/mp4',
@@ -114,7 +120,8 @@ class DerivedAsset extends Model
     public function markFailed(string $error): void
     {
         $this->update([
-            'status' => self::STATUS_FAILED,
+            'render_status' => self::RENDER_STATUS_FAILED,
+            'render_completed_at' => now(),
             'render_error' => $error,
         ]);
     }

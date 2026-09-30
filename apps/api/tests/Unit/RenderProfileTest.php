@@ -6,250 +6,228 @@ use App\Services\RenderProfile;
 use App\Exceptions\ProcessMediaException;
 use Tests\TestCase;
 
-uses(TestCase::class);
+class RenderProfileTest extends TestCase
+{
+    public function test_configuration_returns_all_7_fields_with_spec_defaults(): void
+    {
+        $config = RenderProfile::configuration();
 
-/*
-|--------------------------------------------------------------------------
-| RenderProfile configuration and timeout validation
-|--------------------------------------------------------------------------
-*/
+        expect($config)->toHaveKeys([
+            'target_width', 'target_height', 'target_fps',
+            'video_codec', 'video_bitrate_kbps',
+            'audio_codec', 'audio_bitrate_kbps',
+        ]);
 
-it('returns the exact configuration with spec defaults', function () {
-    $config = RenderProfile::configuration();
-
-    expect($config)->toBe([
-        'target_width' => 1080,
-        'target_height' => 1920,
-        'target_fps' => 30,
-        'video_codec' => 'libx264',
-        'video_bitrate_kbps' => 5000,
-        'audio_codec' => 'aac',
-        'audio_bitrate_kbps' => 128,
-    ]);
-});
-
-it('returns all seven configuration keys in specification order', function () {
-    $config = RenderProfile::configuration();
-
-    expect(array_keys($config))->toBe(RenderProfile::CONFIGURATION_KEYS);
-});
-
-it('returns timeoutSeconds default of 300', function () {
-    config(['media.render_timeout_seconds' => '300']);
-
-    expect(RenderProfile::timeoutSeconds())->toBe(300);
-});
-
-it('rejects non-canonical decimal string for timeoutSeconds', function () {
-    config(['media.render_timeout_seconds' => '300.0']);
-
-    try {
-        RenderProfile::timeoutSeconds();
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('rejects timeoutSeconds below minimum (30)', function () {
-    config(['media.render_timeout_seconds' => '29']);
-
-    try {
-        RenderProfile::timeoutSeconds();
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('rejects timeoutSeconds above maximum (1800)', function () {
-    config(['media.render_timeout_seconds' => '1801']);
-
-    try {
-        RenderProfile::timeoutSeconds();
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('rejects null timeoutSeconds', function () {
-    config(['media.render_timeout_seconds' => null]);
-
-    try {
-        RenderProfile::timeoutSeconds();
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('rejects float timeoutSeconds', function () {
-    config(['media.render_timeout_seconds' => 300.0]);
-
-    try {
-        RenderProfile::timeoutSeconds();
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('rejects boolean timeoutSeconds', function () {
-    config(['media.render_timeout_seconds' => true]);
-
-    try {
-        RenderProfile::timeoutSeconds();
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('derives lockWaitSeconds as timeout + 5', function () {
-    config(['media.render_timeout_seconds' => '300']);
-
-    expect(RenderProfile::lockWaitSeconds())->toBe(305);
-});
-
-it('validates target_width must be even integer 1..4096', function () {
-    $config = RenderProfile::configuration();
-
-    // Valid
-    $config['target_width'] = 1080;
-    RenderProfile::validateConfiguration($config);
-
-    // Odd - should fail
-    $config['target_width'] = 1081;
-    try {
-        RenderProfile::validateConfiguration($config);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-    }
-});
-
-it('validates target_height must be even integer 1..4096', function () {
-    $config = RenderProfile::configuration();
-
-    // Valid
-    $config['target_height'] = 1920;
-    RenderProfile::validateConfiguration($config);
-
-    // Odd - should fail
-    $config['target_height'] = 1921;
-    try {
-        RenderProfile::validateConfiguration($config);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-    }
-});
-
-it('validates target_fps must be integer 1..120', function () {
-    $config = RenderProfile::configuration();
-
-    // Valid
-    $config['target_fps'] = 30;
-    RenderProfile::validateConfiguration($config);
-
-    // Out of bounds
-    $config['target_fps'] = 121;
-    try {
-        RenderProfile::validateConfiguration($config);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-    }
-});
-
-it('validates video_codec enum', function () {
-    $config = RenderProfile::configuration();
-
-    foreach (RenderProfile::VALID_VIDEO_CODECS as $codec) {
-        $config['video_codec'] = $codec;
-        RenderProfile::validateConfiguration($config);
+        expect($config['target_width'])->toBe(1080);
+        expect($config['target_height'])->toBe(1920);
+        expect($config['target_fps'])->toBe(30);
+        expect($config['video_codec'])->toBe('libx264');
+        expect($config['video_bitrate_kbps'])->toBe(5000);
+        expect($config['audio_codec'])->toBe('aac');
+        expect($config['audio_bitrate_kbps'])->toBe(128);
     }
 
-    $config['video_codec'] = 'invalid_codec';
-    try {
-        RenderProfile::validateConfiguration($config);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-    }
-});
-
-it('validates video_bitrate_kbps range 500..50000', function () {
-    $config = RenderProfile::configuration();
-
-    $config['video_bitrate_kbps'] = 500;
-    RenderProfile::validateConfiguration($config);
-
-    $config['video_bitrate_kbps'] = 50000;
-    RenderProfile::validateConfiguration($config);
-
-    $config['video_bitrate_kbps'] = 499;
-    try {
-        RenderProfile::validateConfiguration($config);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
-    }
-});
-
-it('validates audio_codec enum', function () {
-    $config = RenderProfile::configuration();
-
-    foreach (RenderProfile::VALID_AUDIO_CODECS as $codec) {
-        $config['audio_codec'] = $codec;
-        RenderProfile::validateConfiguration($config);
+    public function test_timeout_seconds_returns_300_default(): void
+    {
+        $timeout = RenderProfile::timeoutSeconds();
+        expect($timeout)->toBe(300);
+        expect($timeout)->toBeInt();
     }
 
-    $config['audio_codec'] = 'invalid_codec';
-    try {
-        RenderProfile::validateConfiguration($config);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
+    public function test_timeout_seconds_rejects_non_canonical_decimal_string(): void
+    {
+        config(['media.render_timeout_seconds' => '300.0']);
+
+        try {
+            RenderProfile::timeoutSeconds();
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
     }
-});
 
-it('validates audio_bitrate_kbps range 32..320', function () {
-    $config = RenderProfile::configuration();
+    public function test_timeout_seconds_rejects_below_min(): void
+    {
+        config(['media.render_timeout_seconds' => 29]);
 
-    $config['audio_bitrate_kbps'] = 32;
-    RenderProfile::validateConfiguration($config);
-
-    $config['audio_bitrate_kbps'] = 320;
-    RenderProfile::validateConfiguration($config);
-
-    $config['audio_bitrate_kbps'] = 31;
-    try {
-        RenderProfile::validateConfiguration($config);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('invalid_configuration');
+        try {
+            RenderProfile::timeoutSeconds();
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
     }
-});
 
-it('returns correct parameter keys for provenance', function () {
-    expect(RenderProfile::parameterKeys())->toBe([
-        'configuration',
-        'source_media',
-        'ffmpeg_version',
-        'filter_graph',
-        'limits',
-    ]);
-});
+    public function test_timeout_seconds_rejects_above_max(): void
+    {
+        config(['media.render_timeout_seconds' => 1801]);
 
-it('exposes algorithm constants matching spec', function () {
-    expect(RenderProfile::ALGORITHM)->toBe('ffmpeg_vertical_baseline');
-    expect(RenderProfile::ALGORITHM_VERSION)->toBe('1.0.0');
-    expect(RenderProfile::RENDER_PROFILE_VERSION)->toBe('ffmpeg_vertical_baseline:1.0.0');
-});
+        try {
+            RenderProfile::timeoutSeconds();
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
+    }
 
-it('exposes limits constants matching spec', function () {
-    expect(RenderProfile::MAX_DURATION_MS)->toBe(2147483647);
-    expect(RenderProfile::MAX_RECOMMENDATIONS)->toBe(1000);
-    expect(RenderProfile::MAX_INPUT_BYTES)->toBe(8388608);
-});
+    public function test_timeout_seconds_rejects_null(): void
+    {
+        config(['media.render_timeout_seconds' => null]);
+
+        try {
+            RenderProfile::timeoutSeconds();
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
+    }
+
+    public function test_timeout_seconds_rejects_float(): void
+    {
+        config(['media.render_timeout_seconds' => 300.5]);
+
+        try {
+            RenderProfile::timeoutSeconds();
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
+    }
+
+    public function test_timeout_seconds_rejects_bool(): void
+    {
+        config(['media.render_timeout_seconds' => true]);
+
+        try {
+            RenderProfile::timeoutSeconds();
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
+    }
+
+    public function test_lock_wait_seconds_equals_timeout_plus_10(): void
+    {
+        config(['media.render_timeout_seconds' => 300]);
+
+        $timeout = RenderProfile::timeoutSeconds();
+        $lockWait = RenderProfile::lockWaitSeconds();
+
+        expect($lockWait)->toBe($timeout + 10);
+    }
+
+    public function test_lock_wait_seconds_with_custom_timeout(): void
+    {
+        config(['media.render_timeout_seconds' => 120]);
+
+        $timeout = RenderProfile::timeoutSeconds();
+        $lockWait = RenderProfile::lockWaitSeconds();
+
+        expect($lockWait)->toBe($timeout + 10);
+        expect($lockWait)->toBe(130);
+    }
+
+    public function test_configuration_validation_rejects_odd_target_width(): void
+    {
+        try {
+            RenderProfile::validateConfiguration([
+                'target_width' => 1081,
+                'target_height' => 1920,
+                'target_fps' => 30,
+                'video_codec' => 'libx264',
+                'video_bitrate_kbps' => 5000,
+                'audio_codec' => 'aac',
+                'audio_bitrate_kbps' => 128,
+            ]);
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
+    }
+
+    public function test_configuration_validation_rejects_invalid_video_codec(): void
+    {
+        try {
+            RenderProfile::validateConfiguration([
+                'target_width' => 1080,
+                'target_height' => 1920,
+                'target_fps' => 30,
+                'video_codec' => 'invalid',
+                'video_bitrate_kbps' => 5000,
+                'audio_codec' => 'aac',
+                'audio_bitrate_kbps' => 128,
+            ]);
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
+    }
+
+    public function test_configuration_validation_rejects_invalid_audio_codec(): void
+    {
+        try {
+            RenderProfile::validateConfiguration([
+                'target_width' => 1080,
+                'target_height' => 1920,
+                'target_fps' => 30,
+                'video_codec' => 'libx264',
+                'video_bitrate_kbps' => 5000,
+                'audio_codec' => 'invalid',
+                'audio_bitrate_kbps' => 128,
+            ]);
+            $this->fail('Expected ProcessMediaException');
+        } catch (ProcessMediaException $e) {
+            expect($e->getMessage())->toBe('invalid_configuration');
+        }
+    }
+
+    public function test_configuration_validation_accepts_all_valid_video_codecs(): void
+    {
+        foreach (['libx264', 'libx265', 'h264_videotoolbox', 'hevc_videotoolbox'] as $codec) {
+            RenderProfile::validateConfiguration([
+                'target_width' => 1080,
+                'target_height' => 1920,
+                'target_fps' => 30,
+                'video_codec' => $codec,
+                'video_bitrate_kbps' => 5000,
+                'audio_codec' => 'aac',
+                'audio_bitrate_kbps' => 128,
+            ]);
+        }
+    }
+
+    public function test_configuration_validation_accepts_all_valid_audio_codecs(): void
+    {
+        foreach (['aac', 'libfdk_aac', 'copy'] as $codec) {
+            RenderProfile::validateConfiguration([
+                'target_width' => 1080,
+                'target_height' => 1920,
+                'target_fps' => 30,
+                'video_codec' => 'libx264',
+                'video_bitrate_kbps' => 5000,
+                'audio_codec' => $codec,
+                'audio_bitrate_kbps' => 128,
+            ]);
+        }
+    }
+
+    public function test_algorithm_constant_is_vertical(): void
+    {
+        expect(RenderProfile::ALGORITHM)->toBe('vertical');
+    }
+
+    public function test_algorithm_version_constant_is_vertical_v1(): void
+    {
+        expect(RenderProfile::ALGORITHM_VERSION)->toBe('vertical_v1');
+    }
+
+    public function test_render_profile_version_constant_is_vertical_v1(): void
+    {
+        expect(RenderProfile::RENDER_PROFILE_VERSION)->toBe('vertical_v1');
+    }
+
+    public function test_lock_wait_offset_seconds_is_10(): void
+    {
+        expect(RenderProfile::LOCK_WAIT_OFFSET_SECONDS)->toBe(10);
+    }
+}

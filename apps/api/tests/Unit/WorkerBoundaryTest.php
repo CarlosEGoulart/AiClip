@@ -35,11 +35,11 @@ it('validates contract against JSON schema when schema exists', function () {
 
     expect($schema)->toHaveKeys(['$schema', 'title', 'type', 'required', 'properties']);
     expect($schema['required'])->toContain('version');
-    expect($schema['required'])->toContain('media_asset_id');
     expect($schema['required'])->toContain('project_id');
     expect($schema['required'])->toContain('storage');
     expect($schema['required'])->toContain('idempotency_key');
     expect($schema['required'])->toContain('created_at');
+    // media_asset_id is conditionally required per action, not at root level
 });
 
 it('contract array matches schema required fields', function () {

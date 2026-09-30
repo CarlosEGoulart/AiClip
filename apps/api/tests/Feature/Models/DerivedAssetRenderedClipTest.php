@@ -4,6 +4,7 @@ namespace Tests\Feature\Models;
 
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
+use App\Services\RenderProfile;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,8 +21,8 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION, // 'vertical_v1'
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
             'storage_key' => 'renders/pending/placeholder.mp4',
             'mime_type' => 'video/mp4',
@@ -32,14 +33,14 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
         ]);
 
         expect($render->type)->toBe(DerivedAsset::TYPE_RENDERED_CLIP);
         expect($render->candidate_index)->toBe(0);
-        expect($render->render_profile_version)->toBe('ffmpeg_vertical_baseline:1.0.0');
-        expect($render->status)->toBe('pending');
+        expect($render->render_profile_version)->toBe(RenderProfile::RENDER_PROFILE_VERSION);
+        expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_PENDING);
     }
 
     public function test_unique_constraint_same_asset_type_candidate_index_profile_version_conflicts(): void
@@ -52,18 +53,32 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder_1.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         DerivedAsset::create([
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder_2.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
     }
 
@@ -75,23 +90,37 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder_1.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $second = DerivedAsset::create([
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:2.0.0',
-            'status' => 'pending',
+            'render_profile_version' => 'vertical_v2', // Different version
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder_2.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $this->assertDatabaseHas('derived_assets', [
             'media_asset_id' => $mediaAsset->id,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:2.0.0',
+            'render_profile_version' => 'vertical_v2',
         ]);
     }
 
@@ -103,18 +132,32 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder_0.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $second = DerivedAsset::create([
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 1,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder_1.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $this->assertDatabaseHas('derived_assets', [
@@ -131,9 +174,16 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder_0.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         DerivedAsset::create([
@@ -183,14 +233,15 @@ class DerivedAssetRenderedClipTest extends TestCase
                 'max_input_bytes' => 8388608,
                 'max_duration_ms' => 2147483647,
             ],
+            'request_sha256' => hash('sha256', 'test'),
         ];
 
         $render = DerivedAsset::create([
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'completed',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
             'storage_disk' => 'media',
             'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
             'mime_type' => 'video/mp4',
@@ -221,8 +272,8 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'completed',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
             'storage_disk' => 'media',
             'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
             'mime_type' => 'video/mp4',
@@ -240,7 +291,7 @@ class DerivedAssetRenderedClipTest extends TestCase
         ]);
     }
 
-    public function test_status_transitions_pending_to_rendering_to_completed(): void
+    public function test_render_status_transitions_pending_to_rendering_to_completed(): void
     {
         $mediaAsset = MediaAsset::factory()->create();
 
@@ -248,14 +299,22 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $render->markRendering();
         $fresh = $render->fresh();
-        expect($fresh->status)->toBe('rendering');
+        expect($fresh->render_status)->toBe(DerivedAsset::RENDER_STATUS_RENDERING);
+        expect($fresh->render_started_at)->not->toBeNull();
 
         $render->markCompleted([
             'storage_disk' => 'media',
@@ -267,16 +326,17 @@ class DerivedAssetRenderedClipTest extends TestCase
             'height' => 1920,
             'codec' => 'libx264',
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
             'render_configuration' => RenderProfile::configuration(),
             'render_parameters' => ['configuration' => RenderProfile::configuration()],
         ]);
 
         $fresh = $render->fresh();
-        expect($fresh->status)->toBe('completed');
+        expect($fresh->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+        expect($fresh->render_completed_at)->not->toBeNull();
     }
 
-    public function test_status_transitions_pending_to_rendering_to_failed(): void
+    public function test_render_status_transitions_pending_to_rendering_to_failed(): void
     {
         $mediaAsset = MediaAsset::factory()->create();
 
@@ -284,20 +344,28 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $render->markRendering();
         $fresh = $render->fresh();
-        expect($fresh->status)->toBe('rendering');
+        expect($fresh->render_status)->toBe(DerivedAsset::RENDER_STATUS_RENDERING);
 
         $render->markFailed('invalid_candidate_index');
 
         $fresh = $render->fresh();
-        expect($fresh->status)->toBe('failed');
+        expect($fresh->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
         expect($fresh->render_error)->toBe('invalid_candidate_index');
+        expect($fresh->render_completed_at)->not->toBeNull();
     }
 
     public function test_is_terminal_returns_true_for_completed_and_failed(): void
@@ -308,36 +376,64 @@ class DerivedAssetRenderedClipTest extends TestCase
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 0,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'completed',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/completed/placeholder_0.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 1024000,
+            'duration_ms' => 10000,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $failed = DerivedAsset::create([
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 1,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'failed',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_FAILED,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/failed/placeholder_1.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $pending = DerivedAsset::create([
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 2,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'pending',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_PENDING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/pending/placeholder_2.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         $rendering = DerivedAsset::create([
             'media_asset_id' => $mediaAsset->id,
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
             'candidate_index' => 3,
-            'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
-            'status' => 'rendering',
+            'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+            'render_status' => DerivedAsset::RENDER_STATUS_RENDERING,
             'storage_disk' => 'media',
+            'storage_key' => 'renders/rendering/placeholder_3.mp4',
+            'mime_type' => 'video/mp4',
+            'size_bytes' => 0,
+            'duration_ms' => 0,
+            'width' => 1080,
+            'height' => 1920,
+            'codec' => 'h264',
         ]);
 
         expect($completed->isTerminal())->toBeTrue();
@@ -351,11 +447,11 @@ class DerivedAssetRenderedClipTest extends TestCase
         expect(DerivedAsset::TYPE_RENDERED_CLIP)->toBe('clip_rendered');
     }
 
-    public function test_status_constants(): void
+    public function test_render_status_constants(): void
     {
-        expect(DerivedAsset::STATUS_PENDING)->toBe('pending');
-        expect(DerivedAsset::STATUS_RENDERING)->toBe('rendering');
-        expect(DerivedAsset::STATUS_COMPLETED)->toBe('completed');
-        expect(DerivedAsset::STATUS_FAILED)->toBe('failed');
+        expect(DerivedAsset::RENDER_STATUS_PENDING)->toBe('pending');
+        expect(DerivedAsset::RENDER_STATUS_RENDERING)->toBe('rendering');
+        expect(DerivedAsset::RENDER_STATUS_COMPLETED)->toBe('completed');
+        expect(DerivedAsset::RENDER_STATUS_FAILED)->toBe('failed');
     }
 }

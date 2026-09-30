@@ -6,7 +6,7 @@ use App\Exceptions\ProcessMediaException;
 use stdClass;
 
 /**
- * Independent PHP trust boundary for the metadata-only render_clips action.
+ * Independent PHP trust boundary for the metadata-only render_clip action.
  *
  * The same invariant core runs at the worker trust boundary (result) and at
  * the model completion boundary (validateCompletion), so persistence cannot
@@ -19,31 +19,31 @@ final class RenderValidator
     public const MAX_INPUT_BYTES = RenderProfile::MAX_INPUT_BYTES;
 
     public const CONTRACT_VERSION = '1.0.0';
-    public const ACTION = 'render_clips';
+    public const ACTION = 'render_clip';
     public const ALGORITHM = RenderProfile::ALGORITHM;
     public const ALGORITHM_VERSION = RenderProfile::ALGORITHM_VERSION;
     public const RENDER_PROFILE_VERSION = RenderProfile::RENDER_PROFILE_VERSION;
 
     /**
-     * The exact request key set.
+     * The exact request key set (Corrected: NO database identifiers, singular action).
      *
      * @var list<string>
      */
     private const REQUEST_KEYS = [
-        'version', 'action', 'media', 'recommendation', 'candidate_index', 'configuration', 'source_media', 'media_asset_id', 'recommendation_id',
+        'version', 'action', 'media', 'recommendation', 'candidate_index', 'configuration', 'source_media', 'output_key',
     ];
 
     /**
-     * The exact recommendation key set of a render_clips request.
+     * The exact recommendation key set of a render_clip request (NO candidate_index inside).
      *
      * @var list<string>
      */
     private const REQUEST_RECOMMENDATION_KEYS = [
-        'candidates', 'candidate_index',
+        'candidates',
     ];
 
     /**
-     * The exact candidate key set of a render_clips request.
+     * The exact candidate key set of a render_clip request.
      *
      * @var list<string>
      */
@@ -68,7 +68,7 @@ final class RenderValidator
     ];
 
     /**
-     * The exact configuration key set of a render_clips request.
+     * The exact configuration key set of a render_clip request.
      *
      * @var list<string>
      */
@@ -106,6 +106,7 @@ final class RenderValidator
         'ffmpeg_version',
         'filter_graph',
         'limits',
+        'request_sha256',
     ];
 
     /**
@@ -147,22 +148,14 @@ final class RenderValidator
         self::require($data['version'] === self::CONTRACT_VERSION, 'Unsupported render contract version');
         self::require($data['action'] === self::ACTION, 'Unsupported render action');
 
-        // Validate media_asset_id
-        self::integer($data['media_asset_id'], 1);
-        $mediaAssetId = $data['media_asset_id'];
-
-        // Validate recommendation_id
-        self::integer($data['recommendation_id'], 1);
-        $recommendationId = $data['recommendation_id'];
-
         $media = self::fields($data['media'], self::MEDIA_KEYS);
         self::integer($media['duration_ms'], 1, self::MAX_DURATION_MS);
         $data['media'] = $media;
 
-        // Validate recommendation
+        // Validate recommendation (NO candidate_index inside)
         $recommendation = self::fields($data['recommendation'], self::REQUEST_RECOMMENDATION_KEYS);
         $candidates = $recommendation['candidates'];
-        $candidateIndex = $recommendation['candidate_index'];
+        $candidateIndex = $data['candidate_index'];
 
         self::require(is_array($candidates) && array_is_list($candidates), 'Candidates must be a list');
         self::require(count($candidates) > 0, 'Render requests require at least one candidate');
@@ -171,7 +164,43 @@ final class RenderValidator
         self::require(is_int($candidateIndex) && ! is_bool($candidateIndex), 'candidate_index must be integer');
         self::require($candidateIndex >= 0 && $candidateIndex < count($candidates), 'candidate_index out of bounds');
 
-        $data['recommendation'] = self::validateRequestRecommendation($candidates, $candidateIndex, $media['duration_ms']);
+        // Validate each candidate
+        $k = count($candidates);
+        $seenRanks = [];
+        foreach ($candidates as $position => $candidate) {
+            self::require(is_array($candidate) && ! array_is_list($candidate), 'Candidate must be an object');
+            $candidate = self::fields($candidate, self::REQUEST_CANDIDATE_KEYS);
+
+            self::require($candidate['index'] === $position, 'Candidate index must be sequential 0..K-1');
+            self::integer($candidate['start_ms'], 0, $media['duration_ms']);
+            self::integer($candidate['end_ms'], 0, $media['duration_ms']);
+            self::require($candidate['end_ms'] > $candidate['start_ms'], 'Candidate interval must be positive');
+            self::integer($candidate['semantic_rank'], 1, $k);
+            self::require(! in_array($candidate['semantic_rank'], $seenRanks, true), 'Duplicate semantic_rank');
+            $seenRanks[] = $candidate['semantic_rank'];
+
+            $score = $candidate['semantic_score'];
+            if ($score !== null) {
+                self::require(is_int($score) || is_float($score), 'semantic_score must be a number or null');
+                self::require(! is_bool($score) && is_finite((float) $score), 'semantic_score must be finite');
+                $value = (float) $score;
+                self::require($value >= 0.0 && $value <= 1.0, 'semantic_score out of inclusive [0,1] bounds');
+            }
+
+            // Canonicalization check
+        }
+
+        sort($seenRanks);
+        self::require($seenRanks === range(1, $k), 'Candidate semantic_ranks must form 1..K');
+
+        // Selected candidate must have non-null semantic_score
+        $selectedCandidate = $candidates[$candidateIndex];
+        self::require($selectedCandidate['semantic_score'] !== null, 'Selected candidate must have non-null semantic_score');
+
+        $data['recommendation'] = [
+            'candidates' => $candidates,
+            'candidate_index' => $candidateIndex,
+        ];
 
         // Validate configuration
         $configuration = self::fields($data['configuration'], self::CONFIGURATION_KEYS);
@@ -182,6 +211,10 @@ final class RenderValidator
         $sourceMedia = self::fields($data['source_media'], self::SOURCE_MEDIA_KEYS);
         self::validateSourceMedia($sourceMedia);
         $data['source_media'] = $sourceMedia;
+
+        // Validate output_key
+        $outputKey = $data['output_key'];
+        self::require(is_string($outputKey) && $outputKey !== '', 'output_key must be non-empty string');
 
         return $data;
     }
@@ -297,7 +330,7 @@ final class RenderValidator
         self::require($clip['duration_ms'] === ($selectedCandidate['end_ms'] - $selectedCandidate['start_ms']), 'Clip duration_ms mismatch');
 
         // Validate output metadata
-        self::validateOutput($clip['output'], $parameters);
+        self::validateOutput($clip['output'], $parameters, $clip['duration_ms']);
     }
 
     /**
@@ -311,7 +344,7 @@ final class RenderValidator
         $clip = self::fields($clip, self::CLIP_KEYS);
 
         // Validate output metadata
-        self::validateOutput($clip['output'], $parameters);
+        self::validateOutput($clip['output'], $parameters, $clip['duration_ms']);
 
         // Validate filter graph is present and non-empty
         self::require(is_string($parameters['filter_graph']) && $parameters['filter_graph'] !== '', 'Filter graph must be non-empty');
@@ -353,8 +386,9 @@ final class RenderValidator
     /**
      * @param  array<string, mixed>  $output
      * @param  array<string, mixed>  $parameters
+     * @param  int|null              $expectedDurationMs
      */
-    private static function validateOutput(array $output, array $parameters): void
+    private static function validateOutput(array $output, array $parameters, ?int $expectedDurationMs = null): void
     {
         $output = self::fields($output, self::OUTPUT_KEYS);
 
@@ -373,8 +407,11 @@ final class RenderValidator
         self::require($output['width'] === $config['target_width'], 'Output width does not match configuration');
         self::require($output['height'] === $config['target_height'], 'Output height does not match configuration');
 
-        // Duration tolerance: within 5% of expected (container overhead)
-        // The expected duration is in the clip's duration_ms, validated separately
+        // Duration tolerance: within ±50ms of expected (container overhead)
+        if ($expectedDurationMs !== null) {
+            $diff = abs($output['duration_ms'] - $expectedDurationMs);
+            self::require($diff <= 50, 'Output duration_ms exceeds ±50ms tolerance');
+        }
     }
 
     /**
@@ -387,56 +424,8 @@ final class RenderValidator
         self::integer($executionParameters['timeout_seconds'], RenderProfile::TIMEOUT_MIN, RenderProfile::TIMEOUT_MAX);
         self::require(
             $executionParameters['lock_wait_seconds'] === $executionParameters['timeout_seconds'] + RenderProfile::LOCK_WAIT_OFFSET_SECONDS,
-            'lock_wait_seconds must equal the captured timeout plus the fixed offset'
+            'lock_wait_seconds must equal the captured timeout plus the fixed offset (10s)'
         );
-    }
-
-    /**
-     * Validate the recommendation structure in the request.
-     *
-     * @param  list<array<string, mixed>>  $candidates
-     * @return array{candidates: list<array<string, mixed>>, candidate_index: int}
-     */
-    private static function validateRequestRecommendation(array $candidates, int $candidateIndex, int $durationMs): array
-    {
-        $k = count($candidates);
-        $seenRanks = [];
-
-        foreach ($candidates as $position => $candidate) {
-            self::require(is_array($candidate) && ! array_is_list($candidate), 'Candidate must be an object');
-            $candidate = self::fields($candidate, self::REQUEST_CANDIDATE_KEYS);
-
-            self::require($candidate['index'] === $position, 'Candidate index must be sequential 0..K-1');
-            self::integer($candidate['start_ms'], 0, $durationMs);
-            self::integer($candidate['end_ms'], 0, $durationMs);
-            self::require($candidate['end_ms'] > $candidate['start_ms'], 'Candidate interval must be positive');
-            self::integer($candidate['semantic_rank'], 1, $k);
-            self::require(! in_array($candidate['semantic_rank'], $seenRanks, true), 'Duplicate semantic_rank');
-            $seenRanks[] = $candidate['semantic_rank'];
-
-            $score = $candidate['semantic_score'];
-            if ($score !== null) {
-                self::require(is_int($score) || is_float($score), 'semantic_score must be a number or null');
-                self::require(! is_bool($score) && is_finite((float) $score), 'semantic_score must be finite');
-                $value = (float) $score;
-                self::require($value >= 0.0 && $value <= 1.0, 'semantic_score out of inclusive [0,1] bounds');
-            }
-
-            // Canonicalization check - the score must already be in canonical form
-            // (no specific canonicalization for semantic_score like M5 had for transcript_text)
-        }
-
-        sort($seenRanks);
-        self::require($seenRanks === range(1, $k), 'Candidate semantic_ranks must form 1..K');
-
-        // Selected candidate must have non-null semantic_score
-        $selectedCandidate = $candidates[$candidateIndex];
-        self::require($selectedCandidate['semantic_score'] !== null, 'Selected candidate must have non-null semantic_score');
-
-        return [
-            'candidates' => $candidates,
-            'candidate_index' => $candidateIndex,
-        ];
     }
 
     /**
@@ -462,7 +451,7 @@ final class RenderValidator
      *
      * @param  array<string, mixed>  $configuration
      */
-    public static function configurationMatchesSelection(array $configuration): bool
+    public static function configurationMatchesProfile(array $configuration): bool
     {
         if (! self::hasExactKeys($configuration, self::CONFIGURATION_KEYS)) {
             return false;

@@ -1,4 +1,4 @@
-"""Contract validation for media processing contracts."""
+"""Contract validation for media processing contracts (Corrected for M6.1)."""
 
 from __future__ import annotations
 
@@ -41,15 +41,15 @@ RANK_CLIPS_MEDIA_KEYS = ("duration_ms",)
 RANK_CLIPS_VERSION = "1.0.0"
 RANK_CLIPS_ACTION = "rank_clips"
 
-# Render clips constants
-RENDER_CLIPS_VERSION = "1.0.0"
-RENDER_CLIPS_ACTION = "render_clips"
-RENDER_CLIPS_REQUEST_KEYS = ("version", "action", "media", "recommendation", "candidate_index", "configuration", "source_media", "media_asset_id", "recommendation_id")
-RENDER_CLIPS_MEDIA_KEYS = ("duration_ms",)
-RENDER_CLIPS_RECOMMENDATION_KEYS = ("candidates", "candidate_index")
-RENDER_CLIPS_CANDIDATE_KEYS = ("index", "start_ms", "end_ms", "semantic_rank", "semantic_score")
-RENDER_CLIPS_CONFIG_KEYS = ("target_width", "target_height", "target_fps", "video_codec", "video_bitrate_kbps", "audio_codec", "audio_bitrate_kbps")
-RENDER_CLIPS_SOURCE_MEDIA_KEYS = ("disk", "key", "width", "height", "video_codec", "audio_codec")
+# Corrected render_clip constants (SINGULAR, privacy-safe)
+RENDER_CLIP_VERSION = "1.0.0"
+RENDER_CLIP_ACTION = "render_clip"
+RENDER_CLIP_REQUEST_KEYS = ("version", "action", "media", "recommendation", "candidate_index", "configuration", "source_media", "output_key")
+RENDER_CLIP_MEDIA_KEYS = ("duration_ms",)
+RENDER_CLIP_RECOMMENDATION_KEYS = ("candidates",)
+RENDER_CLIP_CANDIDATE_KEYS = ("index", "start_ms", "end_ms", "semantic_rank", "semantic_score")
+RENDER_CLIP_CONFIG_KEYS = ("target_width", "target_height", "target_fps", "video_codec", "video_bitrate_kbps", "audio_codec", "audio_bitrate_kbps")
+RENDER_CLIP_SOURCE_MEDIA_KEYS = ("disk", "key", "width", "height", "video_codec", "audio_codec")
 
 VALID_VIDEO_CODECS = ("libx264", "libx265", "h264_videotoolbox", "hevc_videotoolbox")
 VALID_AUDIO_CODECS = ("aac", "libfdk_aac", "copy")
@@ -104,23 +104,23 @@ def rank_clips_schema_errors(contract: object) -> list[str]:
         raise ContractSchemaUnavailable("Contract schema unavailable") from exc
 
 
-def _render_clips_schema() -> dict[str, Any]:
-    """The packaged JSON schema of the render_clips request."""
+def _render_clip_schema() -> dict[str, Any]:
+    """The packaged JSON schema of the render_clip request (Corrected: singular)."""
     schema = _load_schema()
     definitions = schema.get("definitions")
-    if not isinstance(definitions, dict) or "render_clips_request" not in definitions:
-        raise FileNotFoundError("render_clips request schema is not packaged")
+    if not isinstance(definitions, dict) or "render_clip_request" not in definitions:
+        raise FileNotFoundError("render_clip request schema is not packaged")
 
     return {
-        "$ref": "#/definitions/render_clips_request",
+        "$ref": "#/definitions/render_clip_request",
         "definitions": definitions,
     }
 
 
-def render_clips_schema_errors(contract: object) -> list[str]:
-    """Schema-level errors of the render_clips request (empty when conformant)."""
+def render_clip_schema_errors(contract: object) -> list[str]:
+    """Schema-level errors of the render_clip request (empty when conformant)."""
     try:
-        schema = _render_clips_schema()
+        schema = _render_clip_schema()
     except (OSError, json.JSONDecodeError) as exc:
         raise ContractSchemaUnavailable("Contract schema unavailable") from exc
 
@@ -281,18 +281,13 @@ def validate_rank_clips_contract(contract: object) -> tuple[bool, str]:
     return True, ""
 
 
-def _validate_rank_clips(contract: dict[str, Any]) -> tuple[bool, str]:
-    """Validate rank_clips contract with strict checks."""
-    return validate_rank_clips_contract(contract)
-
-
-def _validate_render_clips_configuration(configuration: object) -> str:
+def _validate_render_clip_configuration(configuration: object) -> str:
     """Return an error message unless the render configuration is valid."""
     if not isinstance(configuration, dict):
         return "configuration must be an object"
-    if set(configuration.keys()) != set(RENDER_CLIPS_CONFIG_KEYS):
-        missing = sorted(set(RENDER_CLIPS_CONFIG_KEYS) - set(configuration.keys()))
-        unknown = sorted(set(configuration.keys()) - set(RENDER_CLIPS_CONFIG_KEYS))
+    if set(configuration.keys()) != set(RENDER_CLIP_CONFIG_KEYS):
+        missing = sorted(set(RENDER_CLIP_CONFIG_KEYS) - set(configuration.keys()))
+        unknown = sorted(set(configuration.keys()) - set(RENDER_CLIP_CONFIG_KEYS))
         if unknown:
             return f"configuration contains unknown fields: {unknown}"
         return f"configuration missing required fields: {missing}"
@@ -323,19 +318,18 @@ def _validate_render_clips_configuration(configuration: object) -> str:
     return ""
 
 
-def _validate_render_clips_recommendation(recommendation: object, duration_ms: int) -> str:
-    """Return an error message unless the recommendation is valid."""
+def _validate_render_clip_recommendation(recommendation: object, duration_ms: int) -> str:
+    """Return an error message unless the recommendation is valid (Corrected: no candidate_index inside)."""
     if not isinstance(recommendation, dict):
         return "recommendation must be an object"
-    if set(recommendation.keys()) != set(RENDER_CLIPS_RECOMMENDATION_KEYS):
-        missing = sorted(set(RENDER_CLIPS_RECOMMENDATION_KEYS) - set(recommendation.keys()))
-        unknown = sorted(set(recommendation.keys()) - set(RENDER_CLIPS_RECOMMENDATION_KEYS))
+    if set(recommendation.keys()) != set(RENDER_CLIP_RECOMMENDATION_KEYS):
+        missing = sorted(set(RENDER_CLIP_RECOMMENDATION_KEYS) - set(recommendation.keys()))
+        unknown = sorted(set(recommendation.keys()) - set(RENDER_CLIP_RECOMMENDATION_KEYS))
         if unknown:
             return f"recommendation contains unknown fields: {unknown}"
         return f"recommendation missing required fields: {missing}"
 
     candidates = recommendation.get("candidates")
-    candidate_index = recommendation.get("candidate_index")
 
     if not isinstance(candidates, list):
         return "recommendation.candidates must be a list"
@@ -344,21 +338,16 @@ def _validate_render_clips_recommendation(recommendation: object, duration_ms: i
     if len(candidates) > MAX_CANDIDATES:
         return f"recommendation supports at most {MAX_CANDIDATES} candidates"
 
-    if not _is_integer(candidate_index):
-        return "candidate_index must be an integer"
-    if candidate_index < 0 or candidate_index >= len(candidates):
-        return "candidate_index out of bounds"
-
     # Validate each candidate
     seen_semantic_ranks: set[int] = set()
     for position, candidate in enumerate(candidates):
         if not isinstance(candidate, dict):
             return f"candidate {position} must be an object"
-        if set(candidate.keys()) != set(RENDER_CLIPS_CANDIDATE_KEYS):
-            unknown = sorted(set(candidate.keys()) - set(RENDER_CLIPS_CANDIDATE_KEYS))
+        if set(candidate.keys()) != set(RENDER_CLIP_CANDIDATE_KEYS):
+            unknown = sorted(set(candidate.keys()) - set(RENDER_CLIP_CANDIDATE_KEYS))
             if unknown:
                 return f"candidate {position} contains unknown fields: {unknown}"
-            missing = sorted(set(RENDER_CLIPS_CANDIDATE_KEYS) - set(candidate.keys()))
+            missing = sorted(set(RENDER_CLIP_CANDIDATE_KEYS) - set(candidate.keys()))
             return f"candidate {position} missing required fields: {missing}"
 
         index = candidate["index"]
@@ -397,21 +386,16 @@ def _validate_render_clips_recommendation(recommendation: object, duration_ms: i
             if semantic_score < 0 or semantic_score > 1:
                 return f"candidate {position}.semantic_score must stay inside [0,1]"
 
-    # Selected candidate must have non-null semantic_score
-    selected_candidate = candidates[candidate_index]
-    if selected_candidate["semantic_score"] is None:
-        return "selected candidate must have non-null semantic_score"
-
     return ""
 
 
-def _validate_render_clips_source_media(source_media: object) -> str:
+def _validate_render_clip_source_media(source_media: object) -> str:
     """Return an error message unless the source media info is valid."""
     if not isinstance(source_media, dict):
         return "source_media must be an object"
-    if set(source_media.keys()) != set(RENDER_CLIPS_SOURCE_MEDIA_KEYS):
-        missing = sorted(set(RENDER_CLIPS_SOURCE_MEDIA_KEYS) - set(source_media.keys()))
-        unknown = sorted(set(source_media.keys()) - set(RENDER_CLIPS_SOURCE_MEDIA_KEYS))
+    if set(source_media.keys()) != set(RENDER_CLIP_SOURCE_MEDIA_KEYS):
+        missing = sorted(set(RENDER_CLIP_SOURCE_MEDIA_KEYS) - set(source_media.keys()))
+        unknown = sorted(set(source_media.keys()) - set(RENDER_CLIP_SOURCE_MEDIA_KEYS))
         if unknown:
             return f"source_media contains unknown fields: {unknown}"
         return f"source_media missing required fields: {missing}"
@@ -439,63 +423,71 @@ def _validate_render_clips_source_media(source_media: object) -> str:
     return ""
 
 
-def validate_render_clips_contract(contract: object) -> tuple[bool, str]:
-    """Validate a render_clips request at both the schema and runtime levels."""
+def validate_render_clip_contract(contract: object) -> tuple[bool, str]:
+    """Validate a render_clip request at both the schema and runtime levels (Corrected)."""
     if not isinstance(contract, dict):
-        return False, "render_clips contract must be an object"
+        return False, "render_clip contract must be an object"
 
-    schema_errors = render_clips_schema_errors(contract)
+    schema_errors = render_clip_schema_errors(contract)
     if schema_errors:
         return False, "; ".join(schema_errors)
 
-    if set(contract.keys()) != set(RENDER_CLIPS_REQUEST_KEYS):
-        unknown = sorted(set(contract.keys()) - set(RENDER_CLIPS_REQUEST_KEYS))
+    if set(contract.keys()) != set(RENDER_CLIP_REQUEST_KEYS):
+        unknown = sorted(set(contract.keys()) - set(RENDER_CLIP_REQUEST_KEYS))
         if unknown:
             return False, f"unknown fields: {unknown}"
-        missing = sorted(set(RENDER_CLIPS_REQUEST_KEYS) - set(contract.keys()))
+        missing = sorted(set(RENDER_CLIP_REQUEST_KEYS) - set(contract.keys()))
         return False, f"missing required fields: {missing}"
 
-    if contract.get("version") != RENDER_CLIPS_VERSION:
+    if contract.get("version") != RENDER_CLIP_VERSION:
         return False, f"Unsupported contract version: {contract.get('version')!r}"
 
-    if contract.get("action") != RENDER_CLIPS_ACTION:
-        return False, "Invalid action for render_clips"
+    if contract.get("action") != RENDER_CLIP_ACTION:
+        return False, "Invalid action for render_clip"
 
     media = contract.get("media")
-    if not isinstance(media, dict) or set(media.keys()) != set(RENDER_CLIPS_MEDIA_KEYS):
+    if not isinstance(media, dict) or set(media.keys()) != set(RENDER_CLIP_MEDIA_KEYS):
         return False, "media must contain exactly duration_ms"
     duration_ms = media["duration_ms"]
     if not _is_integer(duration_ms) or duration_ms < 1 or duration_ms > MAX_DURATION_MS:
         return False, "media.duration_ms must be a strict positive bounded integer"
 
-    # Validate media_asset_id
-    media_asset_id = contract.get("media_asset_id")
-    if not _is_integer(media_asset_id) or media_asset_id < 1:
-        return False, "media_asset_id must be a positive integer"
-
-    # Validate recommendation_id
-    recommendation_id = contract.get("recommendation_id")
-    if not _is_integer(recommendation_id) or recommendation_id < 1:
-        return False, "recommendation_id must be a positive integer"
-
-    recommendation_error = _validate_render_clips_recommendation(contract.get("recommendation"), duration_ms)
+    recommendation_error = _validate_render_clip_recommendation(contract.get("recommendation"), duration_ms)
     if recommendation_error:
         return False, recommendation_error
 
-    configuration_error = _validate_render_clips_configuration(contract.get("configuration"))
+    # Validate candidate_index at root (single authority)
+    candidate_index = contract.get("candidate_index")
+    if not _is_integer(candidate_index):
+        return False, "candidate_index must be an integer"
+    candidates = contract.get("recommendation", {}).get("candidates", [])
+    if candidate_index < 0 or candidate_index >= len(candidates):
+        return False, "candidate_index out of bounds"
+    # Selected candidate must have non-null semantic_score
+    if candidates and candidates[candidate_index].get("semantic_score") is None:
+        return False, "selected candidate must have non-null semantic_score"
+
+    configuration_error = _validate_render_clip_configuration(contract.get("configuration"))
     if configuration_error:
         return False, configuration_error
 
-    source_media_error = _validate_render_clips_source_media(contract.get("source_media"))
+    source_media_error = _validate_render_clip_source_media(contract.get("source_media"))
     if source_media_error:
         return False, source_media_error
+
+    # Validate output_key exists and is a string
+    output_key = contract.get("output_key")
+    if not isinstance(output_key, str) or not output_key:
+        return False, "output_key must be a non-empty string"
 
     return True, ""
 
 
 def _validate_render_clips(contract: dict[str, Any]) -> tuple[bool, str]:
-    """Validate render_clips contract with strict checks."""
-    return validate_render_clips_contract(contract)
+    """Validate render_clips contract with strict checks (LEGACY - for backward compat)."""
+    # This is the old plural validation - kept for backward compatibility with existing tests
+    # But the new singular action uses validate_render_clip_contract
+    return validate_render_clip_contract(contract)
 
 
 def validate_contract(contract: dict[str, Any]) -> tuple[bool, str]:
@@ -519,6 +511,11 @@ def validate_contract(contract: dict[str, Any]) -> tuple[bool, str]:
     if isinstance(contract, dict) and contract.get("action") == "rank_clips":
         return _validate_rank_clips(contract)
 
+    # Corrected: singular render_clip action
+    if isinstance(contract, dict) and contract.get("action") == "render_clip":
+        return _validate_render_clip_contract(contract)
+
+    # Legacy: plural render_clips (for backward compatibility)
     if isinstance(contract, dict) and contract.get("action") == "render_clips":
         return _validate_render_clips(contract)
 
