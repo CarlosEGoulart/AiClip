@@ -245,6 +245,7 @@
             "candidate_index": { "type": "integer", "minimum": 0 }
           }
         },
+        "candidate_index": { "type": "integer", "minimum": 0 },
         "configuration": {
           "type": "object",
           "additionalProperties": false,

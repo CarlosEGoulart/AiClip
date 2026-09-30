@@ -350,6 +350,7 @@ def _validate_render_clips_recommendation(recommendation: object, duration_ms: i
         return "candidate_index out of bounds"
 
     # Validate each candidate
+    seen_semantic_ranks: set[int] = set()
     for position, candidate in enumerate(candidates):
         if not isinstance(candidate, dict):
             return f"candidate {position} must be an object"
@@ -380,6 +381,12 @@ def _validate_render_clips_recommendation(recommendation: object, duration_ms: i
             return f"candidate {position}.semantic_rank must be an integer"
         if semantic_rank < 1:
             return f"candidate {position}.semantic_rank must be >= 1"
+        k = len(candidates)
+        if semantic_rank > k:
+            return f"candidate {position}.semantic_rank out of range 1..{k}: {semantic_rank}"
+        if semantic_rank in seen_semantic_ranks:
+            return f"duplicate candidate semantic_rank: {semantic_rank}"
+        seen_semantic_ranks.add(semantic_rank)
 
         semantic_score = candidate["semantic_score"]
         if semantic_score is not None:
