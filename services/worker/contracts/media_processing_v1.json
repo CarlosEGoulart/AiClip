@@ -2,10 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Media Processing Contract v1.0.0",
   "type": "object",
-  "required": ["version", "media_asset_id", "project_id", "storage", "idempotency_key", "created_at"],
+  "required": ["version", "project_id", "storage", "idempotency_key", "created_at"],
   "properties": {
     "version": { "type": "string", "const": "1.0.0" },
     "media_asset_id": { "type": "integer", "minimum": 1 },
+    "recommendation_id": { "type": "integer", "minimum": 1 },
     "project_id": { "type": "integer", "minimum": 1 },
     "storage": {
       "type": "object",
@@ -83,6 +84,28 @@
           "rank": { "type": "integer", "minimum": 1 },
           "transcript_text": { "type": "string" }
         }
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "description": "Recommendation data for render_clips action.",
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "description": "Semantic-ranked clip candidates for rendering.",
+          "items": {
+            "type": "object",
+            "required": ["index", "start_ms", "end_ms", "semantic_rank", "semantic_score"],
+            "properties": {
+              "index": { "type": "integer", "minimum": 0 },
+              "start_ms": { "type": "integer", "minimum": 0 },
+              "end_ms": { "type": "integer", "minimum": 1 },
+              "semantic_rank": { "type": "integer", "minimum": 1 },
+              "semantic_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "candidate_index": { "type": "integer", "minimum": 0 }
       }
     },
     "configuration": {
