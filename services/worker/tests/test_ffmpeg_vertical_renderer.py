@@ -55,6 +55,8 @@ def valid_render_input(candidate_index: int = 0) -> RenderInput:
             video_codec="h264",
             audio_codec="aac",
         ),
+        media_asset_id="1",
+        recommendation_id="1",
     )
 
 

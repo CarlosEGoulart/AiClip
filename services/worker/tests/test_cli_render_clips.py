@@ -42,6 +42,7 @@ def valid_render_contract() -> dict:
             ],
             "candidate_index": 0,
         },
+        "candidate_index": 0,
         "configuration": {
             "target_width": 1080,
             "target_height": 1920,
@@ -59,6 +60,8 @@ def valid_render_contract() -> dict:
             "video_codec": "h264",
             "audio_codec": "aac",
         },
+        "media_asset_id": 1,
+        "recommendation_id": 1,
     }
 
 

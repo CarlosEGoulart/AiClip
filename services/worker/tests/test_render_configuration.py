@@ -188,6 +188,7 @@ def test_contract_validation_configuration_bounds():
             ],
             "candidate_index": 0,
         },
+        "candidate_index": 0,
         "configuration": {
             "target_width": 1080,
             "target_height": 1920,
@@ -205,6 +206,8 @@ def test_contract_validation_configuration_bounds():
             "video_codec": "h264",
             "audio_codec": "aac",
         },
+        "media_asset_id": 1,
+        "recommendation_id": 1,
     }
 
     # Test each boundary via contract validation
@@ -243,6 +246,7 @@ def test_contract_validation_accepts_valid_configuration():
             ],
             "candidate_index": 0,
         },
+        "candidate_index": 0,
         "configuration": {
             "target_width": 720,
             "target_height": 1280,
@@ -260,6 +264,8 @@ def test_contract_validation_accepts_valid_configuration():
             "video_codec": "h264",
             "audio_codec": "aac",
         },
+        "media_asset_id": 1,
+        "recommendation_id": 1,
     }
 
     is_valid, reason = validate_contract(contract)
@@ -278,6 +284,7 @@ def test_unknown_configuration_fields_rejected():
             ],
             "candidate_index": 0,
         },
+        "candidate_index": 0,
         "configuration": {
             "target_width": 1080,
             "target_height": 1920,
@@ -296,6 +303,8 @@ def test_unknown_configuration_fields_rejected():
             "video_codec": "h264",
             "audio_codec": "aac",
         },
+        "media_asset_id": 1,
+        "recommendation_id": 1,
     }
 
     is_valid, reason = validate_contract(contract)
@@ -315,6 +324,7 @@ def test_missing_configuration_fields_rejected():
                 ],
                 "candidate_index": 0,
             },
+            "candidate_index": 0,
             "configuration": {
                 "target_width": 1080,
                 "target_height": 1920,
@@ -332,6 +342,8 @@ def test_missing_configuration_fields_rejected():
                 "video_codec": "h264",
                 "audio_codec": "aac",
             },
+            "media_asset_id": 1,
+            "recommendation_id": 1,
         }
         del contract["configuration"][field]
 
