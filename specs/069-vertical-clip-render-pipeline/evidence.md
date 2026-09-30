@@ -19,7 +19,7 @@
 4. **tests/test_render_configuration.py** - Configuration validation (25 tests)
 5. **tests/test_render_clip_integration.py** - Real FFmpeg integration (15 tests, skipped without fixture)
 
-## RED Phase
+### RED Phase
 
 ### Schema & Contract Corrections
 
@@ -61,7 +61,7 @@ cd services/worker && python -m pytest tests/test_cli_render_clip.py -v
 # Expected: 0 passed (old CLI uses render-clips, not render-clip)
 ```
 
-## GREEN Phase
+### GREEN Phase
 
 ### Implementation Corrections Applied
 
@@ -117,7 +117,7 @@ All targeted unit tests pass:
 - Governance: 170 tests PASS
 - No whitespace errors
 
-## REFACTOR Phase
+### REFACTOR Phase
 
 ### Patterns Preserved/Improved
 
@@ -140,7 +140,7 @@ All targeted unit tests pass:
 
 ---
 
-## Tester Decision
+### Tester Decision
 
 **Decision: APPROVE**
 
