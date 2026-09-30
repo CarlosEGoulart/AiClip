@@ -100,7 +100,13 @@ final class RenderValidator
      *
      * @var list<string>
      */
-    private const PARAMETERS_KEYS = RenderProfile::parameterKeys();
+    private const PARAMETERS_KEYS = [
+        'configuration',
+        'source_media',
+        'ffmpeg_version',
+        'filter_graph',
+        'limits',
+    ];
 
     /**
      * The exact execution parameter key set.
