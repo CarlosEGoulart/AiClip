@@ -41,7 +41,7 @@ function createProbedAssetForRender(array $overrides = []): MediaAsset
     ], $overrides));
 }
 
-function createCompletedSceneAnalysis(MediaAsset $asset): MediaSceneAnalysis
+function createCompletedSceneAnalysisForRender(MediaAsset $asset): MediaSceneAnalysis
 {
     return MediaSceneAnalysis::create([
         'media_asset_id' => $asset->id,
@@ -274,7 +274,7 @@ class RecordingRenderAction extends ProcessMediaAction
 
 it('renders clip when explicitly dispatched with valid candidate_index', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
@@ -304,7 +304,7 @@ it('renders clip when explicitly dispatched with valid candidate_index', functio
 
 it('fails when candidate_index out of bounds', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
@@ -331,7 +331,7 @@ it('fails when candidate_index out of bounds', function () {
 
 it('fails when selected candidate has null semantic_score', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
 
@@ -408,7 +408,7 @@ it('fails when selected candidate has null semantic_score', function () {
 
 it('throws when M5 recommendation is pending', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
 
@@ -440,7 +440,7 @@ it('throws when M5 recommendation is pending', function () {
 
 it('throws when M5 recommendation failed', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
 
@@ -473,7 +473,7 @@ it('throws when M5 recommendation failed', function () {
 
 it('throws when M5 recommendation unavailable', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
 
@@ -506,7 +506,7 @@ it('throws when M5 recommendation unavailable', function () {
 
 it('throws when M5 recommendation missing', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
 
@@ -535,7 +535,7 @@ it('throws when M5 recommendation missing', function () {
 
 it('reuses existing completed render, no worker call', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
@@ -583,7 +583,7 @@ it('reuses existing completed render, no worker call', function () {
 
 it('throws version_conflict when existing render has different M5 authority', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
@@ -627,7 +627,7 @@ it('throws version_conflict when existing render has different M5 authority', fu
 
 it('produces different output for different candidate_index', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
@@ -670,7 +670,7 @@ it('produces different output for different candidate_index', function () {
 
 it('rejects negative candidate_index', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
@@ -697,7 +697,7 @@ it('rejects negative candidate_index', function () {
 
 it('is idempotent - re-dispatch returns same DerivedAsset', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
@@ -722,7 +722,7 @@ it('is idempotent - re-dispatch returns same DerivedAsset', function () {
 
 it('retries failed attempt - re-dispatch after failure clears error and re-attempts', function () {
     $asset = createProbedAssetForRender();
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
@@ -770,7 +770,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
 
 it('throws when asset has invalid probe data', function () {
     $asset = createProbedAssetForRender(['probe_result' => [], 'duration_ms' => 0]);
-    $sceneAnalysis = createCompletedSceneAnalysis($asset);
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysis($asset);
     $transcript = createCompletedTranscript($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendation($asset, $clipAnalysis, $transcript);
