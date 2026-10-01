@@ -283,6 +283,14 @@ def main(argv: list[str] | None = None) -> int:
         from aiclip_worker.actions.rank_clips import run_cli
 
         return run_cli(arguments[1:])
+    if arguments and arguments[0] == "render-clips":
+        from aiclip_worker.actions.render_clips import run_cli
+
+        return run_cli(arguments[1:])
+    if arguments and arguments[0] == "render-clip":
+        from aiclip_worker.actions.render_clip import run_cli
+
+        return run_cli(arguments[1:])
 
     parser = argparse.ArgumentParser(
         prog="aiclip_worker",
@@ -354,6 +362,16 @@ def main(argv: list[str] | None = None) -> int:
     # help. Its transport is stdin only, so no argument-list or file mode is
     # declared; main() dispatches this subcommand before argparse runs.
     subparsers.add_parser("rank-clips", help="Rank clip candidates by semantic relevance")
+
+    # The render-clips subparser exists only so the subcommand is listed in
+    # help. Its transport is stdin only, so no argument-list or file mode is
+    # declared; main() dispatches this subcommand before argparse runs.
+    subparsers.add_parser("render-clips", help="Render vertical clip from selected candidate")
+
+    # The render-clip subparser exists only so the subcommand is listed in
+    # help. Its transport is stdin only, so no argument-list or file mode is
+    # declared; main() dispatches this subcommand before argparse runs.
+    subparsers.add_parser("render-clip", help="Render single vertical clip from candidate")
 
     args = parser.parse_args(argv)
 

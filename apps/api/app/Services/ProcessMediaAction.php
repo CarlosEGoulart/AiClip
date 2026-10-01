@@ -4,6 +4,11 @@ namespace App\Services;
 
 use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
+use App\Services\RenderProfile;
+use App\Services\RenderValidator;
+use App\Services\ClipAnalysisValidator;
+use App\Services\ClipRankingProfile;
+use App\Services\ClipRecommendationValidator;
 use Illuminate\Support\Facades\Log;
 use JsonException;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
@@ -413,6 +418,92 @@ class ProcessMediaAction
             // a sanitized abort, never as ordinary worker failure, carrying
             // no raw message, output, contract or previous cause.
             throw new ProcessMediaException('clip_ranking_aborted', 1, '');
+        }
+    }
+
+    /**
+     * Render vertical clip using the Python worker CLI.
+     *
+     * Contract travels via stdin, not command-line arguments.
+     *
+     * @return array{status: string, render: array<string, mixed>}
+     *
+     * @throws ProcessMediaException
+     */
+    public function renderClips(MediaProcessingContract $contract): array
+    {
+        if (! $contract->validate()) {
+            throw new ProcessMediaException('Invalid render contract');
+        }
+
+        // Strict operational configuration is validated before process
+        // creation: an invalid configuration fails closed without launching anything.
+        $timeout = RenderProfile::timeoutSeconds();
+
+        try {
+            $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
+            $request = $contract->toRenderClipMetadataArray();
+            $contractJson = json_encode($request, JSON_THROW_ON_ERROR);
+
+            // Python hashes the exact raw stdin bytes; Laravel computes the
+            // same digest over the exact bytes it is about to send.
+            $requestSha256 = hash('sha256', $contractJson);
+
+            $process = $this->createProcess([
+                ...explode(' ', $workerCommand),
+                'render-clip',
+            ]);
+            $process->setTimeout($timeout);
+            $process->setInput($contractJson);
+
+            // Bound the captured worker output while it streams: on overflow the
+            // owned child is terminated immediately and the whole attempt is
+            // rejected, so no unbounded buffer and no partial render exists.
+            $capturedBytes = 0;
+            $process->run(function (string $type, string $buffer) use ($process, &$capturedBytes): void {
+                $capturedBytes += strlen($buffer);
+
+                if ($capturedBytes > self::MAX_RANKING_OUTPUT_BYTES) {
+                    $process->stop(0.0);
+
+                    throw new ProcessMediaException('Render failed', 1, '');
+                }
+            });
+
+            // Re-check the bound on the authoritative captured output. A real
+            // process already stopped above; this also covers any transport
+            // that buffers without reporting chunks.
+            $stdout = $process->getOutput();
+            if (strlen($stdout) > self::MAX_RANKING_OUTPUT_BYTES) {
+                throw new ProcessMediaException('Render failed', 1, '');
+            }
+
+            if (! $process->isSuccessful()) {
+                // Worker diagnostics, stdout, stderr and the error envelope are
+                // never propagated: only a fixed category, the exit code and an
+                // empty stderr cross this boundary.
+                throw new ProcessMediaException('Render failed', $process->getExitCode() ?? 1, '');
+            }
+
+            // Keep JSON objects distinct from lists until strict validation completes.
+            $output = json_decode($stdout, false, 512, JSON_THROW_ON_ERROR);
+
+            return RenderValidator::result($output, $request, $requestSha256);
+        } catch (ProcessMediaException $e) {
+            // Already sanitized categories (invalid_configuration, Render
+            // failed, Render validation failed) are preserved verbatim: no
+            // raw previous cause is chained and no captured worker diagnostic
+            // is ever attached.
+            throw $e;
+        } catch (JsonException|ProcessTimedOutException) {
+            // Invalid worker JSON or actual process timeout: fixed sanitized
+            // ordinary failure with no raw cause chained.
+            throw new ProcessMediaException('Render validation failed', 1, '');
+        } catch (\Throwable) {
+            // Unexpected runtime/programming/infrastructure failure: escape as
+            // a sanitized abort, never as ordinary worker failure, carrying
+            // no raw message, output, contract or previous cause.
+            throw new ProcessMediaException('clip_render_aborted', 1, '');
         }
     }
 

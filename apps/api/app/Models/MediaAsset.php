@@ -196,6 +196,15 @@ class MediaAsset extends Model
     }
 
     /**
+     * Get the rendered clips for this media asset.
+     */
+    public function renderedClips(): HasMany
+    {
+        return $this->hasMany(DerivedAsset::class)
+            ->where('type', DerivedAsset::TYPE_RENDERED_CLIP);
+    }
+
+    /**
      * Get the transcript for this media asset.
      */
     public function transcript(): HasOne

@@ -2,10 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Media Processing Contract v1.0.0",
   "type": "object",
-  "required": ["version", "media_asset_id", "project_id", "storage", "idempotency_key", "created_at"],
+  "required": ["version"],
   "properties": {
     "version": { "type": "string", "const": "1.0.0" },
     "media_asset_id": { "type": "integer", "minimum": 1 },
+    "recommendation_id": { "type": "integer", "minimum": 1 },
     "project_id": { "type": "integer", "minimum": 1 },
     "storage": {
       "type": "object",
@@ -20,7 +21,7 @@
     "created_at": { "type": "string", "format": "date-time" },
     "action": {
       "type": "string",
-      "enum": ["probe", "extract_audio", "transcribe", "detect_scenes", "analyze_clips", "rank_clips"],
+      "enum": ["probe", "extract_audio", "transcribe", "detect_scenes", "analyze_clips", "rank_clips", "render_clips", "render_clip"],
       "default": "probe"
     },
     "output_storage": {
@@ -34,7 +35,7 @@
     },
     "probe_data": {
       "type": "object",
-      "description": "Probe result data from a prior probing stage. Required for extract_audio action.",
+      "description": "Probe result data from a prior probing stage.",
       "properties": {
         "duration_ms": { "type": "number", "minimum": 0 },
         "audio_codec": { "type": ["string", "null"] },
@@ -46,10 +47,11 @@
     "derived_asset_id": {
       "type": "integer",
       "minimum": 1,
-      "description": "Required for transcribe action. References DerivedAsset containing normalized audio."
+      "description": "References DerivedAsset containing normalized audio."
     },
     "media": {
       "type": "object",
+      "required": ["duration_ms"],
       "properties": {
         "duration_ms": {
           "type": "integer",
@@ -70,18 +72,6 @@
         }
       }
     },
-    "transcript_segments": {
-      "type": "array",
-      "description": "Transcript timing segments for clip analysis. Optional for analyze_clips action.",
-      "items": {
-        "type": "object",
-        "required": ["start_ms", "end_ms"],
-        "properties": {
-          "start_ms": { "type": "integer", "minimum": 0 },
-          "end_ms": { "type": "integer", "minimum": 0 }
-        }
-      }
-    },
     "candidates": {
       "type": "array",
       "description": "M4 clip candidates for rank_clips action.",
@@ -97,6 +87,29 @@
         }
       }
     },
+    "recommendation": {
+      "type": "object",
+      "description": "Recommendation data for render_clips action.",
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "description": "Semantic-ranked clip candidates for rendering.",
+          "items": {
+            "type": "object",
+            "required": ["index", "start_ms", "end_ms", "semantic_rank", "semantic_score"],
+            "properties": {
+              "index": { "type": "integer", "minimum": 0 },
+              "start_ms": { "type": "integer", "minimum": 0 },
+              "end_ms": { "type": "integer", "minimum": 1 },
+              "semantic_rank": { "type": "integer", "minimum": 1 },
+              "semantic_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "candidate_index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "candidate_index": { "type": "integer", "minimum": 0 },
     "configuration": {
       "type": "object",
       "description": "Configuration for analyze_clips or rank_clips action.",
@@ -192,9 +205,293 @@
           }
         }
       }
+    },
+    "render_clips_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "action", "media", "recommendation", "candidate_index", "configuration", "source_media", "media_asset_id", "recommendation_id"],
+      "properties": {
+        "version": { "type": "string", "const": "1.0.0" },
+        "action": { "type": "string", "const": "render_clips" },
+        "media": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["duration_ms"],
+          "properties": {
+            "duration_ms": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
+          }
+        },
+        "recommendation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["candidates", "candidate_index"],
+          "properties": {
+            "candidates": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1000,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["index", "start_ms", "end_ms", "semantic_rank", "semantic_score"],
+                "properties": {
+                  "index": { "type": "integer", "minimum": 0 },
+                  "start_ms": { "type": "integer", "minimum": 0 },
+                  "end_ms": { "type": "integer", "minimum": 1 },
+                  "semantic_rank": { "type": "integer", "minimum": 1 },
+                  "semantic_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+                }
+              }
+            },
+            "candidate_index": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "candidate_index": { "type": "integer", "minimum": 0 },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_width", "target_height", "target_fps",
+            "video_codec", "video_bitrate_kbps",
+            "audio_codec", "audio_bitrate_kbps"
+          ],
+          "properties": {
+            "target_width": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "target_height": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "target_fps": { "type": "integer", "minimum": 1, "maximum": 120 },
+            "video_codec": { "type": "string", "enum": ["libx264", "libx265", "h264_videotoolbox", "hevc_videotoolbox"] },
+            "video_bitrate_kbps": { "type": "integer", "minimum": 500, "maximum": 50000 },
+            "audio_codec": { "type": "string", "enum": ["aac", "libfdk_aac", "copy"] },
+            "audio_bitrate_kbps": { "type": "integer", "minimum": 32, "maximum": 320 }
+          }
+        },
+        "source_media": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["disk", "key", "width", "height", "video_codec", "audio_codec"],
+          "properties": {
+            "disk": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "video_codec": { "type": "string", "minLength": 1 },
+            "audio_codec": { "type": ["string", "null"], "minLength": 1 }
+          }
+        },
+        "media_asset_id": { "type": "integer", "minimum": 1 },
+        "recommendation_id": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "render_clip_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "action", "media", "candidate_index", "candidate", "configuration", "source_media", "output_storage"],
+      "properties": {
+        "version": { "type": "string", "const": "1.0.0" },
+        "action": { "type": "string", "const": "render_clip" },
+        "media": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["duration_ms"],
+          "properties": {
+            "duration_ms": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
+          }
+        },
+        "candidate_index": { "type": "integer", "minimum": 0 },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_ms", "end_ms"],
+          "properties": {
+            "start_ms": { "type": "integer", "minimum": 0 },
+            "end_ms": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_width", "target_height", "target_fps",
+            "video_codec", "video_bitrate_kbps",
+            "audio_codec", "audio_bitrate_kbps"
+          ],
+          "properties": {
+            "target_width": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "target_height": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "target_fps": { "type": "integer", "minimum": 1, "maximum": 120 },
+            "video_codec": { "type": "string", "enum": ["libx264", "libx265", "h264_videotoolbox", "hevc_videotoolbox"] },
+            "video_bitrate_kbps": { "type": "integer", "minimum": 500, "maximum": 50000 },
+            "audio_codec": { "type": "string", "enum": ["aac", "libfdk_aac", "copy"] },
+            "audio_bitrate_kbps": { "type": "integer", "minimum": 32, "maximum": 320 }
+          }
+        },
+        "source_media": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["disk", "key", "width", "height", "video_codec", "audio_codec"],
+          "properties": {
+            "disk": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "video_codec": { "type": "string", "minLength": 1 },
+            "audio_codec": { "type": ["string", "null"], "minLength": 1 }
+          }
+        },
+        "output_storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["disk", "key", "mime_type"],
+          "properties": {
+            "disk": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
+            "mime_type": { "type": "string", "const": "video/mp4" }
+          }
+        }
+      }
+    },
+    "render_clips_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "render"],
+      "properties": {
+        "status": { "type": "string", "const": "success" },
+        "render": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "algorithm_version", "parameters", "clips"],
+          "properties": {
+            "algorithm": { "type": "string", "const": "ffmpeg_vertical_baseline" },
+            "algorithm_version": { "type": "string", "const": "1.0.0" },
+            "parameters": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["configuration", "source_media", "ffmpeg_version", "filter_graph", "limits"],
+              "properties": {
+                "configuration": { "type": "object" },
+                "source_media": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["disk", "key", "duration_ms", "width", "height", "video_codec", "audio_codec"],
+                  "properties": {
+                    "disk": { "type": "string" },
+                    "key": { "type": "string" },
+                    "duration_ms": { "type": "integer" },
+                    "width": { "type": "integer" },
+                    "height": { "type": "integer" },
+                    "video_codec": { "type": "string" },
+                    "audio_codec": { "type": ["string", "null"] }
+                  }
+                },
+                "ffmpeg_version": { "type": "string" },
+                "filter_graph": { "type": "string" },
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["max_recommendations", "max_input_bytes", "max_duration_ms"],
+                  "properties": {
+                    "max_recommendations": { "type": "integer", "const": 1000 },
+                    "max_input_bytes": { "type": "integer", "const": 8388608 },
+                    "max_duration_ms": { "type": "integer", "const": 2147483647 }
+                  }
+                }
+              }
+            },
+            "clips": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "candidate_index", "semantic_rank", "semantic_score",
+                  "start_ms", "end_ms", "duration_ms", "output"
+                ],
+                "properties": {
+                  "candidate_index": { "type": "integer", "minimum": 0 },
+                  "semantic_rank": { "type": "integer", "minimum": 1 },
+                  "semantic_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+                  "start_ms": { "type": "integer", "minimum": 0 },
+                  "end_ms": { "type": "integer", "minimum": 1 },
+                  "duration_ms": { "type": "integer", "minimum": 1 },
+                  "output": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "disk", "key", "size_bytes", "duration_ms",
+                      "width", "height", "video_codec", "audio_codec",
+                      "video_bitrate_kbps", "audio_bitrate_kbps"
+                    ],
+                    "properties": {
+                      "disk": { "type": "string" },
+                      "key": { "type": "string" },
+                      "size_bytes": { "type": "integer", "minimum": 1 },
+                      "duration_ms": { "type": "integer", "minimum": 1 },
+                      "width": { "type": "integer", "minimum": 1 },
+                      "height": { "type": "integer", "minimum": 1 },
+                      "video_codec": { "type": "string" },
+                      "audio_codec": { "type": "string" },
+                      "video_bitrate_kbps": { "type": "integer", "minimum": 1 },
+                      "audio_bitrate_kbps": { "type": "integer", "minimum": 1 }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [
+    {
+      "if": {
+        "not": { "required": ["action"] }
+      },
+      "then": {
+        "required": ["project_id", "storage", "idempotency_key", "created_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "probe"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["project_id", "storage", "idempotency_key", "created_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "extract_audio"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["project_id", "storage", "idempotency_key", "created_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "transcribe"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["project_id", "storage", "idempotency_key", "created_at"]
+      }
+    },
     {
       "if": {
         "properties": {
@@ -205,19 +502,20 @@
         "required": ["action"]
       },
       "then": {
-        "required": ["media"],
-        "properties": {
-          "media": {
-            "type": "object",
-            "required": ["duration_ms"],
+        "allOf": [
+          { "required": ["project_id", "storage", "idempotency_key", "created_at", "media"] },
+          {
             "properties": {
-              "duration_ms": {
-                "type": "integer",
-                "minimum": 1
+              "media": {
+                "type": "object",
+                "required": ["duration_ms"],
+                "properties": {
+                  "duration_ms": { "type": "integer", "minimum": 1 }
+                }
               }
             }
           }
-        }
+        ]
       }
     },
     {
@@ -230,19 +528,7 @@
         "required": ["action"]
       },
       "then": {
-        "required": ["media", "scenes", "configuration"],
-        "properties": {
-          "media": {
-            "type": "object",
-            "required": ["duration_ms"],
-            "properties": {
-              "duration_ms": {
-                "type": "integer",
-                "minimum": 1
-              }
-            }
-          }
-        }
+        "required": ["project_id", "storage", "idempotency_key", "created_at", "media", "scenes", "configuration"]
       }
     },
     {
@@ -255,19 +541,33 @@
         "required": ["action"]
       },
       "then": {
-        "required": ["media", "candidates", "configuration"],
+        "required": ["media", "candidates", "configuration"]
+      }
+    },
+    {
+      "if": {
         "properties": {
-          "media": {
-            "type": "object",
-            "required": ["duration_ms"],
-            "properties": {
-              "duration_ms": {
-                "type": "integer",
-                "minimum": 1
-              }
-            }
+          "action": {
+            "const": "render_clips"
           }
-        }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["media", "recommendation", "candidate_index", "configuration", "source_media", "recommendation_id"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "render_clip"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["media", "candidate_index", "candidate", "configuration", "source_media", "output_storage"]
       }
     }
   ]

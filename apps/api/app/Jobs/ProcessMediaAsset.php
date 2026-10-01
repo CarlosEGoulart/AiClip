@@ -1066,6 +1066,7 @@ class ProcessMediaAsset implements ShouldQueue
 
         // =====================================================================
         // Mark asset as completed when ALL applicable stages have resolved
+        // (Rendering is NOT part of ProcessMediaAsset - it's a separate explicit job)
         // =====================================================================
         if ($sceneDetectionResolved && $audioPathResolved && $clipAnalysisResolved && $clipRecommendationResolved) {
             $asset->markCompleted();
