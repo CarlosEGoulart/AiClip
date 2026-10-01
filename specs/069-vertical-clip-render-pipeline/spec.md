@@ -3,8 +3,8 @@
 ## Authority and status
 
 - Active issue: [#69](https://github.com/CarlosEGoulart/AiClip/issues/69), `feat(rendering): add durable baseline vertical clip render pipeline`.
-- Authorized branch: `@carlosegoulart/69/feat/vertical-clip-render-pipeline`.
-- Baseline supplied by Orchestrator: `HEAD` (post-M5 merge).
+- Authorized recovery branch: `@carlosegoulart/69/feat/vertical-clip-render-pipeline-recovery-v3`.
+- Recovery baseline checkpoint: `3099837778056bf69d603d49bdc771546aaddd81`; historical PRs #70, #71, and #72 are closed unmerged while Issue #69 remains active.
 - This is an M6.1 foundation specification. The issue body was read directly during planning.
 - Planner owns only this file, `plan.md`, and `test-plan.md`. Execution evidence, documentation reconciliation, implementation, testing, and lifecycle operations belong to their assigned agents.
 
@@ -25,12 +25,10 @@ Produce a durable, versioned, rendered vertical clip artifact and metadata from 
 
 **Abstraction decision:** introduce one Python `VerticalClipRenderer` interface with `render(validated_input, configuration) -> RenderResult` and one real `FFmpegVerticalClipRenderer`. Laravel's independent validator is a trust-boundary validator. Future M7 (Clip Review Experience) may consume rendered clips through review/approval UI; that integration is not implemented here.
 
-No material documentation conflict remains under these boundaries. Broad future architecture descriptions are not current implementation mandates.
-
 ## Scope and exclusions
 
 Included:
-- Metadata-only worker action `render_clips` v1.0.0 with CLI subcommand `render-clips`
+- Metadata-only worker action `render_clip` v1.0.0 with CLI subcommand `render-clip`
 - FFmpeg-based vertical reframing (9:16) with deterministic center-crop only
 - Single render job producing exactly one output file for one explicitly selected candidate (by `candidate_index`)
 - Additive v1 contract extension; no v2
@@ -92,9 +90,7 @@ Laravel supplies a fully expanded `configuration` object; worker code must not c
 | `audio_codec` | `aac` | Enum: `aac`, `libfdk_aac`, `copy` |
 | `audio_bitrate_kbps` | 128 | Strict integer, 32..320 |
 
-These are **rendering configuration defaults**, not platform limits. Configuration durations need not fit within a particular asset; that can legitimately produce no output if bounds are invalid.
-
-Fixed versioned limits/policies: at most 1000 recommendations, 8388608 UTF-8 input bytes, duration at most 2147483647 ms; FFmpeg process timeout default 300s, configurable strict integer 30..1800. Exceeding a limit fails closed; inputs are never silently truncated. These constants are recorded in parameters, not undisclosed heuristics.
+Fixed versioned limits/policies: at most 1000 recommendations, 8388608 UTF-8 input bytes, duration at most 2147483647 ms; FFmpeg process timeout default 300s, configurable strict integer 30..300. Exceeding a limit fails closed; inputs are never silently truncated. These constants are recorded in parameters, not undisclosed heuristics.
 
 ### A. Clip selection
 
@@ -104,28 +100,43 @@ For a completed M5 recommendation with K candidates (index 0..K-1):
 3. The selected candidate produces exactly one output clip.
 4. If `candidate_index` is out of bounds or the candidate has null `semantic_score`, the render fails with `invalid_candidate_index`.
 
-### B. FFmpeg filter graph construction (per clip)
+### B. Worker request
+
+The worker `render_clip` action (CLI: `render-clip`) expects a JSON object on stdin with exactly the following fields:
+- `version`: string, exactly "1.0.0"
+- `action`: string, exactly "render_clip"
+- `media`: object with exactly `{ "duration_ms": <integer> }` — the authoritative duration of the source media.
+- `candidate_index`: non-negative integer, the ONLY index authority carried across the worker boundary. Laravel has already validated that it is within the authoritative M5 candidate range (0..K-1).
+- `candidate`: object with exactly `{ "start_ms": <integer>, "end_ms": <integer> }` — the selected candidate bounds. NO index field.
+- `configuration`: object, the vertical profile object (e.g., `{ "target_width": 1080, "target_height": 1920, ... }`).
+- `source_media`: object with exactly `{ "disk": <string>, "key": <string>, "width": <integer>, "height": <integer>, "video_codec": <string>, "audio_codec": <string> }`.
+- `output_storage`: object with exactly `{ "disk": <string>, "key": <string>, "mime_type": "video/mp4" }`.
+
+No recommendation object, all candidates, recommendation_id, project_id, or media_asset_id is sent to the Python worker. Laravel independently re-reads M5/M4 authority and projects only the selected candidate timing.
+
+### C. FFmpeg filter graph construction (per clip)
 
 For the selected candidate with original bounds `[start_ms, end_ms)` on the source media:
 
 1. **Trim**: `-ss <start_s> -t <duration_s> -i <input>` (input seeking for speed, `-ss` before `-i`).
 2. **Vertical reframe** (9:16 = target_width:target_height):
-   - `center` (baseline only): `crop=ih*9/16:ih:(iw-ih*9/16)/2:0` — center-crop horizontally to 9:16, then scale to target resolution.
+    - `center` (baseline only): `crop=ih*9/16:ih:(iw-ih*9/16)/2:0` — center-crop horizontally to 9:16, then scale to target resolution.
 3. **Scale**: `scale=target_width:target_height:force_original_aspect_ratio=decrease,pad=target_width:target_height:(ow-iw)/2:(oh-ih)/2` — fit within target, letterbox/pillarbox if needed (should not occur with crop).
 4. **FPS**: `fps=target_fps` — constant frame rate output.
 5. **Encode**: `-c:v <video_codec> -b:v <video_bitrate_kbps>k -c:a <audio_codec> -b:a <audio_bitrate_kbps>k -movflags +faststart`.
 
 No caption filter chain. No face-aware crop. No smart crop variants.
 
-### C. Output naming and storage
+### D. Output naming and storage
 
-- Output key: `renders/{media_asset_id}/{recommendation_id}/{candidate_index}_{timestamp}.mp4`
-- Timestamp: ISO8601 UTC without separators (`YYYYMMDDTHHMMSSZ`) — deterministic for same inputs.
-- Storage: same disk as source `MediaAsset.storage_disk`.
+- Output key: `projects/{project_id}/renders/{media_asset_id}/{candidate_index}/{render_profile_version}/{uuid}.mp4`
+- UUID generated by Laravel when first creating the identity; retries/reclaims reuse the persisted key, do not generate a new UUID per retry.
+- Storage: same disk as source `MediaAsset.storage_disk`, selected by Laravel.
 - MIME type: `video/mp4`.
-- DerivedAsset record: `type=clip_rendered`, linked to `MediaAsset`, with `storage_key`, `mime_type`, `size_bytes`, `duration_ms`, `width`, `height`, `codec`, `bitrate`, and extended columns: `candidate_index` (integer), `render_profile_version` (string, e.g., `ffmpeg_vertical_baseline:1.0.0`).
+- Worker receives this precomputed `output_storage` and does not derive project paths.
+- DerivedAsset record: `type=clip_rendered`, linked to `MediaAsset`, with `storage_key`, `mime_type`, `size_bytes`, `duration_ms`, `width`, `height`, `codec`, `bitrate`, and extended columns: `candidate_index` (integer), `render_profile_version` (string, e.g., `vertical_v1`), `render_status`, `render_started_at`, `render_completed_at`, `render_error`.
 
-### D. Result serialization
+### E. Result serialization
 
 Top-level object has only `status: "success"` and required `render` object:
 
@@ -138,24 +149,23 @@ Top-level object has only `status: "success"` and required `render` object:
   - `filter_graph`: string — the exact filter_complex used.
   - `limits`: `{max_recommendations: 1000, max_input_bytes: 8388608, max_duration_ms: 2147483647}`.
 - `clips`: required list with exactly one object containing exactly:
-  - `candidate_index`: integer, the M5 candidate index (0..K-1).
-  - `semantic_rank`: integer, the M5 semantic rank (1..N).
-  - `semantic_score`: number in [0,1] or null.
-  - `start_ms`, `end_ms`: strict integers matching the candidate bounds.
+  - `candidate_index`: non-negative integer copied from the validated request.
+  - `start_ms`, `end_ms`: strict integers matching the selected candidate bounds.
   - `duration_ms`: `end_ms - start_ms`.
   - `output`: object with `disk`, `key`, `size_bytes`, `duration_ms`, `width`, `height`, `video_codec`, `audio_codec`, `video_bitrate_kbps`, `audio_bitrate_kbps`.
+- `semantic_rank` and `semantic_score` do not cross the worker boundary. Laravel retains those values in its authoritative recommendation snapshot and may persist them as Laravel-owned provenance if needed.
 - No timestamps, request IDs, prose, storage information beyond above, or unknown output fields.
 
-### Errors, execution, and privacy
+## Errors, execution, and privacy
 
 - CLI success emits exactly one strict JSON envelope to stdout, exit 0.
 - Invalid JSON/contract/action/version/configuration/input emits `{status:"error",code:"invalid_contract",error:"Invalid render contract",stderr:""}`, exit 2.
 - Runtime/result-validation failure (FFmpeg error, storage write error, validation mismatch) emits same shape with `code:"render_failed"` and `error:"Clip render failed"`, exit 1.
 - Do not echo rejected values or schema-library exception messages. No partial success.
 - Strict JSON rejects NaN/Infinity on input and output, including overflow to infinity.
-- Laravel launches an argument-list process for `render-clips`, with the contract on **stdin**, not the command line. No shell interpolation.
+- Laravel launches an argument-list process for `render-clip`, with the contract on **stdin**, not the command line. No shell interpolation.
 - New action performs no database access or network requests (except S3 via configured Flysystem adapter if worker writes directly; baseline: Laravel writes via Flysystem after worker returns output path). Reading its contract stream and packaged schema is allowed.
-- `media.render_timeout_seconds` defaults to 300, integer 30..1800. Lock wait bound is timeout plus 5 seconds. Persist both as Laravel-owned `execution_parameters` for the attempt; they are operational settings, not score inputs or worker configuration.
+- `media.render_timeout_seconds` defaults to 300, integer 30..300. Lock wait bound is timeout plus 10 seconds. Persist both as Laravel-owned `execution_parameters` for the attempt; they are operational settings, not score inputs or worker configuration.
 - Do not forward raw stdout, stderr, payloads, media content, or arbitrary exception messages into exceptions, queue failure records, database errors, or logs for this stage. Use fixed error codes/messages.
 - Logs may contain only existing local asset ID, stage, fixed error code, elapsed time, and counts. No filter graphs, criteria dump, or contract dump.
 
@@ -165,10 +175,11 @@ Top-level object has only `status: "success"` and required `render` object:
 
 Extend `DerivedAsset` / `derived_assets` with render-specific columns:
 - `candidate_index` (integer, nullable) — M5 candidate index (0..K-1)
-- `render_profile_version` (string, nullable) — e.g., `ffmpeg_vertical_baseline:1.0.0`
-- `render_configuration` (JSONB, nullable) — complete validated request configuration snapshot
-- `render_parameters` (JSONB, nullable) — exact algorithm parameters (filter_graph, ffmpeg_version, source_media, limits)
+- `render_profile_version` (string, nullable) — e.g., `vertical_v1`
+- `render_status` (string, nullable) — e.g., `pending`, `rendering`, `completed`, `failed`
 - `render_error` (string, nullable) — sanitized error code for failed renders
+- `render_started_at` (datetime, nullable) — when render began
+- `render_completed_at` (datetime, nullable) — when render finished
 
 Unique composite index on `(media_asset_id, type, candidate_index, render_profile_version)` where `type = 'clip_rendered'` — one render per asset per candidate per profile version. If the same candidate is re-rendered with a different profile version, a new row is created.
 
@@ -176,14 +187,15 @@ Unique composite index on `(media_asset_id, type, candidate_index, render_profil
 
 ### Independent Laravel success validation
 
-Validate in PHP even when a test double or compromised worker reports `status=success`. Before any result/status write, validate the exact envelope/object shapes, algorithm/version, all parameter fields and equality with the locally selected configuration/policies, clips as a list with exactly one element, all types/finiteness/bounds, source candidate existence and exact matching bounds, output file existence and metadata consistency, and sequential indexes.
+Validate in PHP even when a test double or compromised worker reports `status=success`. Before any result/status write, validate the exact envelope/object shapes, algorithm/version, all parameter fields and equality with the locally selected configuration/policies, clips as a list with exactly one element, all types/finiteness/bounds, requested `candidate_index` equality, exact matching selected-candidate bounds, output file existence, and metadata consistency.
 
 Independently verify:
-- The clip's `candidate_index` exists in the input recommendation's candidates.
-- The clip's `start_ms`/`end_ms` exactly matches the candidate.
-- Output file exists on storage, size > 0, duration within 5% of expected (container overhead), resolution matches configuration.
+- The clip's `candidate_index` exactly matches the explicitly selected index that Laravel already validated against the authoritative recommendation.
+- The clip's `start_ms`/`end_ms` exactly match the selected authoritative candidate bounds.
+- Output file exists on storage, size > 0, duration within +/- 50ms of expected, resolution matches configuration.
 - FFmpeg version recorded.
 - Filter graph is non-empty.
+- Duration tolerance: candidate duration ±50ms.
 
 Missing algorithm/parameters/clips must fail even for zero clips. Reject unsupported algorithms/versions rather than persisting misleading provenance.
 
@@ -219,11 +231,11 @@ M6.1 implements a **dedicated, reusable render job** that is **explicitly invoke
   2. Verifies the selected candidate exists, has non-null `semantic_score`, and bounds match the persisted snapshot.
   3. Verifies source media is accessible (probe, storage).
   4. Builds render contract with explicit `candidate_index` and configuration from `RenderProfile`.
-  5. Invokes worker `render-clips` action via `ProcessMediaAction`.
+  5. Invokes worker `render_clip` action via `ProcessMediaAction`.
   6. Validates result independently via `RenderValidator`.
   7. Persists `DerivedAsset` with `type=clip_rendered`, `candidate_index`, `render_profile_version`, configuration, parameters.
   8. Returns `DerivedAsset` on success; throws sanitized exception on failure.
-- **Idempotency**: Re-invocation with same `(media_asset_id, recommendation_id, candidate_index, render_profile_version)` returns existing completed `DerivedAsset` without re-executing worker.
+- **Idempotency**: Re-invocation with same `(media_asset_id, candidate_index, render_profile_version)` returns existing completed `DerivedAsset` without re-executing worker, provided the persisted authority snapshot matches the current request. If the same unique render identity exists but current recommendation authority/candidate timing differs, fail closed with `RenderVersionConflictException`; do not overwrite completed artifact and do not silently regenerate under same identity.
 - **Concurrency**: Row-level lock on `DerivedAsset` (same pattern as M4/M5). Competing invocations return `busy`.
 - **Failure modes**: All sanitized error codes per readiness table above. No partial results.
 
@@ -242,15 +254,15 @@ If an internal caller wishes to render after `ProcessMediaAsset` completes, it i
 
 ### Rerun and reuse semantics
 
-- `RenderMediaClip` reuses valid persisted `DerivedAsset` for the same `(media_asset_id, recommendation_id, candidate_index, render_profile_version)`.
+- `RenderMediaClip` reuses valid persisted `DerivedAsset` for the same `(media_asset_id, candidate_index, render_profile_version)`, comparing the persisted authority snapshot against the current request. If the snapshot differs (different recommendation authority or candidate timing), fail closed with `RenderVersionConflictException`; do not overwrite completed artifact and do not silently regenerate under same identity.
 - A failed render attempt may be retried by re-invoking `RenderMediaClip` (clears error, re-attempts).
 - Completed renders never re-execute.
-- If M5 recommendation changes (new `recommendation_id` or different candidate bounds), the unique key differs → new render row created.
+- If the unique DB identity `(media_asset_id, type, candidate_index, render_profile_version)` matches but the persisted authority snapshot differs, `RenderVersionConflictException` is thrown; a new render row is not created under the same identity.
 - Assets lacking a valid persisted probe must not be used to fabricate render input.
 
 ## Observable acceptance criteria
 
-1. The real FFmpeg renderer and metadata-only `render_clips` v1 action implement the exact algorithm, parameters, errors, and privacy boundary above.
+1. The real FFmpeg renderer and metadata-only `render_clip` v1 action implement the exact algorithm, parameters, errors, and privacy boundary above.
 2. Required recommendations and candidate_index selection follow every readiness case; invalid candidate_index produces a controlled failure.
 3. Python and Laravel independently reject malformed inputs/results and all clip/index/output invariants; no required success field defaults.
 4. A unique, owner-scoped, cascade-deleted snapshot has legal retry/error-clearing/terminal semantics; concurrent claims cannot run competing renders or corrupt results.

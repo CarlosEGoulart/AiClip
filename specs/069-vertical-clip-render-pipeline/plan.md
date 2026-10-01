@@ -1,331 +1,268 @@
-# Implementation Plan: Issue #69 — Durable Baseline Vertical Clip Render Pipeline
+# Implementation Plan: Issue #69 — Durable Baseline Vertical Clip Render Pipeline (Recovery-v3)
 
 ## Authority
 
 This plan derives exclusively from `specs/069-vertical-clip-render-pipeline/spec.md`. Planner owns this file. Builder executes; Tester validates; Orchestrator coordinates.
 
-## Phase 0 — Prerequisites (Human-gated, blocking)
-
-- [ ] **P0.1** Operator confirms FFmpeg 6.x+ availability in worker container/image (`ffmpeg -version` in CI).
-- [ ] **P0.2** Operator provisions/confirms S3-compatible bucket for render outputs (reuse media bucket with `renders/` prefix).
-- [ ] **P0.3** Operator confirms `media.render_timeout_seconds` default 300s is acceptable for CI envelope (2 CPU, 2 GiB RAM, 4 GiB disk).
-- [ ] **P0.4** Orchestrator confirms branch `@carlosegoulart/69/feat/vertical-clip-render-pipeline` exists and is clean.
-- [ ] **P0.5** Orchestrator confirms `specs/069-vertical-clip-render-pipeline/` directory exists (created by Orchestrator).
-
-> **Gate:** No implementation tasks may begin until all P0 items are checked by Operator/Orchestrator.
-
-## Phase 1 — Database & Models (Laravel)
-
-### 1.1 Migration: Extend `derived_assets` table
-
-- [ ] **1.1.1** Create migration `add_render_columns_to_derived_assets_table`.
-- [ ] **1.1.2** Add columns: `candidate_index` (integer, nullable), `render_profile_version` (string, nullable), `render_configuration` (JSONB, nullable), `render_parameters` (JSONB, nullable), `render_error` (string, nullable).
-- [ ] **1.1.3** Add unique composite index on `(media_asset_id, type, candidate_index, render_profile_version)` where `type = 'clip_rendered'`.
-- [ ] **1.1.4** Run migration; verify schema in PostgreSQL.
-
-### 1.2 Model: `DerivedAsset` updates
-
-- [ ] **1.2.1** Add `TYPE_RENDERED_CLIP = 'clip_rendered'` constant.
-- [ ] **1.2.2** Add fillable for new render columns.
-- [ ] **1.2.3** Add casts for JSONB columns.
-- [ ] **1.2.4** Add `renderedClips()` scope on `MediaAsset` relationship (where `type = TYPE_RENDERED_CLIP`).
-
-### 1.3 Model updates: `MediaAsset`
-
-- [ ] **1.3.1** Add `renderedClips()` hasMany relationship scoped to `type = 'clip_rendered'`.
-- [ ] **1.3.2** **REMOVED**: No `clipRenderResolved` accessor/logic — rendering is not part of ProcessMediaAsset completion.
-
-### 1.4 Model updates: `MediaClipRecommendation`
-
-- [ ] **1.4.1** No new relationship needed (render metadata lives on DerivedAsset).
-
-## Phase 2 — Worker Contract & Schema (Python)
-
-### 2.1 Contract schema extension
-
-- [ ] **2.1.1** Edit `services/worker/contracts/media_processing_v1.json`:
-  - Add `render_clips_request` definition under `definitions`.
-  - Add `render_clips_response` definition under `definitions`.
-  - Request fields: version, action, media{duration_ms}, recommendation{candidates[], candidate_index}, configuration, source_media{disk, key, width, height, video_codec, audio_codec}.
-  - Response: status, render{algorithm, algorithm_version, parameters, clips[]}.
-- [ ] **2.1.2** Keep backward compatibility; v1.0.0 version unchanged.
-- [ ] **2.1.3** Remove `transcript_segments` from request (captions out of scope).
-
-### 2.2 Contract validation (`services/worker/aiclip_worker/contracts.py`)
-
-- [ ] **2.2.1** Add `RENDER_CLIPS_VERSION = "1.0.0"`, `RENDER_CLIPS_ACTION = "render_clips"`.
-- [ ] **2.2.2** Add `RENDER_CLIPS_REQUEST_KEYS`, `RENDER_CLIPS_RECOMMENDATION_KEYS`, `RENDER_CLIPS_MEDIA_KEYS`, `RENDER_CLIPS_CONFIG_KEYS`, `RENDER_CLIPS_SOURCE_MEDIA_KEYS`.
-- [ ] **2.2.3** Add `validate_render_clips_contract(contract)` with schema + runtime validation (mirror `validate_rank_clips_contract`).
-- [ ] **2.2.4** Update `validate_contract()` to route `render_clips` to new validator.
-
-### 2.3 Configuration profile (`services/worker/aiclip_worker/rendering.py` — new file)
-
-- [ ] **2.3.1** Create `RenderConfiguration` dataclass with all 7 configurable fields + validation (`__post_init__`).
-- [ ] **2.3.2** Add `from_dict()` classmethod.
-- [ ] **2.3.3** Add fixed limits/policies as module constants.
-
-## Phase 3 — Renderer Implementation (Python)
-
-### 3.1 Renderer interface & FFmpeg implementation
-
-- [ ] **3.1.1** Create `services/worker/aiclip_worker/rendering.py`:
-  - `VerticalClipRenderer` ABC with `render(validated_input, configuration) -> RenderResult`.
-  - `FFmpegVerticalClipRenderer` implementation.
-  - `RenderInput` dataclass: `duration_ms`, `recommendation` (with candidates), `candidate_index`, `source_media{disk, key, width, height, video_codec, audio_codec}`.
-  - `RenderResult` dataclass: `parameters`, `clips[]` (single element), `algorithm`, `algorithm_version`.
-  - `RenderCandidate` dataclass for input candidates.
-  - `RenderedClip` dataclass for output clip.
-
-### 3.2 FFmpeg filter graph builder
-
-- [ ] **3.2.1** Private method `_build_filter_graph(candidate, config, source_width, source_height) -> str`.
-- [ ] **3.2.2** Implement center-crop: `crop=ih*9/16:ih:(iw-ih*9/16)/2:0`.
-- [ ] **3.2.3** Implement scale+pad to target resolution.
-- [ ] **3.2.4** Implement fps filter.
-- [ ] **3.2.5** No caption filter chain (captions out of scope).
-- [ ] **3.2.6** No `face_aware` or `smart_crop` logic (not in scope).
-
-### 3.3 FFmpeg execution
-
-- [ ] **3.3.1** Method `_run_ffmpeg(input_path, output_path, filter_graph, config) -> dict` returning output metadata.
-- [ ] **3.3.2** Use `subprocess.run()` with timeout, capture stdout/stderr.
-- [ ] **3.3.3** Probe output file for duration, width, height, codecs, bitrate (ffprobe).
-- [ ] **3.3.4** Handle FFmpeg errors → raise `RenderFailed` (custom exception).
-
-### 3.4 Clip selection logic
-
-- [ ] **3.4.1** Validate `candidate_index` is within bounds of candidates array.
-- [ ] **3.4.2** Validate selected candidate has non-null `semantic_score`.
-- [ ] **3.4.3** If validation fails → raise `InvalidCandidateIndex` (custom exception).
-
-### 3.5 Output naming & metadata
-
-- [ ] **3.5.1** Generate output key: `renders/{media_asset_id}/{recommendation_id}/{candidate_index}_{timestamp}.mp4`.
-- [ ] **3.5.2** Timestamp: UTC ISO8601 without separators.
-- [ ] **3.5.3** Build single clip metadata object per spec (no caption fields).
-
-### 3.6 CLI action: `render-clips`
-
-- [ ] **3.6.1** Create `services/worker/aiclip_worker/actions/render_clips.py`.
-- [ ] **3.6.2** `run_cli(argv)` mirrors `analyze_clips.py` pattern: stdin JSON, bounded input, strict JSON output, exit codes 0/1/2.
-- [ ] **3.6.3** Register subcommand in `services/worker/aiclip_worker/cli.py`.
-
-## Phase 4 — Laravel Orchestration & Validation
-
-### 4.1 Configuration profile (`app/Services/RenderProfile.php` — new)
-
-- [ ] **4.1.1** Static `configuration()` returning the 7 configurable fields with defaults.
-- [ ] **4.1.2** Static `timeoutSeconds()` → `config('media.render_timeout_seconds', 300)` with strict integer 30..1800 validation (canonical decimal string grammar per M5 pattern).
-- [ ] **4.1.3** Static `lockWaitSeconds()` = `timeoutSeconds() + 5`.
-
-### 4.2 Validator (`app/Services/RenderValidator.php` — new)
-
-- [ ] **4.2.1** `request(array $data)` — validate request before process creation (mirror `ClipRecommendationValidator::request()`).
-- [ ] **4.2.2** `result(object $output, array $request)` — validate worker response, compare to captured request, SHA256 binding.
-- [ ] **4.2.3** `validateCompletion(array $result, array $inputSnapshot, array $executionParameters)` — model-level validation for `DerivedAsset` completion.
-- [ ] **4.2.4** Independent rederivation: verify clip's candidate_index, bounds, output file metadata, filter graph presence.
-
-### 4.3 MediaProcessingContract extensions
-
-- [ ] **4.3.1** Add `toRenderMetadataArray()` method (privacy-safe payload).
-- [ ] **4.3.2** Add static `renderClipsRequest()` building request from authoritative inputs (duration, recommendation, candidate_index, configuration, source media info from probe).
-- [ ] **4.3.3** Update `validate()` to handle `render_clips` action.
-- [ ] **4.3.4** Update `fromArray()` to parse `render_clips` via `RenderValidator::request()`.
-
-### 4.4 ProcessMediaAction::renderClips()
-
-- [ ] **4.4.1** Add `renderClips(MediaProcessingContract $contract): array` method.
-- [ ] **4.4.2** Validate contract, timeout config (strict integer 30..1800).
-- [ ] **4.4.3** Create process with `render-clips` subcommand, stdin contract JSON.
-- [ ] **4.4.4** Set timeout, run, capture output (bounded).
-- [ ] **4.4.5** Decode JSON (object not list), validate via `RenderValidator::result()`.
-- [ ] **4.4.6** Error handling: classified failures → `ProcessMediaException` with fixed codes; unexpected → `clip_render_aborted`.
-
-## Phase 5 — Dedicated Render Job: `RenderMediaClip`
-
-### 5.1 Job class (`app/Jobs/RenderMediaClip.php`)
-
-- [ ] **5.1.1** Create `RenderMediaClip` job implementing `ShouldQueue`.
-- [ ] **5.1.2** Constructor accepts: `mediaAssetId`, `recommendationId`, `candidateIndex`.
-- [ ] **5.1.3** `handle()` method:
-  - Load `MediaAsset`, `MediaClipRecommendation` with candidates.
-  - Verify ownership/project chain.
-  - Verify M5 status=completed, outcome=ranked.
-  - Verify `candidateIndex` in bounds, candidate has non-null `semantic_score`.
-  - Verify source media probe exists and storage accessible.
-  - Check existing `DerivedAsset` for `(media_asset_id, type='clip_rendered', candidate_index, render_profile_version)`.
-  - If completed and matches current authority/configuration → return existing (idempotent reuse).
-  - If version conflict (different M5 authority or config) → throw `RenderVersionConflictException`.
-  - Atomic claim transaction (mirror M4/M5 pattern):
-    - Insert-or-ignore pending `DerivedAsset` row.
-    - Lock for update, reread.
-    - If completed → return existing.
-    - Transition to `rendering`, capture input_snapshot, execution_parameters.
-    - Build render contract via `MediaProcessingContract::renderClipsRequest()`.
-    - Invoke `ProcessMediaAction::renderClips()`.
-    - Validate result via `RenderValidator::result()` and `validateCompletion()`.
-    - Mark completed or failed inside transaction.
-    - Handle lock timeout → throw `RenderBusyException`.
-    - Handle abort → throw `RenderAbortedException`.
-  - Return completed `DerivedAsset`.
-
-### 5.2 Exception classes
-
-- [ ] **5.2.1** `RenderBusyException` — concurrent claim contention.
-- [ ] **5.2.2** `RenderVersionConflictException` — authority/config mismatch.
-- [ ] **5.2.3** `InvalidCandidateIndexException` — out of bounds or null semantic_score.
-- [ ] **5.2.4** `UpstreamRecommendationUnavailableException` — M5 missing/failed/unavailable.
-- [ ] **5.2.5** `RenderFailedException` — worker/validation failure with sanitized code.
-
-### 5.3 Internal invocation entry points (M6.1 scope)
-
-- [ ] **5.3.1** Artisan command `media:render-clip {mediaAssetId} {recommendationId} {candidateIndex}` — for manual/internal invocation during M6.1.
-- [ ] **5.3.2** Service method `RenderMediaClipService::dispatchRender(...)` — programmatic dispatch for future M7 integration.
-
-**No automatic invocation from `ProcessMediaAsset`.**  
-**No `clipRenderResolved` in asset finalization.**  
-**`ProcessMediaAsset` remains unchanged after M5 stage.**
-
-## Phase 6 — Configuration
-
-### 6.1 Config file (`config/media.php`)
-
-- [ ] **6.1.1** Add `render_timeout_seconds` env default `'300'` (string, no cast).
-- [ ] **6.1.2** Document all 7 render configuration keys in comments.
-
-### 6.2 Environment example (`.env.example`)
-
-- [ ] **6.2.1** Add `MEDIA_RENDER_TIMEOUT_SECONDS=300`.
-
-## Phase 7 — Tests
-
-### 7.1 Worker unit tests (`services/worker/tests/`)
-
-- [ ] **7.1.1** `test_render_clips_contract_validation.py` — schema + runtime validation (valid, invalid version, invalid action, missing fields, unknown fields, invalid config, invalid recommendation, invalid candidate_index, limits).
-- [ ] **7.1.2** `test_ffmpeg_vertical_renderer.py` — filter graph construction (center crop, scale, fps), candidate selection by index, output naming.
-- [ ] **7.1.3** `test_cli_render_clips.py` — CLI transport (stdin, stdout, exit codes, error envelopes, NaN rejection, size bounds).
-- [ ] **7.1.4** `test_render_configuration.py` — configuration validation, defaults, bounds, enums.
-
-### 7.2 Worker integration tests (real FFmpeg)
-
-- [ ] **7.2.1** `test_render_clips_integration.py` — real FFmpeg on fixture video, verify output file exists, correct resolution (1080x1920), duration matches candidate bounds.
-- [ ] **7.2.2** Fixture: `tests/fixtures/render_source.mp4` (short horizontal video with audio).
-- [ ] **7.2.3** Test with different candidate indices.
-
-### 7.3 Laravel unit tests (`apps/api/tests/`)
-
-- [ ] **7.3.1** `RenderProfileTest.php` — timeout validation (canonical decimal string, range, null rejection), lock wait derivation, configuration shape.
-- [ ] **7.3.2** `RenderValidatorTest.php` — request validation, response validation (success, missing fields, type mismatches, candidate mismatch, SHA256 mismatch), completion validation.
-- [ ] **7.3.3** `DerivedAssetRenderedClipTest.php` — status transitions, unique constraint, scope, render column persistence.
-
-### 7.4 Laravel feature/integration tests
-
-- [ ] **7.4.1** `RenderMediaClipJobTest.php` — full job execution with mocked worker (recording action), all readiness states, retry logic, terminal reuse, version conflict, invalid candidate_index, concurrency (lock contention).
-- [ ] **7.4.2** `RenderMediaClipJobRealWorkerTest.php` — real worker subprocess (requires FFmpeg fixture), validates end-to-end persistence, DerivedAsset creation, output file in storage.
-- [ ] **7.4.3** `ProcessMediaAssetRegressionTest.php` — confirm ProcessMediaAsset completes without render stage, existing upstream stages unchanged.
-
-### 7.5 E2E / Playwright tests
-
-- [ ] **7.5.1** No new UI — existing workflows unchanged. Add regression test confirming upload→process→complete still works and no console/network errors.
-
-## Phase 8 — Documentation & Reconciliation
-
-### 8.1 Project state update
-
-- [ ] **8.1.1** Update `docs/project-state.md`: M6.1 in progress, rendering pipeline added as explicit job.
-- [ ] **8.1.2** Update `docs/architecture.md`: Current execution topology includes RenderMediaClip job (separate from ProcessMediaAsset).
-
-### 8.2 Architecture decision record (if needed)
-
-- [ ] **8.2.1** No new ADR required; follows existing patterns.
-
-## Phase 9 — CI & Governance
-
-### 9.1 CI pipeline updates
-
-- [ ] **9.1.1** Ensure worker CI installs FFmpeg (already present for scene detection).
-- [ ] **9.1.2** Add render integration test to worker test suite.
-- [ ] **9.1.3** Verify Laravel test suite includes new feature tests.
-
-### 9.2 Governance
-
-- [ ] **9.2.1** No governance changes required.
-
-## Phase 10 — Evidence & Handoff
-
-### 10.1 Evidence file
-
-- [ ] **10.1.1** Builder creates `specs/069-vertical-clip-render-pipeline/evidence.md` with actual `### RED`, `### GREEN`, `### REFACTOR` sections per TDD.
-
-### 10.2 Final review
-
-- [ ] **10.2.1** All tests pass (backend, frontend, worker, E2E, governance).
-- [ ] **10.2.2** Tester approves running behavior (Playwright visual QA at 3 viewports, console/network clean).
-- [ ] **10.2.3** Orchestrator reviews CI logs: Backend CI, Worker CI, E2E CI, Governance, PR Enforcement.
-- [ ] **10.2.4** Stop at `CI_GREEN_WAITING_HUMAN_MERGE`.
-
-## Task Dependency Graph (critical path)
-
-```
-P0.1–P0.5
-    ↓
-1.1 → 1.2 → 1.3/1.4
-    ↓
-2.1 → 2.2 → 2.3
-    ↓
-3.1 → 3.2 → 3.3 → 3.4 → 3.5 → 3.6
-    ↓
-4.1 → 4.2 → 4.3 → 4.4
-    ↓
-5.1 → 5.2 → 5.3
-    ↓
-6.1 → 6.2
-    ↓
-7.1–7.5 (parallel, after respective implementation phases)
-    ↓
-8.1–8.2
-    ↓
-9.1–9.2
-    ↓
-10.1 → 10.2
+## Stage A — Laravel persistence/storage/render-specific lifecycle only
+
+### Behavior
+- RenderProfile: persisted version `vertical_v1`; timeout strict integer 30..300 default 300; lock wait = timeout + 10.
+- DerivedAsset migrations: final schema must use render-specific lifecycle columns only (`render_status`: pending, rendering, completed, failed; `candidate_index`; `render_profile_version`; `render_error`; `render_started_at`; `render_completed_at`). The unmerged generic `status` migration already present in the recovery checkpoint must be removed or rewritten so the final PR does not add a generic lifecycle column to unrelated `DerivedAsset` rows.
+- Preserve `render_configuration` and `render_parameters` as JSONB for immutable input/provenance.
+- Ensure `storage_disk` and `storage_key` remain NOT NULL.
+- Laravel StorageKeyBuilder: exact format `projects/{project_id}/renders/{media_asset_id}/{candidate_index}/{render_profile_version}/{uuid}.mp4`. UUID generated on first identity; retries reuse persisted key.
+- Unique identity: (`media_asset_id`, `type`, `candidate_index`, `render_profile_version`). `recommendation_id` excluded from identity and unique index.
+- Identity authority rule: persist the selected candidate timing/profile/output snapshot on first completion. A `completed` row for the same `(media_asset_id,type,candidate_index,render_profile_version)` identity is terminal and reused unchanged even if upstream recommendation/configuration later changes; retries apply only to non-completed rows.
+- PostgreSQL constraints: unique index on (`media_asset_id`, `type`, `candidate_index`, `render_profile_version`); check constraints for timeout range and enum values.
+- No worker changes in Stage A.
+
+### Likely files/categories
+- `apps/api/app/Services/RenderProfile.php`
+- `apps/api/app/Services/StorageKeyBuilder.php`
+- `apps/api/app/Models/DerivedAsset.php`
+- `apps/api/database/migrations/2026_09_29_145810_add_render_columns_to_derived_assets_table.php`
+- `apps/api/database/migrations/2026_09_29_153622_add_status_to_derived_assets_table.php` (remove/repurpose the unmerged generic `status` addition so the final schema is render-specific)
+- `apps/api/app/Jobs/RenderMediaClip.php` (persistence/claim portion only)
+- `apps/api/tests/Unit/RenderProfileTest.php`
+- `apps/api/tests/Feature/Models/DerivedAssetRenderedClipTest.php`
+- `apps/api/tests/Unit/StorageKeyBuilderTest.php`
+
+### Targeted RED
+- `php artisan test --filter=RenderProfileTest` (expect failure on version/timeout)
+- `php artisan test --filter=DerivedAssetRenderedClipTest` (expect failure on new columns/constraints)
+- `php artisan test --filter=StorageKeyBuilderTest` (expect failure on key format)
+
+### Targeted GREEN commands
+```bash
+# Run RenderProfile tests
+php artisan test --filter=RenderProfileTest
+
+# Run DerivedAssetRenderedClip tests
+php artisan test --filter=DerivedAssetRenderedClipTest
+
+# Run StorageKeyBuilder tests
+php artisan test --filter=StorageKeyBuilderTest
+
+# Run migration (if needed)
+php artisan migrate --force
 ```
 
-## Estimated effort (relative)
+### Regression sentinels
+- `DerivedAssetRenderedClipTest`: TC-LDA-01 through TC-LDA-07 (existing clip_rendered tests)
+- `RenderProfileTest`: TC-LUP-01 (version), TC-LUP-02 (timeout range), TC-LUP-06 (lockWaitSeconds = timeout + 10)
+- `StorageKeyBuilderTest`: TC-SKB-01 (format), TC-SKB-02 (UUID persistence)
+- M5 rank_clips tests (`test_rank_clips.py`, `test_contract_rank_clips.py`) must remain green
 
-| Phase | Scope | Est. complexity |
-|---|---|---|
-| 1 | DB/Models | Medium |
-| 2 | Contract/Schema | Low |
-| 3 | Renderer/FFmpeg | High (core logic) |
-| 4 | Laravel Orchestration | Medium-High |
-| 5 | RenderMediaClip Job | Medium-High |
-| 6 | Config | Low |
-| 7 | Tests | High (coverage breadth) |
-| 8 | Docs | Low |
-| 9 | CI | Low |
-| 10 | Evidence | Low |
+### Stop condition before Stage B
+- All Stage A tests pass
+- `render_profile_version` = `'vertical_v1'`
+- `timeout` integer 30..300 default 300
+- `lockWaitSeconds()` returns `timeout + 10`
+- Unique index (`media_asset_id`, `type`, `candidate_index`, `render_profile_version`) enforced
+- `storage_disk`/`storage_key` NOT NULL
+- M5 rank_clips tests green
 
-## Risk mitigation
+---
 
-| Risk | Mitigation |
-|---|---|
-| FFmpeg version mismatch in CI | Pin version in Dockerfile; test `ffmpeg -version` in CI setup |
-| Storage permission / bucket policy | Operator confirms write access in P0.2; integration test writes real file |
-| Long FFmpeg runtime in CI | Timeout 300s; fixture video <30s; CI resource envelope verified in P0.3 |
-| Concurrent claim race | Follow proven M4/M5 pattern; test with separate DB connections |
-| Configuration drift between Laravel/Python | Single source of truth in `RenderProfile::configuration()`; both sides validate |
+## Stage B — Additive singular worker contract/action preserving M5
 
-## Out of scope for this plan (explicit)
+### Behavior
+- Add singular JSON action `render_clip` and CLI command `render-clip`.
+- Exact minimal request shape:
+  ```json
+  {
+    "version": "1.0.0",
+    "action": "render_clip",
+    "media": {"duration_ms": 5000},
+    "candidate_index": 2,
+    "candidate": {"start_ms": 1000, "end_ms": 4000},
+    "configuration": {
+      "target_width": 1080,
+      "target_height": 1920,
+      "target_fps": 30,
+      "video_codec": "libx264",
+      "video_bitrate_kbps": 5000,
+      "audio_codec": "aac",
+      "audio_bitrate_kbps": 128
+    },
+    "source_media": {"disk": "local", "key": "source/video.mp4", "width": 1920, "height": 1080, "video_codec": "h264", "audio_codec": "aac"},
+    "output_storage": {"disk": "local", "key": "projects/1/renders/2/2/vertical_v1/550e8400-e29b-41d4-a716-446655440000.mp4", "mime_type": "video/mp4"}
+  }
+  ```
+- `candidate` object has NO `index` field; root `candidate_index` is the authority.
+- NO `recommendation` object; NO `recommendation_id`, `project_id`, `media_asset_id` sent to Python worker.
+- Preserve all existing `rank_clips` production functions, contracts, providers, and tests.
+- Do not delete old plural M6 files/tests during initial singular replacement.
+- After any edit to `media_processing_v1.json`, `contracts.py`, or `cli.py`: immediately run M5 sentinel tests (`test_contract_rank_clips.py`, `test_rank_clips.py`) and ranking provider tests if present.
+- Then run targeted singular M6 worker tests.
 
-- Face-aware smart crop implementation
-- Multi-aspect rendering (9:16 only)
-- Captions, subtitle generation, burn-in
-- Clip review UI (M7)
-- Social publishing (M10+)
-- Progress streaming / webhooks
-- Transcription/scene re-generation
-- Multiple clips per render job
-- Automatic top-N candidate selection
-- ProcessMediaAsset automatic render stage
-- clipRenderResolved in asset completion
-- Hardcoded candidate_index=0 / semantic_rank=1 default
+### Likely files/categories
+- `services/worker/aiclip_worker/contracts.py`
+- `services/worker/aiclip_worker/cli.py`
+- `services/worker/aiclip_worker/actions/render_clip.py` (new)
+- `services/worker/aiclip_worker/rendering.py` (minimal changes for singular)
+- `services/worker/contracts/media_processing_v1.json` (update)
+- `services/worker/tests/test_render_clip_contract_validation.py` (new)
+- `services/worker/tests/test_cli_render_clip.py` (new)
+- `services/worker/tests/test_rank_clips.py` (existing)
+- `services/worker/tests/test_contract_rank_clips.py` (existing)
+
+### Targeted RED
+- `cd services/worker && python -m pytest tests/test_render_clip_contract_validation.py -v` (expect failure on missing fields/wrong shape)
+- `cd services/worker && python -m pytest tests/test_cli_render_clip.py -v` (expect failure on CLI parsing)
+- `cd services/worker && python -m pytest tests/test_rank_clips.py tests/test_contract_rank_clips.py -v` (must pass; if fails, revert)
+
+### Targeted GREEN commands
+```bash
+# Run render_clip contract validation
+cd services/worker && python -m pytest tests/test_render_clip_contract_validation.py -v
+
+# Run CLI render_clip tests
+cd services/worker && python -m pytest tests/test_cli_render_clip.py -v
+
+# Run M5 rank_clips sentinels (must pass)
+cd services/worker && python -m pytest tests/test_rank_clips.py tests/test_contract_rank_clips.py -v
+
+# Run ranking provider tests if present
+cd services/worker && python -m pytest tests/test_*_rank_clips_provider.py -v
+```
+
+### Regression sentinels
+- All M5 rank_clips tests pass unchanged (`test_rank_clips.py`, `test_contract_rank_clips.py`)
+- `test_contract_rank_clips.py` full suite green
+- `test_rank_clips.py` full suite green
+
+### Stop condition before Stage C
+- Candidate_index is sole authority in render request (no recommendation_id/project_id/media_asset_id in worker input)
+- No auto-semantic_rank=1 or candidate-0 defaults
+- Worker contract minimal: uses `source_media` from probe, not recommendation_id/project_id/media_asset_id
+- M5 rank_clips tests all green
+- Singular contract/CLI tests green
+- After any edit to contracts.py/cli.py/media_processing_v1.json, M5 sentinels re-run and pass
+
+---
+
+## Stage C — Laravel-to-worker integration + real FFmpeg/FFprobe
+
+### Behavior
+- Laravel re-reads `MediaAsset` + `MediaClipRecommendation` + selected candidate authority (by `candidate_index`).
+- No default candidate 0; no auto `semantic_rank=1`; no `ProcessMediaAsset` auto-render.
+- Laravel projects only selected timing (`start_ms`, `end_ms`) into singular worker contract and sends precomputed `output_storage`.
+- `ProcessMediaAction` invokes CLI `render-clip` using stdin (JSON); argv/no shell.
+- Real renderer: isolated temp output (`/tmp/renders/{uuid}`), bounded timeout (from RenderProfile), atomic finalization (rename), cleanup on failure, 1080x1920, libx264/yuv420p, AAC 128k only with source audio, MP4 container.
+- FFprobe duration: selected candidate duration (`end_ms - start_ms`) ±50ms absolute tolerance (no percentage).
+- Sanitized failures: worker exits with clean error codes; Laravel maps to `render_error`; no raw stderr/path/payload leakage.
+- Idempotency/concurrency: retry uses persisted storage key; durable pending claim already has `storage_disk`/`storage_key`.
+- Targeted PHP->Python real integration tests + regression tests for existing functionality.
+
+### Likely files/categories
+- `apps/api/app/Jobs/RenderMediaClip.php` (full invocation)
+- `apps/api/app/Services/RenderValidator.php` (duration tolerance validation)
+- `services/worker/aiclip_worker/cli.py` (stdin JSON parsing)
+- `services/worker/aiclip_worker/rendering.py` (FFmpeg/FFprobe invocation, temp handling, duration validation)
+- `services/worker/aiclip_worker/errors.py` (sanitized error mapping)
+- `apps/api/tests/Feature/Jobs/RenderMediaClipTest.php`
+- `apps/api/tests/Feature/Jobs/ProcessMediaAssetRenderRealWorkerTest.php` (rewrite as a regression/integration sentinel for the corrected explicit render boundary; do not preserve auto-render semantics)
+- `apps/api/tests/Feature/Jobs/ProcessMediaAssetRenderTest.php`
+- `services/worker/tests/test_render_clip_integration.py` (new singular real FFmpeg fixture coverage)
+- `services/worker/tests/test_render_clip_integration_duration.py` (new singular duration tolerance coverage)
+- `apps/api/tests/Unit/RenderValidatorTest.php`
+
+### Targeted RED
+- `php artisan test tests/Feature/Jobs/RenderMediaClipTest.php` (expect failure on corrected explicit invocation/integration)
+- `php artisan test tests/Feature/Jobs/ProcessMediaAssetRenderRealWorkerTest.php` (expect failure until legacy auto-render assumptions are removed/replaced)
+- `cd services/worker && python -m pytest tests/test_render_clip_integration.py -v` (expect failure on FFmpeg integration)
+- `cd services/worker && python -m pytest tests/test_render_clip_integration_duration.py -v` (expect failure on duration tolerance)
+
+### Targeted GREEN commands
+```bash
+# Run explicit RenderMediaClip job tests
+php artisan test tests/Feature/Jobs/RenderMediaClipTest.php
+
+# Run existing real-worker regression/integration test after removing auto-render assumptions
+php artisan test tests/Feature/Jobs/ProcessMediaAssetRenderRealWorkerTest.php
+
+# Run ProcessMediaAsset no-auto-render regression
+php artisan test tests/Feature/Jobs/ProcessMediaAssetRenderTest.php
+
+# Run worker real integration tests (requires FFmpeg)
+cd services/worker && python -m pytest tests/test_render_clip_integration.py -v
+
+# Run worker duration tolerance tests
+cd services/worker && python -m pytest tests/test_render_clip_integration_duration.py -v
+
+# Run RenderValidator tests
+php artisan test --filter=RenderValidatorTest
+```
+
+### Regression sentinels
+- `apps/api/tests/Feature/Jobs/ProcessMediaAssetRenderTest.php`: corrected regression coverage proves ProcessMediaAsset completes without a render stage
+- `apps/api/tests/Feature/Jobs/ProcessMediaAssetRenderRealWorkerTest.php`: no automatic render coupling remains
+- `apps/api/tests/Feature/Models/DerivedAssetRenderedClipTest.php`: all existing/corrected render persistence tests pass
+- M5 rank_clips tests remain green after any worker contract/schema/CLI change
+- `WorkerBoundaryTest` (Laravel/worker boundary) passes
+- Full applicable backend suite against PostgreSQL passes
+
+### Stop condition before Stage D
+- End-to-end render with real FFmpeg fixture produces valid `DerivedAsset` (status completed)
+- Duration tolerance ±50ms validated by both worker (FFprobe) and Laravel (RenderValidator)
+- Storage key format correct: `projects/{project_id}/renders/{media_asset_id}/{candidate_index}/{render_profile_version}/{uuid}.mp4`
+- Unique identity constraint enforced (re-read authority on retry)
+- M5 rank_clips tests still green
+- A+B+C targeted tests green
+
+---
+
+## Stage D — Full regression/evidence
+
+### Behavior
+- Run full test suite: Laravel unit/feature, worker unit/integration.
+- No new UI/public API; API review N/A.
+- No new Playwright tests; Visual/Playwright review N/A for this issue (regression only).
+- Frontend/E2E existing CI regression suites must be green.
+- Update `evidence.md` with ACTUAL `### RED`, `### GREEN`, `### REFACTOR` sections only after execution.
+- Stop at `CI_GREEN_WAITING_HUMAN_MERGE`; no merge, no issue closure.
+
+### Likely files/categories
+- All Laravel test files under `apps/api/tests/`
+- All Python worker tests under `services/worker/tests/`
+- Existing Playwright E2E tests (no new)
+- `evidence.md`
+
+### Targeted RED
+- Any test that fails due to delta changes (run full suites to detect)
+
+### Targeted GREEN commands
+```bash
+# Full Laravel test suite
+php artisan test
+
+# Full worker test suite
+cd services/worker && python -m pytest tests/ -v
+
+# Existing Frontend/E2E regression suites (if any)
+# (e.g., npm test or playwright test for existing scenarios)
+```
+
+### Regression sentinels
+- Targeted M5 rank_clips tests: `test_rank_clips.py`, `test_contract_rank_clips.py`
+- All singular M6 worker tests: test_render_clip_*, test_cli_render_clip_*, test_render_clip_integration_*
+- Full worker pytest: `services/worker/tests/`
+- RenderValidator tests: `apps/api/tests/Unit/RenderValidatorTest.php`
+- RenderMediaClip tests: `apps/api/tests/Feature/Jobs/RenderMediaClipTest.php`
+- Real-worker/no-auto-render regression: `apps/api/tests/Feature/Jobs/ProcessMediaAssetRenderRealWorkerTest.php`
+- DerivedAsset rendered clip tests: `apps/api/tests/Feature/Models/DerivedAssetRenderedClipTest.php`
+- ProcessMediaAsset regression: `apps/api/tests/Feature/Jobs/ProcessMediaAssetRenderTest.php`
+- WorkerBoundaryTest: `apps/api/tests/Unit/WorkerBoundaryTest.php`
+- Full applicable backend suite against PostgreSQL: `php artisan test --group=backend`
+- Real FFmpeg/FFprobe integration: verified in worker integration tests
+- Governance: git diff --check passes, exact-scope review (only files in plan modified)
+- Frontend/E2E existing CI regression suites: green
+
+### Stop condition before commit/push
+- All regression sentinels green
+- `evidence.md` updated with actual RED/GREEN/REFACTOR
+- Fresh independent Tester APPROVE
+- Orchestrator makes small atomic commits, normal push, one replacement PR with `Closes #69`
+- Monitor CI, stop at `CI_GREEN_WAITING_HUMAN_MERGE` (do not merge automatically)
