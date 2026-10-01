@@ -26,7 +26,7 @@ uses(TestCase::class, RefreshDatabase::class);
 
 function createProbedAssetForRender(array $overrides = []): MediaAsset
 {
-    return MediaAsset::factory()->create(array_merge([
+    $asset = MediaAsset::factory()->create(array_merge([
         'processing_status' => MediaAsset::PROCESSING_PROBED,
         'duration_ms' => 30000,
         'probe_result' => [
@@ -39,6 +39,13 @@ function createProbedAssetForRender(array $overrides = []): MediaAsset
         'storage_disk' => 'media',
         'storage_key' => 'projects/1/assets/1/source.mp4',
     ], $overrides));
+
+    // Update storage_key to use actual asset ID for uniqueness
+    $asset->update([
+        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/source.mp4",
+    ]);
+
+    return $asset->fresh();
 }
 
 function createCompletedSceneAnalysisForRender(MediaAsset $asset): MediaSceneAnalysis
@@ -87,7 +94,7 @@ function createCompletedTranscriptForRender(MediaAsset $asset, MediaSceneAnalysi
         'media_asset_id' => $asset->id,
         'type' => \App\Models\DerivedAsset::TYPE_AUDIO_NORMALIZED,
         'storage_disk' => 'media',
-        'storage_key' => 'projects/1/assets/1/derivatives/audio/test.wav',
+        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
         'mime_type' => 'audio/wav',
         'size_bytes' => 1024000,
         'duration_ms' => 30000,
@@ -177,7 +184,7 @@ function createCompletedRecommendationForRender(MediaAsset $asset, MediaClipAnal
 
 /*
 |--------------------------------------------------------------------------
-| Mock worker action for recording render calls
+| Mock worker action for recording render calls (SINGULAR render_clip format)
 |--------------------------------------------------------------------------
 */
 
@@ -195,7 +202,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
 
     public function renderClips(\App\Contracts\MediaProcessingContract $contract): array
     {
-        $request = $contract->toRenderClipsMetadataArray();
+        $request = $contract->toRenderClipMetadataArray();
         $this->renderCalls[] = $request;
 
         if ($this->shouldFail) {
@@ -203,7 +210,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
         }
 
         if (empty($this->renderResults)) {
-            // Return default success
+            // Return default success matching singular render_clip response format
             $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
             return [
                 'status' => 'success',
@@ -213,13 +220,13 @@ class RecordingRenderActionForRender extends ProcessMediaAction
                     'parameters' => [
                         'configuration' => \App\Services\RenderProfile::configuration(),
                         'source_media' => [
-                            'disk' => 'media',
-                            'key' => 'projects/1/assets/1/source.mp4',
-                            'duration_ms' => 30000,
-                            'width' => 1920,
-                            'height' => 1080,
-                            'video_codec' => 'h264',
-                            'audio_codec' => 'aac',
+                            'disk' => $request['source_media']['disk'],
+                            'key' => $request['source_media']['key'],
+                            'duration_ms' => $request['media']['duration_ms'],
+                            'width' => $request['source_media']['width'],
+                            'height' => $request['source_media']['height'],
+                            'video_codec' => $request['source_media']['video_codec'],
+                            'audio_codec' => $request['source_media']['audio_codec'],
                         ],
                         'ffmpeg_version' => 'ffmpeg version 6.0',
                         'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
@@ -233,16 +240,14 @@ class RecordingRenderActionForRender extends ProcessMediaAction
                     'clips' => [
                         [
                             'candidate_index' => $request['candidate_index'],
-                            'semantic_rank' => $request['recommendation']['candidates'][$request['candidate_index']]['semantic_rank'],
-                            'semantic_score' => $request['recommendation']['candidates'][$request['candidate_index']]['semantic_score'],
-                            'start_ms' => $request['recommendation']['candidates'][$request['candidate_index']]['start_ms'],
-                            'end_ms' => $request['recommendation']['candidates'][$request['candidate_index']]['end_ms'],
-                            'duration_ms' => $request['recommendation']['candidates'][$request['candidate_index']]['end_ms'] - $request['recommendation']['candidates'][$request['candidate_index']]['start_ms'],
+                            'start_ms' => $request['candidate']['start_ms'],
+                            'end_ms' => $request['candidate']['end_ms'],
+                            'duration_ms' => $request['candidate']['end_ms'] - $request['candidate']['start_ms'],
                             'output' => [
-                                'disk' => 'media',
-                                'key' => 'renders/1/1/'.$request['candidate_index'].'_20260101T000000Z.mp4',
+                                'disk' => $request['output_storage']['disk'],
+                                'key' => $request['output_storage']['key'],
                                 'size_bytes' => 1024000,
-                                'duration_ms' => $request['recommendation']['candidates'][$request['candidate_index']]['end_ms'] - $request['recommendation']['candidates'][$request['candidate_index']]['start_ms'],
+                                'duration_ms' => $request['candidate']['end_ms'] - $request['candidate']['start_ms'],
                                 'width' => 1080,
                                 'height' => 1920,
                                 'video_codec' => 'libx264',
@@ -290,7 +295,7 @@ it('renders clip when explicitly dispatched with valid candidate_index', functio
         ->first();
 
     expect($render)->not->toBeNull();
-    expect($render->status)->toBe('completed');
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
     expect($render->candidate_index)->toBe(0);
     expect(count($action->renderCalls))->toBe(1);
     expect($action->renderCalls[0]['candidate_index'])->toBe(0);
@@ -540,13 +545,14 @@ it('reuses existing completed render, no worker call', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    // Pre-create completed render
+    // Pre-create completed render with render_status and lifecycle fields
     DerivedAsset::create([
         'media_asset_id' => $asset->id,
         'type' => DerivedAsset::TYPE_RENDERED_CLIP,
         'candidate_index' => 0,
         'render_profile_version' => \App\Services\RenderProfile::RENDER_PROFILE_VERSION,
-        'status' => 'completed',
+        'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
+        'render_completed_at' => now(),
         'storage_disk' => 'media',
         'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
         'mime_type' => 'video/mp4',
@@ -571,7 +577,7 @@ it('reuses existing completed render, no worker call', function () {
         ->where('candidate_index', 0)
         ->first();
 
-    expect($render->status)->toBe('completed');
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
     expect($result->id)->toBe($render->id);
 });
 
@@ -594,7 +600,8 @@ it('throws version_conflict when existing render has different M5 authority', fu
         'type' => DerivedAsset::TYPE_RENDERED_CLIP,
         'candidate_index' => 0,
         'render_profile_version' => 'ffmpeg_vertical_baseline:2.0.0', // Different version
-        'status' => 'completed',
+        'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
+        'render_completed_at' => now(),
         'storage_disk' => 'media',
         'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
         'mime_type' => 'video/mp4',
@@ -748,7 +755,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
         ->where('candidate_index', 0)
         ->first();
 
-    expect($render->status)->toBe('failed');
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
     expect($render->render_error)->toBe('render_failed');
 
     // Now retry with success
@@ -757,7 +764,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
     $result2 = $job2->handle();
 
     $render->refresh();
-    expect($render->status)->toBe('completed');
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
     expect($render->render_error)->toBeNull();
     expect(count($action2->renderCalls))->toBe(1);
 });

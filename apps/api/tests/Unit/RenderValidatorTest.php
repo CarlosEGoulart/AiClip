@@ -11,7 +11,7 @@ uses(TestCase::class);
 
 /*
 |--------------------------------------------------------------------------
-| Fixtures — hand-derived from spec.md
+| Fixtures — hand-derived from spec.md (singular render_clip action)
 |--------------------------------------------------------------------------
 */
 
@@ -21,24 +21,10 @@ function renderRequest(): array
         'version' => RenderValidator::CONTRACT_VERSION,
         'action' => RenderValidator::ACTION,
         'media' => ['duration_ms' => 30000],
-        'recommendation' => [
-            'candidates' => [
-                [
-                    'index' => 0,
-                    'start_ms' => 0,
-                    'end_ms' => 10000,
-                    'semantic_rank' => 1,
-                    'semantic_score' => 0.95,
-                ],
-                [
-                    'index' => 1,
-                    'start_ms' => 10000,
-                    'end_ms' => 20000,
-                    'semantic_rank' => 2,
-                    'semantic_score' => 0.75,
-                ],
-            ],
-            'candidate_index' => 0,
+        'candidate_index' => 0,
+        'candidate' => [
+            'start_ms' => 0,
+            'end_ms' => 10000,
         ],
         'configuration' => RenderProfile::configuration(),
         'source_media' => [
@@ -49,13 +35,18 @@ function renderRequest(): array
             'video_codec' => 'h264',
             'audio_codec' => 'aac',
         ],
+        'output_storage' => [
+            'disk' => 'media',
+            'key' => 'projects/1/renders/1/0/vertical_v1/550e8400-e29b-41d4-a716-446655440000.mp4',
+            'mime_type' => 'video/mp4',
+        ],
     ];
 }
 
 function renderRequestWithCandidateIndex(int $index): array
 {
     $request = renderRequest();
-    $request['recommendation']['candidate_index'] = $index;
+    $request['candidate_index'] = $index;
     return $request;
 }
 
@@ -92,8 +83,6 @@ function renderResult(array $overrides = []): array
             'clips' => [
                 [
                     'candidate_index' => 0,
-                    'semantic_rank' => 1,
-                    'semantic_score' => 0.95,
                     'start_ms' => 0,
                     'end_ms' => 10000,
                     'duration_ms' => 10000,
@@ -142,7 +131,7 @@ function requestDigest(array $request): string
 |--------------------------------------------------------------------------
 */
 
-it('accepts valid render contract request', function () {
+it('accepts valid render_clip contract request', function () {
     $request = renderRequest();
 
     expect(RenderValidator::request($request))->toBe($request);
@@ -155,7 +144,7 @@ it('rejects missing version', function () {
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Unsupported render contract version');
+        expect($e->getMessage())->toBe('Unexpected key set');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -194,7 +183,7 @@ it('rejects missing media.duration_ms', function () {
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
+        expect($e->getMessage())->toBe('Expected an object');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -207,7 +196,7 @@ it('rejects invalid media.duration_ms (non-integer)', function () {
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
+        expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -220,7 +209,7 @@ it('rejects media.duration_ms out of bounds (zero)', function () {
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
+        expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -233,70 +222,110 @@ it('rejects media.duration_ms above maximum', function () {
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
+        expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
 });
 
-it('rejects missing recommendation.candidates', function () {
+it('rejects missing candidate_index', function () {
     $request = renderRequest();
-    unset($request['recommendation']['candidates']);
+    unset($request['candidate_index']);
 
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
+        expect($e->getMessage())->toBe('Unexpected key set');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
 });
 
-it('rejects missing recommendation.candidate_index', function () {
-    $request = renderRequest();
-    unset($request['recommendation']['candidate_index']);
-
-    try {
-        RenderValidator::request($request);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('rejects candidate_index out of bounds (negative)', function () {
+it('rejects candidate_index negative', function () {
     $request = renderRequestWithCandidateIndex(-1);
 
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('candidate_index out of bounds');
+        expect($e->getMessage())->toBe('candidate_index must be non-negative');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
 });
 
-it('rejects candidate_index out of bounds (>= K)', function () {
-    $request = renderRequestWithCandidateIndex(2); // Only 2 candidates (0, 1)
-
-    try {
-        RenderValidator::request($request);
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('candidate_index out of bounds');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('rejects selected candidate with null semantic_score', function () {
+it('rejects missing candidate object', function () {
     $request = renderRequest();
-    $request['recommendation']['candidates'][0]['semantic_score'] = null;
+    unset($request['candidate']);
 
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Selected candidate must have non-null semantic_score');
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects missing candidate.start_ms', function () {
+    $request = renderRequest();
+    unset($request['candidate']['start_ms']);
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects missing candidate.end_ms', function () {
+    $request = renderRequest();
+    unset($request['candidate']['end_ms']);
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects candidate.start_ms negative', function () {
+    $request = renderRequest();
+    $request['candidate']['start_ms'] = -1;
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects candidate.end_ms <= start_ms', function () {
+    $request = renderRequest();
+    $request['candidate']['end_ms'] = 0; // start_ms is 0
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects candidate.end_ms > media.duration_ms', function () {
+    $request = renderRequest();
+    $request['candidate']['end_ms'] = 40000; // media.duration_ms is 30000
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -309,7 +338,7 @@ it('rejects missing configuration', function () {
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
+        expect($e->getMessage())->toBe('Unexpected key set');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -432,6 +461,45 @@ it('rejects invalid audio_bitrate_kbps out of bounds', function () {
     throw new \Exception('Expected ProcessMediaException');
 });
 
+it('rejects missing source_media', function () {
+    $request = renderRequest();
+    unset($request['source_media']);
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects missing output_storage', function () {
+    $request = renderRequest();
+    unset($request['output_storage']);
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects output_storage.mime_type not video/mp4', function () {
+    $request = renderRequest();
+    $request['output_storage']['mime_type'] = 'video/webm';
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('output_storage.mime_type must be video/mp4');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
 it('rejects unknown field in request', function () {
     $request = renderRequest();
     $request['unknown_field'] = 'PRIVATE_SENTINEL';
@@ -439,7 +507,7 @@ it('rejects unknown field in request', function () {
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
+        expect($e->getMessage())->toBe('Unexpected key set');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -453,7 +521,59 @@ it('rejects input size > 8MB', function () {
     try {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Validation failed');
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects recommendation in worker request', function () {
+    $request = renderRequest();
+    $request['recommendation'] = [];
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects recommendation_id in worker request', function () {
+    $request = renderRequest();
+    $request['recommendation_id'] = 1;
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects media_asset_id in worker request', function () {
+    $request = renderRequest();
+    $request['media_asset_id'] = 1;
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Unexpected key set');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects project_id in worker request', function () {
+    $request = renderRequest();
+    $request['project_id'] = 1;
+
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Unexpected key set');
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -563,32 +683,6 @@ it('rejects clip bounds mismatch (end_ms)', function () {
     throw new \Exception('Expected ProcessMediaException');
 });
 
-it('rejects clip semantic_rank mismatch', function () {
-    $request = renderRequest();
-    $result = renderResult(['render.clips.0.semantic_rank' => 2]);
-
-    try {
-        RenderValidator::result($result, $request, requestDigest($request));
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Render validation failed');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
-it('rejects clip semantic_score mismatch', function () {
-    $request = renderRequest();
-    $result = renderResult(['render.clips.0.semantic_score' => 0.5]);
-
-    try {
-        RenderValidator::result($result, $request, requestDigest($request));
-    } catch (ProcessMediaException $e) {
-        expect($e->getMessage())->toBe('Render validation failed');
-        return;
-    }
-    throw new \Exception('Expected ProcessMediaException');
-});
-
 it('rejects missing output metadata fields', function () {
     $request = renderRequest();
     $result = renderResult(['render.clips.0.output.size_bytes' => '__REMOVE__']);
@@ -624,7 +718,10 @@ it('rejects SHA256 binding mismatch', function () {
 
 function renderCompletion(array $overrides = []): array
 {
-    return [
+    $request = renderRequest();
+    $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+
+    $result = [
         'algorithm' => RenderValidator::ALGORITHM,
         'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
         'parameters' => [
@@ -645,12 +742,11 @@ function renderCompletion(array $overrides = []): array
                 'max_input_bytes' => 8388608,
                 'max_duration_ms' => 2147483647,
             ],
+            'request_sha256' => $requestSha256,
         ],
         'clips' => [
             [
                 'candidate_index' => 0,
-                'semantic_rank' => 1,
-                'semantic_score' => 0.95,
                 'start_ms' => 0,
                 'end_ms' => 10000,
                 'duration_ms' => 10000,
@@ -670,9 +766,25 @@ function renderCompletion(array $overrides = []): array
         ],
         'execution_parameters' => [
             'timeout_seconds' => 300,
-            'lock_wait_seconds' => 305,
+            'lock_wait_seconds' => 310,
         ],
     ];
+
+    foreach ($overrides as $path => $value) {
+        $segments = explode('.', (string) $path);
+        $target = &$result;
+        foreach (array_slice($segments, 0, -1) as $segment) {
+            $target = &$target[$segment];
+        }
+        if ($value === '__REMOVE__') {
+            unset($target[array_pop($segments)]);
+        } else {
+            $target[array_pop($segments)] = $value;
+        }
+        unset($target);
+    }
+
+    return $result;
 }
 
 function assertCompletionRejected(array $completion, string $label = ''): void
@@ -713,6 +825,7 @@ it('rejects missing render columns in completion', function () {
     assertCompletionRejected(renderCompletion(['parameters.ffmpeg_version' => '__REMOVE__']), 'missing ffmpeg_version');
     assertCompletionRejected(renderCompletion(['parameters.filter_graph' => '__REMOVE__']), 'missing filter_graph');
     assertCompletionRejected(renderCompletion(['parameters.limits' => '__REMOVE__']), 'missing limits');
+    assertCompletionRejected(renderCompletion(['parameters.request_sha256' => '__REMOVE__']), 'missing request_sha256');
     assertCompletionRejected(renderCompletion(['clips' => '__REMOVE__']), 'missing clips');
     assertCompletionRejected(renderCompletion(['execution_parameters' => '__REMOVE__']), 'missing execution_parameters');
 });
@@ -722,9 +835,9 @@ it('rejects output file missing (size_bytes <= 0)', function () {
     assertCompletionRejected(renderCompletion(['clips.0.output.size_bytes' => -1]), 'output size negative');
 });
 
-it('rejects duration mismatch >5% (output duration vs clip duration)', function () {
-    // Output duration differs by more than 5% from clip duration
-    assertCompletionRejected(renderCompletion(['clips.0.output.duration_ms' => 9000]), 'duration mismatch >5%');
+it('rejects duration mismatch >50ms (output duration vs clip duration)', function () {
+    // Output duration differs by more than 50ms from clip duration
+    assertCompletionRejected(renderCompletion(['clips.0.output.duration_ms' => 9900]), 'duration mismatch >50ms');
 });
 
 it('rejects resolution mismatch', function () {
@@ -742,10 +855,10 @@ it('rejects missing ffmpeg_version', function () {
 
 it('rejects invalid execution_parameters timeout', function () {
     assertCompletionRejected(renderCompletion(['execution_parameters.timeout_seconds' => 29]), 'timeout below minimum');
-    assertCompletionRejected(renderCompletion(['execution_parameters.timeout_seconds' => 1801]), 'timeout above maximum');
+    assertCompletionRejected(renderCompletion(['execution_parameters.timeout_seconds' => 301]), 'timeout above maximum');
     assertCompletionRejected(renderCompletion(['execution_parameters.timeout_seconds' => 300.0]), 'timeout float');
 });
 
 it('rejects invalid execution_parameters lock_wait_seconds', function () {
-    assertCompletionRejected(renderCompletion(['execution_parameters.lock_wait_seconds' => 306]), 'lock_wait mismatch');
+    assertCompletionRejected(renderCompletion(['execution_parameters.lock_wait_seconds' => 311]), 'lock_wait mismatch');
 });

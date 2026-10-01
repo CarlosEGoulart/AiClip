@@ -64,8 +64,8 @@ it('rejects timeoutSeconds below minimum (30)', function () {
     throw new \Exception('Expected ProcessMediaException');
 });
 
-it('rejects timeoutSeconds above maximum (1800)', function () {
-    config(['media.render_timeout_seconds' => '1801']);
+it('rejects timeoutSeconds above maximum (300)', function () {
+    config(['media.render_timeout_seconds' => '301']);
 
     try {
         RenderProfile::timeoutSeconds();
@@ -112,10 +112,22 @@ it('rejects boolean timeoutSeconds', function () {
     throw new \Exception('Expected ProcessMediaException');
 });
 
-it('derives lockWaitSeconds as timeout + 5', function () {
+it('derives lockWaitSeconds as timeout + 10', function () {
     config(['media.render_timeout_seconds' => '300']);
 
-    expect(RenderProfile::lockWaitSeconds())->toBe(305);
+    expect(RenderProfile::lockWaitSeconds())->toBe(310);
+});
+
+it('exposes RENDER_PROFILE_VERSION = vertical_v1', function () {
+    expect(RenderProfile::RENDER_PROFILE_VERSION)->toBe('vertical_v1');
+});
+
+it('exposes TIMEOUT_MAX = 300', function () {
+    expect(RenderProfile::TIMEOUT_MAX)->toBe(300);
+});
+
+it('exposes LOCK_WAIT_OFFSET_SECONDS = 10', function () {
+    expect(RenderProfile::LOCK_WAIT_OFFSET_SECONDS)->toBe(10);
 });
 
 it('validates target_width must be even integer 1..4096', function () {
@@ -245,7 +257,11 @@ it('returns correct parameter keys for provenance', function () {
 it('exposes algorithm constants matching spec', function () {
     expect(RenderProfile::ALGORITHM)->toBe('ffmpeg_vertical_baseline');
     expect(RenderProfile::ALGORITHM_VERSION)->toBe('1.0.0');
-    expect(RenderProfile::RENDER_PROFILE_VERSION)->toBe('ffmpeg_vertical_baseline:1.0.0');
+    expect(RenderProfile::RENDER_PROFILE_VERSION)->toBe('vertical_v1');
+    expect(RenderProfile::TIMEOUT_MIN)->toBe(30);
+    expect(RenderProfile::TIMEOUT_MAX)->toBe(300);
+    expect(RenderProfile::TIMEOUT_DEFAULT)->toBe(300);
+    expect(RenderProfile::LOCK_WAIT_OFFSET_SECONDS)->toBe(10);
 });
 
 it('exposes limits constants matching spec', function () {

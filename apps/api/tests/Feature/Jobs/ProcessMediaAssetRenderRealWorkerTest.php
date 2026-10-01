@@ -24,7 +24,7 @@ uses(TestCase::class, RefreshDatabase::class);
 
 function createProbedAssetForRenderReal(array $overrides = []): MediaAsset
 {
-    return MediaAsset::factory()->create(array_merge([
+    $asset = MediaAsset::factory()->create(array_merge([
         'processing_status' => MediaAsset::PROCESSING_PROBED,
         'duration_ms' => 30000,
         'probe_result' => [
@@ -37,6 +37,13 @@ function createProbedAssetForRenderReal(array $overrides = []): MediaAsset
         'storage_disk' => 'media',
         'storage_key' => 'projects/1/assets/1/source.mp4',
     ], $overrides));
+
+    // Update storage_key to use actual asset ID for uniqueness
+    $asset->update([
+        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/source.mp4",
+    ]);
+
+    return $asset->fresh();
 }
 
 function createCompletedSceneAnalysisReal(MediaAsset $asset): MediaSceneAnalysis
@@ -85,7 +92,7 @@ function createCompletedTranscriptReal(MediaAsset $asset, MediaSceneAnalysis $sc
         'media_asset_id' => $asset->id,
         'type' => \App\Models\DerivedAsset::TYPE_AUDIO_NORMALIZED,
         'storage_disk' => 'media',
-        'storage_key' => 'projects/1/assets/1/derivatives/audio/test.wav',
+        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
         'mime_type' => 'audio/wav',
         'size_bytes' => 1024000,
         'duration_ms' => 30000,

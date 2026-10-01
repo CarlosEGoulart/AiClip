@@ -27,7 +27,7 @@ uses(TestCase::class, RefreshDatabase::class);
 
 function createProbedAsset(array $overrides = []): MediaAsset
 {
-    return MediaAsset::factory()->create(array_merge([
+    $asset = MediaAsset::factory()->create(array_merge([
         'processing_status' => MediaAsset::PROCESSING_PROBED,
         'duration_ms' => 30000,
         'probe_result' => [
@@ -40,6 +40,26 @@ function createProbedAsset(array $overrides = []): MediaAsset
         'storage_disk' => 'media',
         'storage_key' => 'projects/1/assets/1/source.mp4',
     ], $overrides));
+
+    // Update storage_key to use actual asset ID for uniqueness
+    $asset->update([
+        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/source.mp4",
+    ]);
+
+    return $asset->fresh();
+}
+
+function createProbedAssetNoAudio(array $overrides = []): MediaAsset
+{
+    $overrides['probe_result'] = array_merge([
+        'duration_ms' => 30000,
+        'width' => 1920,
+        'height' => 1080,
+        'video_codec' => 'h264',
+        'audio_codec' => null,
+    ], $overrides['probe_result'] ?? []);
+
+    return createProbedAsset($overrides);
 }
 
 function createCompletedSceneAnalysis(MediaAsset $asset): MediaSceneAnalysis
@@ -57,8 +77,13 @@ function createCompletedSceneAnalysis(MediaAsset $asset): MediaSceneAnalysis
     ]);
 }
 
-function createCompletedClipAnalysis(MediaAsset $asset): MediaClipAnalysis
+function createCompletedClipAnalysis(MediaAsset $asset, ?array $candidates = null): MediaClipAnalysis
 {
+    $defaultCandidates = [
+        ['index' => 0, 'start_ms' => 0, 'end_ms' => 10000, 'rank' => 1, 'score' => 1.0, 'criteria' => ['duration_fit' => 1.0, 'speech_coverage' => 0.0, 'boundary_alignment' => 0.0], 'source_scene_indexes' => [0]],
+        ['index' => 1, 'start_ms' => 10000, 'end_ms' => 20000, 'rank' => 2, 'score' => 0.5, 'criteria' => ['duration_fit' => 1.0, 'speech_coverage' => 0.0, 'boundary_alignment' => 0.0], 'source_scene_indexes' => [1]],
+    ];
+
     return MediaClipAnalysis::create([
         'media_asset_id' => $asset->id,
         'status' => MediaClipAnalysis::STATUS_COMPLETED,
@@ -75,11 +100,13 @@ function createCompletedClipAnalysis(MediaAsset $asset): MediaClipAnalysis
                 'boundary_alignment' => 20,
             ],
         ],
-        'candidates' => [
-            ['index' => 0, 'start_ms' => 0, 'end_ms' => 10000, 'rank' => 1, 'score' => 1.0, 'criteria' => ['duration_fit' => 1.0, 'speech_coverage' => 0.0, 'boundary_alignment' => 0.0], 'source_scene_indexes' => [0]],
-            ['index' => 1, 'start_ms' => 10000, 'end_ms' => 20000, 'rank' => 2, 'score' => 0.5, 'criteria' => ['duration_fit' => 1.0, 'speech_coverage' => 0.0, 'boundary_alignment' => 0.0], 'source_scene_indexes' => [1]],
-        ],
+        'candidates' => $candidates ?? $defaultCandidates,
     ]);
+}
+
+function createCompletedClipAnalysisNoCandidates(MediaAsset $asset): MediaClipAnalysis
+{
+    return createCompletedClipAnalysis($asset, []);
 }
 
 function createCompletedTranscript(MediaAsset $asset, MediaSceneAnalysis $sceneAnalysis): MediaTranscript
@@ -88,7 +115,7 @@ function createCompletedTranscript(MediaAsset $asset, MediaSceneAnalysis $sceneA
         'media_asset_id' => $asset->id,
         'type' => \App\Models\DerivedAsset::TYPE_AUDIO_NORMALIZED,
         'storage_disk' => 'media',
-        'storage_key' => 'projects/1/assets/1/derivatives/audio/test.wav',
+        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
         'mime_type' => 'audio/wav',
         'size_bytes' => 1024000,
         'duration_ms' => 30000,
@@ -434,9 +461,9 @@ it('asset completes with only existing resolved stages (no render required)', fu
     expect(count($action2->renderCalls))->toBe(0);
 
     // Scenario 3: M5 no candidates (empty)
-    $asset3 = createProbedAsset();
+    $asset3 = createProbedAssetNoAudio();
     $scene3 = createCompletedSceneAnalysis($asset3);
-    $clip3 = createCompletedClipAnalysis($asset3);
+    $clip3 = createCompletedClipAnalysisNoCandidates($asset3);
     $rec3 = MediaClipRecommendation::create([
         'media_asset_id' => $asset3->id,
         'm4_analysis_id' => $clip3->id,
@@ -452,7 +479,7 @@ it('asset completes with only existing resolved stages (no render required)', fu
             'm4_algorithm_version' => '1.0.0',
             'm4_candidates' => [],
             'duration_ms' => 30000,
-            'transcript_state' => 'completed_empty',
+            'transcript_state' => 'no_audio',
             'projection_version' => '1.0.0',
             'text_hashes' => [],
             'request_sha256' => hash('sha256', 'test'),
