@@ -48,6 +48,11 @@ auth hooks with generation-based race-condition protection. Storage uses
 `filter_var(..., FILTER_VALIDATE_BOOLEAN)` for boolean casting in PHPUnit.
 CSRF exceptions for media upload routes.
 
+M6.1 baseline vertical clip rendering (`ffmpeg_vertical_baseline` v1.0.0,
+profile `vertical_v1`) is the first M6 slice; it is explicitly invoked via
+dedicated render job, not an automatic stage in `ProcessMediaAsset`. Render
+output is a persisted `DerivedAsset` with full metadata and status tracking.
+
 # Known Limitations
 
 E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
@@ -70,14 +75,19 @@ caches must never be staged.
 M0–M5 completed. Issue #64 (M5 first slice, model-backed semantic clip
 recommendation) is closed as completed following the merge of PR #66. PR #65
 was superseded without merge, closed unmerged, and remains as history with
-both Issue #64 branches preserved. No implementation issue is active. M6 —
-Vertical Clip Rendering is the next milestone but is not active, not
-authorized, and not implemented.
+both Issue #64 branches preserved. M6.1 — Durable Baseline Vertical Clip
+Render Pipeline (Issue #69, PR #73) is completed and merged. M6.1 delivers
+`ffmpeg_vertical_baseline` v1.0.0 render profile `vertical_v1` producing
+persisted `DerivedAsset` records with `type=clip_rendered`, candidate index,
+render timestamps, and error capture. No implementation issue is active.
+M6.2+ remain future, not active, not authorized, and not implemented.
 
 # Next Architectural Goal
 
-M6 — Vertical Clip Rendering is the next architectural goal. It is not active,
-not authorized, and not implemented; planning and implementing it require
+M6.2+ — Vertical Clip Rendering enhancements (captions, multi-candidate batch
+rendering, render profiles beyond `vertical_v1`) and M7 — Clip Review
+Experience are the next architectural goals. They are not active, not
+authorized, and not implemented; planning and implementing them require
 separate explicit authorization. A standalone queue-consuming Python service
 remains a future architectural evolution, not the current CLI execution
 topology.

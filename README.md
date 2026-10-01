@@ -12,7 +12,7 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 | M3 — Asynchronous Media Processing | Completed |
 | M4 — Video Understanding | Completed |
 | M5 — AI Clip Recommendation | Completed (Issue #64, PR #66) |
-| M6 — Vertical Clip Rendering | Next (not active, not authorized) |
+| M6 — Vertical Clip Rendering | M6.1 Complete (Issue #69, PR #73) |
 
 M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization, Sanctum SPA authentication, and authenticated project management. M2 delivered: project-scoped video upload with S3-compatible storage (MinIO for development, AWS S3 in production).
 
@@ -45,7 +45,8 @@ Python Media Worker (services/worker; CLI subprocess)
 ├── Transcription
 ├── Scene detection
 ├── Deterministic clip candidate analysis
-└── Semantic clip ranking
+├── Semantic clip ranking
+└── Vertical clip rendering (ffmpeg_vertical_baseline v1.0.0)
 ```
 
 Laravel is the authoritative application backend. Heavy ML/media processing runs outside PHP HTTP request processes. The React frontend communicates with the API via REST through a Vite dev proxy (local) or same-origin routing (production).
@@ -54,8 +55,10 @@ Current execution: Laravel `ProcessMediaAsset` queue job → `ProcessMediaAction
 → Python CLI subprocess → strict result validation → Laravel PostgreSQL
 persistence. Python does not consume Laravel queue jobs or write application
 rows directly. A standalone queue-consuming Python worker is a future target,
-not the current topology. Rendering and image generation remain future
-capabilities.
+not the current topology. M6.1 baseline vertical clip rendering is implemented
+via dedicated `RenderMediaClip` queue job invoking `ffmpeg_vertical_baseline`
+v1.0.0 profile `vertical_v1`, producing persisted `DerivedAsset` records with
+`type=clip_rendered`. Image generation remains a future capability.
 
 ## Technology Stack
 
