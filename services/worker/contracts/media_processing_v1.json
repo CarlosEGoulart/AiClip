@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Media Processing Contract v1.0.0",
   "type": "object",
-  "required": ["version", "project_id", "storage", "idempotency_key", "created_at"],
+  "required": ["version"],
   "properties": {
     "version": { "type": "string", "const": "1.0.0" },
     "media_asset_id": { "type": "integer", "minimum": 1 },
@@ -21,7 +21,7 @@
     "created_at": { "type": "string", "format": "date-time" },
     "action": {
       "type": "string",
-      "enum": ["probe", "extract_audio", "transcribe", "detect_scenes", "analyze_clips", "rank_clips", "render_clips"],
+      "enum": ["probe", "extract_audio", "transcribe", "detect_scenes", "analyze_clips", "rank_clips", "render_clips", "render_clip"],
       "default": "probe"
     },
     "output_storage": {
@@ -35,7 +35,7 @@
     },
     "probe_data": {
       "type": "object",
-      "description": "Probe result data from a prior probing stage. Required for extract_audio action.",
+      "description": "Probe result data from a prior probing stage.",
       "properties": {
         "duration_ms": { "type": "number", "minimum": 0 },
         "audio_codec": { "type": ["string", "null"] },
@@ -47,10 +47,11 @@
     "derived_asset_id": {
       "type": "integer",
       "minimum": 1,
-      "description": "Required for transcribe action. References DerivedAsset containing normalized audio."
+      "description": "References DerivedAsset containing normalized audio."
     },
     "media": {
       "type": "object",
+      "required": ["duration_ms"],
       "properties": {
         "duration_ms": {
           "type": "integer",
@@ -281,6 +282,74 @@
         "recommendation_id": { "type": "integer", "minimum": 1 }
       }
     },
+    "render_clip_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "action", "media", "candidate_index", "candidate", "configuration", "source_media", "output_storage"],
+      "properties": {
+        "version": { "type": "string", "const": "1.0.0" },
+        "action": { "type": "string", "const": "render_clip" },
+        "media": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["duration_ms"],
+          "properties": {
+            "duration_ms": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
+          }
+        },
+        "candidate_index": { "type": "integer", "minimum": 0 },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_ms", "end_ms"],
+          "properties": {
+            "start_ms": { "type": "integer", "minimum": 0 },
+            "end_ms": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target_width", "target_height", "target_fps",
+            "video_codec", "video_bitrate_kbps",
+            "audio_codec", "audio_bitrate_kbps"
+          ],
+          "properties": {
+            "target_width": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "target_height": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "target_fps": { "type": "integer", "minimum": 1, "maximum": 120 },
+            "video_codec": { "type": "string", "enum": ["libx264", "libx265", "h264_videotoolbox", "hevc_videotoolbox"] },
+            "video_bitrate_kbps": { "type": "integer", "minimum": 500, "maximum": 50000 },
+            "audio_codec": { "type": "string", "enum": ["aac", "libfdk_aac", "copy"] },
+            "audio_bitrate_kbps": { "type": "integer", "minimum": 32, "maximum": 320 }
+          }
+        },
+        "source_media": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["disk", "key", "width", "height", "video_codec", "audio_codec"],
+          "properties": {
+            "disk": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "video_codec": { "type": "string", "minLength": 1 },
+            "audio_codec": { "type": ["string", "null"], "minLength": 1 }
+          }
+        },
+        "output_storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["disk", "key", "mime_type"],
+          "properties": {
+            "disk": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
+            "mime_type": { "type": "string", "const": "video/mp4" }
+          }
+        }
+      }
+    },
     "render_clips_response": {
       "type": "object",
       "additionalProperties": false,
@@ -378,6 +447,53 @@
   "allOf": [
     {
       "if": {
+        "not": { "required": ["action"] }
+      },
+      "then": {
+        "required": ["project_id", "storage", "idempotency_key", "created_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "probe"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["project_id", "storage", "idempotency_key", "created_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "extract_audio"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["project_id", "storage", "idempotency_key", "created_at"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "transcribe"
+          }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["project_id", "storage", "idempotency_key", "created_at"]
+      }
+    },
+    {
+      "if": {
         "properties": {
           "action": {
             "const": "detect_scenes"
@@ -386,19 +502,20 @@
         "required": ["action"]
       },
       "then": {
-        "required": ["media"],
-        "properties": {
-          "media": {
-            "type": "object",
-            "required": ["duration_ms"],
+        "allOf": [
+          { "required": ["project_id", "storage", "idempotency_key", "created_at", "media"] },
+          {
             "properties": {
-              "duration_ms": {
-                "type": "integer",
-                "minimum": 1
+              "media": {
+                "type": "object",
+                "required": ["duration_ms"],
+                "properties": {
+                  "duration_ms": { "type": "integer", "minimum": 1 }
+                }
               }
             }
           }
-        }
+        ]
       }
     },
     {
@@ -411,19 +528,7 @@
         "required": ["action"]
       },
       "then": {
-        "required": ["media", "scenes", "configuration"],
-        "properties": {
-          "media": {
-            "type": "object",
-            "required": ["duration_ms"],
-            "properties": {
-              "duration_ms": {
-                "type": "integer",
-                "minimum": 1
-              }
-            }
-          }
-        }
+        "required": ["project_id", "storage", "idempotency_key", "created_at", "media", "scenes", "configuration"]
       }
     },
     {
@@ -436,19 +541,7 @@
         "required": ["action"]
       },
       "then": {
-        "required": ["media", "candidates", "configuration"],
-        "properties": {
-          "media": {
-            "type": "object",
-            "required": ["duration_ms"],
-            "properties": {
-              "duration_ms": {
-                "type": "integer",
-                "minimum": 1
-              }
-            }
-          }
-        }
+        "required": ["media", "candidates", "configuration"]
       }
     },
     {
@@ -461,20 +554,20 @@
         "required": ["action"]
       },
       "then": {
-        "required": ["media", "recommendation", "candidate_index", "configuration", "source_media", "media_asset_id", "recommendation_id"],
+        "required": ["media", "recommendation", "candidate_index", "configuration", "source_media", "recommendation_id"]
+      }
+    },
+    {
+      "if": {
         "properties": {
-          "media": {
-            "type": "object",
-            "required": ["duration_ms"],
-            "properties": {
-              "duration_ms": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 2147483647
-              }
-            }
+          "action": {
+            "const": "render_clip"
           }
-        }
+        },
+        "required": ["action"]
+      },
+      "then": {
+        "required": ["media", "candidate_index", "candidate", "configuration", "source_media", "output_storage"]
       }
     }
   ]

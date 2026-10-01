@@ -51,6 +51,16 @@ RENDER_CLIPS_CANDIDATE_KEYS = ("index", "start_ms", "end_ms", "semantic_rank", "
 RENDER_CLIPS_CONFIG_KEYS = ("target_width", "target_height", "target_fps", "video_codec", "video_bitrate_kbps", "audio_codec", "audio_bitrate_kbps")
 RENDER_CLIPS_SOURCE_MEDIA_KEYS = ("disk", "key", "width", "height", "video_codec", "audio_codec")
 
+# Render clip (singular) constants
+RENDER_CLIP_VERSION = "1.0.0"
+RENDER_CLIP_ACTION = "render_clip"
+RENDER_CLIP_REQUEST_KEYS = ("version", "action", "media", "candidate_index", "candidate", "configuration", "source_media", "output_storage")
+RENDER_CLIP_MEDIA_KEYS = ("duration_ms",)
+RENDER_CLIP_CANDIDATE_KEYS = ("start_ms", "end_ms")
+RENDER_CLIP_CONFIG_KEYS = ("target_width", "target_height", "target_fps", "video_codec", "video_bitrate_kbps", "audio_codec", "audio_bitrate_kbps")
+RENDER_CLIP_SOURCE_MEDIA_KEYS = ("disk", "key", "width", "height", "video_codec", "audio_codec")
+RENDER_CLIP_OUTPUT_STORAGE_KEYS = ("disk", "key", "mime_type")
+
 VALID_VIDEO_CODECS = ("libx264", "libx265", "h264_videotoolbox", "hevc_videotoolbox")
 VALID_AUDIO_CODECS = ("aac", "libfdk_aac", "copy")
 
@@ -117,10 +127,37 @@ def _render_clips_schema() -> dict[str, Any]:
     }
 
 
+def _render_clip_schema() -> dict[str, Any]:
+    """The packaged JSON schema of the render_clip request."""
+    schema = _load_schema()
+    definitions = schema.get("definitions")
+    if not isinstance(definitions, dict) or "render_clip_request" not in definitions:
+        raise FileNotFoundError("render_clip request schema is not packaged")
+
+    return {
+        "$ref": "#/definitions/render_clip_request",
+        "definitions": definitions,
+    }
+
+
 def render_clips_schema_errors(contract: object) -> list[str]:
     """Schema-level errors of the render_clips request (empty when conformant)."""
     try:
         schema = _render_clips_schema()
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractSchemaUnavailable("Contract schema unavailable") from exc
+
+    try:
+        validator = Draft7Validator(schema)
+        return [error.message for error in validator.iter_errors(contract)]
+    except SchemaError as exc:
+        raise ContractSchemaUnavailable("Contract schema unavailable") from exc
+
+
+def render_clip_schema_errors(contract: object) -> list[str]:
+    """Schema-level errors of the render_clip request (empty when conformant)."""
+    try:
+        schema = _render_clip_schema()
     except (OSError, json.JSONDecodeError) as exc:
         raise ContractSchemaUnavailable("Contract schema unavailable") from exc
 
@@ -498,6 +535,83 @@ def _validate_render_clips(contract: dict[str, Any]) -> tuple[bool, str]:
     return validate_render_clips_contract(contract)
 
 
+def validate_render_clip_contract(contract: object) -> tuple[bool, str]:
+    """Validate a render_clip request at both the schema and runtime levels."""
+    if not isinstance(contract, dict):
+        return False, "render_clip contract must be an object"
+
+    schema_errors = render_clip_schema_errors(contract)
+    if schema_errors:
+        return False, "; ".join(schema_errors)
+
+    if set(contract.keys()) != set(RENDER_CLIP_REQUEST_KEYS):
+        unknown = sorted(set(contract.keys()) - set(RENDER_CLIP_REQUEST_KEYS))
+        if unknown:
+            return False, f"unknown fields: {unknown}"
+        missing = sorted(set(RENDER_CLIP_REQUEST_KEYS) - set(contract.keys()))
+        return False, f"missing required fields: {missing}"
+
+    if contract.get("version") != RENDER_CLIP_VERSION:
+        return False, f"Unsupported contract version: {contract.get('version')!r}"
+
+    if contract.get("action") != RENDER_CLIP_ACTION:
+        return False, "Invalid action for render_clip"
+
+    media = contract.get("media")
+    if not isinstance(media, dict) or set(media.keys()) != set(RENDER_CLIP_MEDIA_KEYS):
+        return False, "media must contain exactly duration_ms"
+    duration_ms = media["duration_ms"]
+    if not _is_integer(duration_ms) or duration_ms < 1 or duration_ms > MAX_DURATION_MS:
+        return False, "media.duration_ms must be a strict positive bounded integer"
+
+    candidate_index = contract.get("candidate_index")
+    if not _is_integer(candidate_index) or candidate_index < 0:
+        return False, "candidate_index must be a non-negative integer"
+
+    candidate = contract.get("candidate")
+    if not isinstance(candidate, dict) or set(candidate.keys()) != set(RENDER_CLIP_CANDIDATE_KEYS):
+        return False, "candidate must contain exactly start_ms and end_ms"
+    start_ms = candidate["start_ms"]
+    end_ms = candidate["end_ms"]
+    if not _is_integer(start_ms) or not _is_integer(end_ms):
+        return False, "candidate bounds must be integers"
+    if start_ms < 0 or end_ms <= start_ms or end_ms > duration_ms:
+        return False, "candidate bounds invalid: require 0 <= start_ms < end_ms <= duration_ms"
+
+    configuration_error = _validate_render_clips_configuration(contract.get("configuration"))
+    if configuration_error:
+        return False, configuration_error
+
+    source_media_error = _validate_render_clips_source_media(contract.get("source_media"))
+    if source_media_error:
+        return False, source_media_error
+
+    output_storage = contract.get("output_storage")
+    if not isinstance(output_storage, dict) or set(output_storage.keys()) != set(RENDER_CLIP_OUTPUT_STORAGE_KEYS):
+        missing = sorted(set(RENDER_CLIP_OUTPUT_STORAGE_KEYS) - set(output_storage.keys()))
+        unknown = sorted(set(output_storage.keys()) - set(RENDER_CLIP_OUTPUT_STORAGE_KEYS))
+        if unknown:
+            return False, f"output_storage contains unknown fields: {unknown}"
+        return False, f"output_storage missing required fields: {missing}"
+
+    disk = output_storage["disk"]
+    key = output_storage["key"]
+    mime_type = output_storage["mime_type"]
+    if not isinstance(disk, str) or not disk:
+        return False, "output_storage.disk must be a non-empty string"
+    if not isinstance(key, str) or not key:
+        return False, "output_storage.key must be a non-empty string"
+    if not isinstance(mime_type, str) or mime_type != "video/mp4":
+        return False, 'output_storage.mime_type must be "video/mp4"'
+
+    return True, ""
+
+
+def _validate_render_clip(contract: dict[str, Any]) -> tuple[bool, str]:
+    """Validate render_clip contract with strict checks."""
+    return validate_render_clip_contract(contract)
+
+
 def validate_contract(contract: dict[str, Any]) -> tuple[bool, str]:
     """Validate a contract against the JSON schema.
 
@@ -521,6 +635,9 @@ def validate_contract(contract: dict[str, Any]) -> tuple[bool, str]:
 
     if isinstance(contract, dict) and contract.get("action") == "render_clips":
         return _validate_render_clips(contract)
+
+    if isinstance(contract, dict) and contract.get("action") == RENDER_CLIP_ACTION:
+        return _validate_render_clip(contract)
 
     # Check that version is present and is 1.x
     version = contract.get("version", "")

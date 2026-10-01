@@ -10,6 +10,7 @@ use App\Services\ClipRecommendationProjection;
 use App\Services\ClipRecommendationValidator;
 use App\Services\RenderProfile;
 use App\Services\RenderValidator;
+use App\Services\StorageKeyBuilder;
 
 class MediaProcessingContract
 {
@@ -51,6 +52,9 @@ class MediaProcessingContract
 
     public ?int $candidateIndex = null;
 
+    /** @var array{start_ms: int, end_ms: int}|null */
+    public ?array $singularCandidate = null;
+
     /** @var array{disk: string, key: string, width: int, height: int, video_codec: string, audio_codec: string|null}|null */
     public ?array $sourceMedia = null;
 
@@ -79,7 +83,7 @@ class MediaProcessingContract
     }
 
     /**
-     * Build the exact render_clips request from authoritative local inputs.
+     * Build the exact singular render_clip request from authoritative local inputs.
      *
      * The M5 recommendation is re-read and validated before projection.
      * Validation happens strictly before any process is created.
@@ -90,17 +94,19 @@ class MediaProcessingContract
      * @param  int  $recommendationId  The recommendation ID
      * @param  int  $candidateIndex  Explicitly selected candidate index
      * @param  array{disk: string, key: string, width: int, height: int, video_codec: string, audio_codec: string|null}  $sourceMedia
+     * @param  int  $projectId  The project ID for output storage key
      * @return array<string, mixed>
      *
      * @throws ProcessMediaException
      */
-    public static function renderClipsRequest(
+    public static function renderClipRequest(
         int $mediaAssetId,
         int $durationMs,
         array $recommendation,
         int $recommendationId,
         int $candidateIndex,
-        array $sourceMedia
+        array $sourceMedia,
+        int $projectId
     ): array {
         // Validate recommendation has candidates and candidate_index is valid
         if (! isset($recommendation['recommendations']) || ! is_array($recommendation['recommendations'])) {
@@ -115,34 +121,44 @@ class MediaProcessingContract
             throw new ProcessMediaException('candidate_index out of bounds');
         }
 
-        // Build candidate array for render contract (uses semantic_rank/semantic_score from M5)
-        $renderCandidates = [];
-        foreach ($candidates as $candidate) {
-            $renderCandidates[] = [
-                'index' => (int) $candidate['m4_candidate_index'],
-                'start_ms' => (int) $candidate['start_ms'],
-                'end_ms' => (int) $candidate['end_ms'],
-                'semantic_rank' => (int) $candidate['semantic_rank'],
-                'semantic_score' => $candidate['semantic_score'] !== null ? (float) $candidate['semantic_score'] : null,
-            ];
+        // Extract the selected candidate
+        $selectedCandidate = $candidates[$candidateIndex];
+
+        // Validate selected candidate has non-null semantic_score
+        if ($selectedCandidate['semantic_score'] === null) {
+            throw new ProcessMediaException('Selected candidate must have non-null semantic_score');
         }
 
-        $recommendationData = [
-            'candidates' => $renderCandidates,
-            'candidate_index' => $candidateIndex,
+        // Build candidate timing at root level (singular format)
+        $candidate = [
+            'start_ms' => (int) $selectedCandidate['start_ms'],
+            'end_ms' => (int) $selectedCandidate['end_ms'],
         ];
 
-        return self::fromArray([
+        // Build output storage key using project-scoped format
+        $outputStorageKey = StorageKeyBuilder::renderClip(
+            $projectId,
+            $mediaAssetId,
+            $candidateIndex,
+            RenderProfile::RENDER_PROFILE_VERSION,
+        );
+
+        $outputStorage = [
+            'disk' => $sourceMedia['disk'],
+            'key' => $outputStorageKey,
+            'mime_type' => 'video/mp4',
+        ];
+
+        return [
             'version' => RenderValidator::CONTRACT_VERSION,
             'action' => RenderValidator::ACTION,
             'media' => ['duration_ms' => $durationMs],
-            'recommendation' => $recommendationData,
             'candidate_index' => $candidateIndex,
+            'candidate' => $candidate,
             'configuration' => RenderProfile::configuration(),
             'source_media' => $sourceMedia,
-            'media_asset_id' => $mediaAssetId,
-            'recommendation_id' => $recommendationId,
-        ])->toRenderClipsMetadataArray();
+            'output_storage' => $outputStorage,
+        ];
     }
 
     /**
@@ -238,6 +254,25 @@ class MediaProcessingContract
             $contract->candidateIndex = $data['candidate_index'];
             $contract->configuration = $data['configuration'];
             $contract->sourceMedia = $data['source_media'];
+
+            return $contract;
+        }
+
+        if (($data['action'] ?? null) === 'render_clip') {
+            $data = RenderValidator::request($data);
+            $contract = new self;
+            $contract->action = 'render_clip';
+            $contract->version = $data['version'];
+            $contract->durationMs = $data['media']['duration_ms'];
+            $contract->candidateIndex = $data['candidate_index'];
+            // Store singular candidate timing directly (not in recommendation array)
+            $contract->singularCandidate = [
+                'start_ms' => $data['candidate']['start_ms'],
+                'end_ms' => $data['candidate']['end_ms'],
+            ];
+            $contract->configuration = $data['configuration'];
+            $contract->sourceMedia = $data['source_media'];
+            $contract->outputStorage = $data['output_storage'];
 
             return $contract;
         }
@@ -376,6 +411,34 @@ class MediaProcessingContract
     }
 
     /**
+     * Serialize the contract for metadata-only (render_clip) transport.
+     *
+     * Produces a privacy-safe payload with singular format:
+     * version, action, media.duration_ms, candidate_index, candidate{start_ms,end_ms},
+     * configuration, source_media, output_storage.
+     *
+     * @return array{version: string, action: string, media: array{duration_ms: int}, candidate_index: int, candidate: array{start_ms: int, end_ms: int}, configuration: array, source_media: array, output_storage: array{disk: string, key: string, mime_type: string}}
+     */
+    public function toRenderClipMetadataArray(): array
+    {
+        $data = [
+            'version' => $this->version,
+            'action' => $this->action,
+            'media' => ['duration_ms' => $this->durationMs],
+            'candidate_index' => $this->candidateIndex,
+            'candidate' => [
+                'start_ms' => $this->singularCandidate['start_ms'],
+                'end_ms' => $this->singularCandidate['end_ms'],
+            ],
+            'configuration' => $this->configuration,
+            'source_media' => $this->sourceMedia,
+            'output_storage' => $this->outputStorage,
+        ];
+
+        return $data;
+    }
+
+    /**
      * Validate the contract.
      */
     public function validate(): bool
@@ -386,7 +449,7 @@ class MediaProcessingContract
         }
 
         // Validate action is valid
-        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes', 'analyze_clips', 'rank_clips', 'render_clips'], true)) {
+        if (! in_array($this->action, ['probe', 'extract_audio', 'transcribe', 'detect_scenes', 'analyze_clips', 'rank_clips', 'render_clips', 'render_clip'], true)) {
             return false;
         }
 
@@ -405,6 +468,17 @@ class MediaProcessingContract
         if ($this->action === 'rank_clips') {
             try {
                 ClipRecommendationValidator::request($this->toRankClipsMetadataArray());
+            } catch (ProcessMediaException) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // render_clip uses singular metadata-only shape.
+        if ($this->action === 'render_clip') {
+            try {
+                RenderValidator::request($this->toRenderClipMetadataArray());
             } catch (ProcessMediaException) {
                 return false;
             }

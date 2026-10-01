@@ -14,12 +14,12 @@ final class RenderProfile
 {
     public const ALGORITHM = 'ffmpeg_vertical_baseline';
     public const ALGORITHM_VERSION = '1.0.0';
-    public const RENDER_PROFILE_VERSION = 'ffmpeg_vertical_baseline:1.0.0';
+    public const RENDER_PROFILE_VERSION = 'vertical_v1';
 
     public const TIMEOUT_MIN = 30;
-    public const TIMEOUT_MAX = 1800;
+    public const TIMEOUT_MAX = 300;
     public const TIMEOUT_DEFAULT = 300;
-    public const LOCK_WAIT_OFFSET_SECONDS = 5;
+    public const LOCK_WAIT_OFFSET_SECONDS = 10;
 
     public const MAX_DURATION_MS = 2147483647;
     public const MAX_RECOMMENDATIONS = 1000;

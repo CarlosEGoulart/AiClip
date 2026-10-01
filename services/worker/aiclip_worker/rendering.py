@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import shutil
 import subprocess
 import tempfile
 import time
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -214,9 +217,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         except Exception:
             raise RenderFailed("Failed to probe source media")
 
-    def _build_filter_graph(
+    def _build_filter_graph_core(
         self,
-        candidate: RenderCandidate,
         config: RenderConfiguration,
         source_width: int,
         source_height: int,
@@ -238,6 +240,15 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
 
         return ",".join(filter_parts)
 
+    def _build_filter_graph(
+        self,
+        candidate,
+        config: RenderConfiguration,
+        source_width: int,
+        source_height: int,
+    ) -> str:
+        return self._build_filter_graph_core(config, source_width, source_height)
+
     def _run_ffmpeg(
         self,
         input_path: str,
@@ -246,6 +257,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         config: RenderConfiguration,
         start_s: float,
         duration_s: float,
+        has_audio: bool,
     ) -> dict[str, Any]:
         """Run FFmpeg to render the clip."""
         # Use input seeking for speed (-ss before -i)
@@ -257,11 +269,18 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             "-filter_complex", filter_graph,
             "-c:v", config.video_codec,
             "-b:v", f"{config.video_bitrate_kbps}k",
-            "-c:a", config.audio_codec,
-            "-b:a", f"{config.audio_bitrate_kbps}k",
+        ]
+        if has_audio:
+            cmd.extend([
+                "-c:a", config.audio_codec,
+                "-b:a", f"{config.audio_bitrate_kbps}k",
+            ])
+        else:
+            cmd.append("-an")
+        cmd.extend([
             "-movflags", "+faststart",
             output_path,
-        ]
+        ])
 
         try:
             result = subprocess.run(
@@ -302,9 +321,11 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         # Extract output metadata
         video_stream = None
         audio_stream = None
+        pix_fmt = None
         for stream in probe_data.get("streams", []):
             if stream.get("codec_type") == "video" and video_stream is None:
                 video_stream = stream
+                pix_fmt = stream.get("pix_fmt")
             elif stream.get("codec_type") == "audio" and audio_stream is None:
                 audio_stream = stream
 
@@ -350,9 +371,10 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             "video_bitrate_kbps": video_bitrate,
             "audio_bitrate_kbps": audio_bitrate,
             "size_bytes": size_bytes,
+            "pix_fmt": pix_fmt,
         }
 
-    def render(self, validated_input: RenderInput, configuration: RenderConfiguration) -> RenderResult:
+    def render(self, validated_input, configuration):
         """Render the vertical clip."""
         # Select candidate by index
         candidates = validated_input.recommendation.get("candidates", [])
@@ -406,6 +428,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
 
         try:
             # Run FFmpeg
+            has_audio = validated_input.source_media.audio_codec is not None
             output_meta = self._run_ffmpeg(
                 input_path,
                 temp_output_path,
@@ -413,6 +436,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                 configuration,
                 start_s,
                 duration_s,
+                has_audio,
             )
 
             # Verify output
@@ -422,6 +446,25 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                 raise RenderFailed("Output duration is invalid")
             if output_meta["width"] != configuration.target_width or output_meta["height"] != configuration.target_height:
                 raise RenderFailed("Output resolution does not match configuration")
+            # Check pix_fmt
+            if output_meta.get("pix_fmt") != "yuv420p":
+                raise RenderFailed(f"Output pix_fmt is not yuv420p: {output_meta.get('pix_fmt')}")
+            # Check video codec: actual should be h264 (since we use libx264)
+            if output_meta["video_codec"] != "h264":
+                raise RenderFailed(f"Output video codec is not h264: {output_meta['video_codec']}")
+            # Check audio: if source has audio, output must have aac; if source has no audio, output must have no audio
+            if validated_input.source_media.audio_codec is not None:
+                if output_meta["audio_codec"] != "aac":
+                    raise RenderFailed(f"Output audio codec is not aac: {output_meta['audio_codec']}")
+            else:
+                if output_meta["audio_codec"] != "":
+                    raise RenderFailed(f"Output audio codec should be empty but got: {output_meta['audio_codec']}")
+
+            # Check duration accuracy
+            expected_duration_ms = candidate.end_ms - candidate.start_ms
+            actual_duration_ms = output_meta["duration_ms"]
+            if abs(actual_duration_ms - expected_duration_ms) > 50:
+                raise RenderFailed(f"Output duration mismatch: expected {expected_duration_ms}ms, got {actual_duration_ms}ms")
 
             # Get FFmpeg version
             ffmpeg_version = self._get_ffmpeg_version()
@@ -445,6 +488,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                     "audio_codec": output_meta["audio_codec"],
                     "video_bitrate_kbps": output_meta["video_bitrate_kbps"],
                     "audio_bitrate_kbps": output_meta["audio_bitrate_kbps"],
+                    "mime_type": "video/mp4",
                 },
             )
 
@@ -472,6 +516,330 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             # Clean up temp file
             try:
                 Path(temp_output_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    def render_singular(self, duration_ms: int, source_media: SourceMediaInfo, start_ms: int, end_ms: int, configuration: RenderConfiguration, output_key: str, output_disk: str, candidate_index: int) -> dict[str, Any]:
+        """Render a singular vertical clip given explicit timing parameters."""
+        # Validate timing bounds
+        if start_ms < 0 or start_ms > duration_ms:
+            raise InvalidCandidateIndex("start_ms out of range")
+        if end_ms <= start_ms or end_ms > duration_ms:
+            raise InvalidCandidateIndex("end_ms invalid")
+
+        # Probe source media to verify metadata and ensure compatibility
+        probe_data = self._probe_source_media(source_media.key)
+        # Extract video and audio streams
+        video_stream = None
+        audio_stream = None
+        for stream in probe_data.get("streams", []):
+            if stream.get("codec_type") == "video" and video_stream is None:
+                video_stream = stream
+            elif stream.get("codec_type") == "audio" and audio_stream is None:
+                audio_stream = stream
+
+        if video_stream is None:
+            raise RenderFailed("No video stream found in source media")
+
+        probed_width = video_stream.get("width", 0)
+        probed_height = video_stream.get("height", 0)
+        probed_video_codec = video_stream.get("codec_name", "")
+        probed_audio_codec = audio_stream.get("codec_name") if audio_stream else None
+
+        # Validate probed dimensions and codecs match source_media contract
+        if probed_width != source_media.width:
+            raise RenderFailed(f"Source media width mismatch: expected {source_media.width}, got {probed_width}")
+        if probed_height != source_media.height:
+            raise RenderFailed(f"Source media height mismatch: expected {source_media.height}, got {probed_height}")
+        if probed_video_codec != source_media.video_codec:
+            raise RenderFailed(f"Source media video codec mismatch: expected {source_media.video_codec}, got {probed_video_codec}")
+        if source_media.audio_codec is not None:
+            if probed_audio_codec != source_media.audio_codec:
+                raise RenderFailed(f"Source media audio codec mismatch: expected {source_media.audio_codec}, got {probed_audio_codec}")
+        else:
+            if probed_audio_codec is not None:
+                raise RenderFailed(f"Source media expected no audio stream, but got audio codec: {probed_audio_codec}")
+
+        # Build filter graph using source media dimensions (from source_media, which should match probed)
+        # For safety, we could log but we'll proceed with source_media dimensions for filter graph.
+
+        # Build filter graph using source media dimensions (from source_media, which should match probed)
+        filter_graph = self._build_filter_graph(
+            None,
+            configuration,
+            source_media.width,
+            source_media.height,
+        )
+
+        # Calculate timing
+        start_s = start_ms / 1000.0
+        duration_s = (end_ms - start_ms) / 1000.0
+
+        # Create isolated temporary directory under /tmp/renders/{uuid}
+        temp_dir = Path("/tmp/renders") / uuid.uuid4().hex
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_output_path = temp_dir / "temp.mp4"
+        final_output_path = Path(output_key)
+        try:
+            # Run FFmpeg to temporary file
+            has_audio = source_media.audio_codec is not None
+            self._run_ffmpeg(
+                source_media.key,  # input_path
+                str(temp_output_path),
+                filter_graph,
+                configuration,
+                start_s,
+                duration_s,
+                has_audio,
+            )
+
+            # Validate temporary file
+            if not temp_output_path.exists():
+                raise RenderFailed("Temporary output file not found")
+            temp_size = temp_output_path.stat().st_size
+            if temp_size <= 0:
+                raise RenderFailed("Temporary output file is empty")
+
+            # Probe temporary file for basic validation (we'll do full validation on final file)
+            try:
+                temp_result = subprocess.run(
+                    [
+                        "ffprobe", "-v", "quiet", "-print_format", "json",
+                        "-show_streams", "-show_format", str(temp_output_path)
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if temp_result.returncode != 0:
+                    raise RenderFailed("Failed to probe temporary output file")
+                temp_probe_data = json.loads(temp_result.stdout)
+            except (json.JSONDecodeError, subprocess.TimeoutExpired):
+                raise RenderFailed("Failed to probe temporary output file")
+
+            # Extract video stream from temp probe
+            temp_video_stream = None
+            for stream in temp_probe_data.get("streams", []):
+                if stream.get("codec_type") == "video" and temp_video_stream is None:
+                    temp_video_stream = stream
+
+            if temp_video_stream is None:
+                raise RenderFailed("No video stream found in temporary output")
+
+            # Prepare final output path
+            try:
+                final_output_path.parent.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                raise RenderFailed(f"Failed to create final output directory: {e}")
+
+            # Move temporary file to final location
+            try:
+                os.replace(str(temp_output_path), str(final_output_path))
+            except Exception as e:
+                raise RenderFailed(f"Failed to move temporary file to final location: {e}")
+
+            # Validate final file
+            if not final_output_path.exists():
+                raise RenderFailed("Final output file not found after move")
+            final_size = final_output_path.stat().st_size
+            if final_size <= 0:
+                # Clean up final partial file
+                try:
+                    final_output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise RenderFailed("Final output file is empty after move")
+
+            # Probe final file for validation
+            try:
+                final_result = subprocess.run(
+                    [
+                        "ffprobe", "-v", "quiet", "-print_format", "json",
+                        "-show_streams", "-show_format", str(final_output_path)
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if final_result.returncode != 0:
+                    # Clean up final partial file
+                    try:
+                        final_output_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise RenderFailed("Failed to probe final output file")
+                final_probe_data = json.loads(final_result.stdout)
+            except (json.JSONDecodeError, subprocess.TimeoutExpired):
+                # Clean up final partial file
+                try:
+                    final_output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise RenderFailed("Failed to probe final output file")
+
+            # Extract video and audio streams from final probe
+            final_video_stream = None
+            final_audio_stream = None
+            for stream in final_probe_data.get("streams", []):
+                if stream.get("codec_type") == "video" and final_video_stream is None:
+                    final_video_stream = stream
+                elif stream.get("codec_type") == "audio" and final_audio_stream is None:
+                    final_audio_stream = stream
+
+            if final_video_stream is None:
+                # Clean up final partial file
+                try:
+                    final_output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise RenderFailed("No video stream found in final output")
+
+            # Extract metadata
+            final_duration_ms = 0
+            if final_video_stream and "duration" in final_video_stream:
+                final_duration_ms = int(float(final_video_stream["duration"]) * 1000)
+            elif "duration" in final_probe_data.get("format", {}):
+                final_duration_ms = int(float(final_probe_data["format"]["duration"]) * 1000)
+
+            final_width = final_video_stream.get("width", 0) if final_video_stream else 0
+            final_height = final_video_stream.get("height", 0) if final_video_stream else 0
+            final_video_codec = final_video_stream.get("codec_name", "") if final_video_stream else ""
+            final_audio_codec = final_audio_stream.get("codec_name", "") if final_audio_stream else ""
+
+            # Get bitrates
+            video_bitrate = configuration.video_bitrate_kbps
+            audio_bitrate = configuration.audio_bitrate_kbps
+            if final_video_stream and "bit_rate" in final_video_stream:
+                try:
+                    video_bitrate = int(int(final_video_stream["bit_rate"]) / 1000)
+                except (ValueError, TypeError):
+                    pass
+            if final_audio_stream and "bit_rate" in final_audio_stream:
+                try:
+                    audio_bitrate = int(int(final_audio_stream["bit_rate"]) / 1000)
+                except (ValueError, TypeError):
+                    pass
+
+            # Get file size (already have final_size)
+            size_bytes = final_size
+
+            # Validate final output
+            if final_width != configuration.target_width or final_height != configuration.target_height:
+                # Clean up final partial file
+                try:
+                    final_output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise RenderFailed("Final output resolution does not match configuration")
+            if final_probe_data.get("streams", []):
+                for stream in final_probe_data.get("streams", []):
+                    if stream.get("codec_type") == "video":
+                        if stream.get("pix_fmt") != "yuv420p":
+                            # Clean up final partial file
+                            try:
+                                final_output_path.unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                            raise RenderFailed(f"Final output pix_fmt is not yuv420p: {stream.get('pix_fmt')}")
+                        break
+            if final_video_codec != "h264":
+                # Clean up final partial file
+                try:
+                    final_output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise RenderFailed(f"Final output video codec is not h264: {final_video_codec}")
+            if source_media.audio_codec is not None:
+                if final_audio_codec != "aac":
+                    # Clean up final partial file
+                    try:
+                        final_output_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise RenderFailed(f"Final output audio codec is not aac: {final_audio_codec}")
+            else:
+                if final_audio_codec != "":
+                    # Clean up final partial file
+                    try:
+                        final_output_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    raise RenderFailed(f"Final output audio codec should be empty but got: {final_audio_codec}")
+
+            # Check duration accuracy on final file
+            expected_duration_ms = end_ms - start_ms
+            if abs(final_duration_ms - expected_duration_ms) > 50:
+                # Clean up final partial file
+                try:
+                    final_output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise RenderFailed(f"Final output duration mismatch: expected {expected_duration_ms}ms, got {final_duration_ms}ms")
+
+            # Get FFmpeg version
+            ffmpeg_version = self._get_ffmpeg_version()
+
+            # Build clip info dict
+            clip_info = {
+                "candidate_index": candidate_index,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "duration_ms": expected_duration_ms,  # use expected duration for consistency
+                "output": {
+                    "disk": output_disk,
+                    "key": output_key,
+                    "size_bytes": size_bytes,
+                    "duration_ms": final_duration_ms,
+                    "width": final_width,
+                    "height": final_height,
+                    "video_codec": configuration.video_codec,  # logical codec
+                    "audio_codec": configuration.audio_codec if source_media.audio_codec is not None else None,
+                    "video_bitrate_kbps": video_bitrate,
+                    "audio_bitrate_kbps": audio_bitrate,
+                    "mime_type": "video/mp4",
+                    # mime_type removed per spec
+                },
+            }
+
+            # Build parameters dict
+            parameters = {
+                "configuration": configuration.to_dict(),
+                "source_media": {
+                    "disk": source_media.disk,
+                    "key": source_media.key,
+                    "duration_ms": duration_ms,
+                    "width": source_media.width,
+                    "height": source_media.height,
+                    "video_codec": source_media.video_codec,
+                    "audio_codec": source_media.audio_codec,
+                },
+                "ffmpeg_version": ffmpeg_version,
+                "filter_graph": filter_graph,
+                "limits": {
+                    "max_recommendations": MAX_RECOMMENDATIONS,
+                    "max_input_bytes": MAX_INPUT_BYTES,
+                    "max_duration_ms": MAX_DURATION_MS,
+                },
+            }
+
+            return (clip_info, parameters)
+
+        except Exception as e:
+            # If we have a final output path and it exists, clean it up (because validation failed after move)
+            if 'final_output_path' in locals() and final_output_path.exists():
+                try:
+                    final_output_path.unlink()
+                except Exception:
+                    pass
+            # Re-raise as RenderFailed if it's not already
+            if isinstance(e, RenderFailed):
+                raise
+            else:
+                raise RenderFailed(str(e))
+        finally:
+            # Clean up temp directory
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
             except Exception:
                 pass
 

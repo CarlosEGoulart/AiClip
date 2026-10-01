@@ -442,7 +442,7 @@ class ProcessMediaAction
 
         try {
             $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
-            $request = $contract->toRenderClipsMetadataArray();
+            $request = $contract->toRenderClipMetadataArray();
             $contractJson = json_encode($request, JSON_THROW_ON_ERROR);
 
             // Python hashes the exact raw stdin bytes; Laravel computes the
@@ -451,7 +451,7 @@ class ProcessMediaAction
 
             $process = $this->createProcess([
                 ...explode(' ', $workerCommand),
-                'render-clips',
+                'render-clip',
             ]);
             $process->setTimeout($timeout);
             $process->setInput($contractJson);
