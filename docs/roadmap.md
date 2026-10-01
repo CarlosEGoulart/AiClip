@@ -65,11 +65,17 @@ Completed slices:
 
 - Model-backed semantic clip recommendation stage (Issue #64, PR #66 — merged; issue closed; PR #65 superseded and closed unmerged)
 
+## M6 — Vertical Clip Rendering (M6.1 completed)
+
+Completed slices:
+
+- Durable baseline vertical clip render pipeline (Issue #69, PR #73 — merged; issue closed): `ffmpeg_vertical_baseline` v1.0.0, render profile `vertical_v1`, dedicated `RenderMediaClip` queue job, `DerivedAsset` persistence with `type=clip_rendered`, explicit candidate selection, render status/error/timestamp tracking. No automatic render stage in `ProcessMediaAsset`. Captions, batch rendering, and additional profiles are out of scope for M6.1.
+
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
-| M6 | Vertical Clip Rendering |
+| M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2+ planned) |
 | M7 | Clip Review Experience |
 | M8 | AI Image Studio |
 | M9 | Social Connection Framework |
@@ -78,9 +84,5 @@ Completed slices:
 | M12 | TikTok Publishing |
 | M13 | Unified One-Click Publishing |
 | M14 | Production Hardening |
-
-M6 — Vertical Clip Rendering is the next milestone. It is future, not active,
-not authorized, and not implemented; starting it requires separate explicit
-authorization.
 
 Only one implementation issue is active at a time.
