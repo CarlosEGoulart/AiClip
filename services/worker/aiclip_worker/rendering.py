@@ -578,6 +578,15 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         if end_ms <= start_ms or end_ms > duration_ms:
             raise InvalidCandidateIndex("end_ms invalid")
 
+        # Validate font file exists if captions are provided
+        if captions:
+            for caption in captions:
+                font_file = caption.get("font_file", "")
+                if not font_file:
+                    raise RenderFailed("Caption font_file is required but missing")
+                if not Path(font_file).is_file():
+                    raise RenderFailed(f"Caption font file not found: {font_file}")
+
         # Probe source media to verify metadata and ensure compatibility
         probe_data = self._probe_source_media(source_media.key)
         # Extract video and audio streams

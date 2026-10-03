@@ -171,7 +171,8 @@ class MediaProcessingContract
             if ($transcript !== null) {
                 $candidateStartMs = $candidate['start_ms'];
                 $candidateEndMs = $candidate['end_ms'];
-                $projectedSegments = $transcript->projectSegmentsToCandidate($candidateStartMs, $candidateEndMs);
+                $maxCharsPerLine = (int) ($configuration['captions']['max_chars_per_line'] ?? 32);
+                $projectedSegments = $transcript->projectSegmentsToCandidate($candidateStartMs, $candidateEndMs, $maxCharsPerLine);
 
                 if (! empty($projectedSegments)) {
                     $request['captions'] = [

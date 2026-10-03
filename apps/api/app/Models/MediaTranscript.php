@@ -156,13 +156,67 @@ class MediaTranscript extends Model
     */
 
     /**
+     * Escape caption text for FFmpeg drawtext filter.
+     *
+     * FFmpeg drawtext requires escaping of special characters:
+     * - Backslash: \ -> \\
+     * - Colon: : -> \:
+     * - Single quote: ' -> \'
+     * - Percent: % -> \%
+     * - Control characters (ASCII < 32) replaced with space
+     * - Text wrapped at max_chars_per_line with \n for multi-line drawtext
+     *
+     * @param  string  $text  Raw caption text
+     * @param  int  $maxCharsPerLine  Maximum characters per line (default 32)
+     * @return string  Escaped and wrapped text
+     */
+    public static function escapeCaptionText(string $text, int $maxCharsPerLine = 32): string
+    {
+        // Replace control characters (ASCII < 32) with space
+        $text = preg_replace('/[\x00-\x1F]/', ' ', $text);
+
+        // Escape special characters for FFmpeg drawtext
+        // Order matters: escape backslash first to avoid double-escaping
+        $text = str_replace('\\', '\\\\', $text);
+        $text = str_replace(':', '\\:', $text);
+        $text = str_replace("'", "\\'", $text);
+        $text = str_replace('%', '\\%', $text);
+
+        // Word-wrap at max_chars_per_line
+        if ($maxCharsPerLine > 0 && strlen($text) > $maxCharsPerLine) {
+            $words = explode(' ', $text);
+            $lines = [];
+            $currentLine = '';
+
+            foreach ($words as $word) {
+                // If adding this word exceeds the limit, start a new line
+                if ($currentLine !== '' && strlen($currentLine) + 1 + strlen($word) > $maxCharsPerLine) {
+                    $lines[] = $currentLine;
+                    $currentLine = $word;
+                } else {
+                    $currentLine .= ($currentLine === '' ? '' : ' ') . $word;
+                }
+            }
+
+            if ($currentLine !== '') {
+                $lines[] = $currentLine;
+            }
+
+            $text = implode("\n", $lines);
+        }
+
+        return $text;
+    }
+
+    /**
      * Project transcript segments to a candidate's local timebase.
      *
      * @param  int  $candidateStartMs  Start of candidate in media timebase
      * @param  int  $candidateEndMs    End of candidate in media timebase
+     * @param  int  $maxCharsPerLine   Maximum characters per caption line (default 32)
      * @return array<int, array{start_ms: int, end_ms: int, text: string}>
      */
-    public function projectSegmentsToCandidate(int $candidateStartMs, int $candidateEndMs): array
+    public function projectSegmentsToCandidate(int $candidateStartMs, int $candidateEndMs, int $maxCharsPerLine = 32): array
     {
         // Only project if transcript is completed
         if ($this->status !== self::STATUS_COMPLETED) {
@@ -195,7 +249,7 @@ class MediaTranscript extends Model
                 $projected[] = [
                     'start_ms' => $localStartMs,
                     'end_ms' => $localEndMs,
-                    'text' => $segmentText,
+                    'text' => self::escapeCaptionText($segmentText, $maxCharsPerLine),
                 ];
             }
         }
