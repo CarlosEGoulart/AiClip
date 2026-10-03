@@ -57,9 +57,14 @@ RENDER_CLIP_ACTION = "render_clip"
 RENDER_CLIP_REQUEST_KEYS = ("version", "action", "media", "candidate_index", "candidate", "configuration", "source_media", "output_storage")
 RENDER_CLIP_MEDIA_KEYS = ("duration_ms",)
 RENDER_CLIP_CANDIDATE_KEYS = ("start_ms", "end_ms")
-RENDER_CLIP_CONFIG_KEYS = ("target_width", "target_height", "target_fps", "video_codec", "video_bitrate_kbps", "audio_codec", "audio_bitrate_kbps")
+RENDER_CLIP_CONFIG_KEYS = ("target_width", "target_height", "target_fps", "video_codec", "video_bitrate_kbps", "audio_codec", "audio_bitrate_kbps", "captions")
 RENDER_CLIP_SOURCE_MEDIA_KEYS = ("disk", "key", "width", "height", "video_codec", "audio_codec")
 RENDER_CLIP_OUTPUT_STORAGE_KEYS = ("disk", "key", "mime_type")
+
+# Caption configuration constants
+CAPTION_KEYS = ("enabled", "font_file", "font_size", "font_color", "outline_color", "outline_width",
+                "background_color", "background_opacity", "box_padding", "margin_bottom", "max_chars_per_line", "segments")
+CAPTION_SEGMENT_KEYS = ("start_ms", "end_ms", "text")
 
 VALID_VIDEO_CODECS = ("libx264", "libx265", "h264_videotoolbox", "hevc_videotoolbox")
 VALID_AUDIO_CODECS = ("aac", "libfdk_aac", "copy")
@@ -535,6 +540,117 @@ def _validate_render_clips(contract: dict[str, Any]) -> tuple[bool, str]:
     return validate_render_clips_contract(contract)
 
 
+def _validate_captions(captions: object, duration_ms: int) -> str:
+    """Return an error message unless the captions configuration is valid.
+
+    Captions are optional; None or missing is valid.
+    """
+    if captions is None:
+        return ""
+    if not isinstance(captions, dict):
+        return "captions must be an object or null"
+    if set(captions.keys()) != set(CAPTION_KEYS):
+        missing = sorted(set(CAPTION_KEYS) - set(captions.keys()))
+        unknown = sorted(set(captions.keys()) - set(CAPTION_KEYS))
+        if unknown:
+            return f"captions contains unknown fields: {unknown}"
+        return f"captions missing required fields: {missing}"
+
+    # Validate enabled (required boolean)
+    enabled = captions.get("enabled")
+    if not isinstance(enabled, bool):
+        return "captions.enabled must be a boolean"
+
+    # If disabled, remaining fields are still required by key set but values can be defaults
+    if not enabled:
+        return ""
+
+    # Validate font_file (required string)
+    font_file = captions.get("font_file")
+    if not isinstance(font_file, str) or not font_file:
+        return "captions.font_file must be a non-empty string"
+
+    # Validate font_size (required positive integer)
+    font_size = captions.get("font_size")
+    if not _is_integer(font_size) or font_size < 1:
+        return "captions.font_size must be a positive integer"
+
+    # Validate font_color (required string, hex color)
+    font_color = captions.get("font_color")
+    if not isinstance(font_color, str) or not font_color.startswith("#") or len(font_color) != 7:
+        return "captions.font_color must be a hex color string (e.g., '#FFFFFF')"
+
+    # Validate outline_color (required string, hex color)
+    outline_color = captions.get("outline_color")
+    if not isinstance(outline_color, str) or not outline_color.startswith("#") or len(outline_color) != 7:
+        return "captions.outline_color must be a hex color string (e.g., '#000000')"
+
+    # Validate outline_width (required non-negative integer)
+    outline_width = captions.get("outline_width")
+    if not _is_integer(outline_width) or outline_width < 0:
+        return "captions.outline_width must be a non-negative integer"
+
+    # Validate background_color (required string, hex color)
+    background_color = captions.get("background_color")
+    if not isinstance(background_color, str) or not background_color.startswith("#") or len(background_color) != 7:
+        return "captions.background_color must be a hex color string (e.g., '#000000')"
+
+    # Validate background_opacity (required float 0.0-1.0)
+    background_opacity = captions.get("background_opacity")
+    if not _is_number(background_opacity) or background_opacity < 0.0 or background_opacity > 1.0:
+        return "captions.background_opacity must be a number between 0.0 and 1.0"
+
+    # Validate box_padding (required non-negative integer)
+    box_padding = captions.get("box_padding")
+    if not _is_integer(box_padding) or box_padding < 0:
+        return "captions.box_padding must be a non-negative integer"
+
+    # Validate margin_bottom (required non-negative integer)
+    margin_bottom = captions.get("margin_bottom")
+    if not _is_integer(margin_bottom) or margin_bottom < 0:
+        return "captions.margin_bottom must be a non-negative integer"
+
+    # Validate max_chars_per_line (required positive integer)
+    max_chars_per_line = captions.get("max_chars_per_line")
+    if not _is_integer(max_chars_per_line) or max_chars_per_line < 1:
+        return "captions.max_chars_per_line must be a positive integer"
+
+    # Validate segments (required list)
+    segments = captions.get("segments")
+    if not isinstance(segments, list):
+        return "captions.segments must be a list"
+    if len(segments) == 0:
+        return "captions.segments must contain at least one segment when enabled"
+
+    prev_end_ms = 0
+    for i, segment in enumerate(segments):
+        if not isinstance(segment, dict):
+            return f"captions.segments[{i}] must be an object"
+        if set(segment.keys()) != set(CAPTION_SEGMENT_KEYS):
+            missing = sorted(set(CAPTION_SEGMENT_KEYS) - set(segment.keys()))
+            unknown = sorted(set(segment.keys()) - set(CAPTION_SEGMENT_KEYS))
+            if unknown:
+                return f"captions.segments[{i}] contains unknown fields: {unknown}"
+            return f"captions.segments[{i}] missing required fields: {missing}"
+
+        start_ms = segment.get("start_ms")
+        end_ms = segment.get("end_ms")
+        text = segment.get("text")
+
+        if not _is_integer(start_ms) or start_ms < 0 or start_ms > duration_ms:
+            return f"captions.segments[{i}].start_ms out of range: {start_ms}"
+        if not _is_integer(end_ms) or end_ms <= start_ms or end_ms > duration_ms:
+            return f"captions.segments[{i}].end_ms invalid: {end_ms}"
+        if start_ms < prev_end_ms:
+            return f"captions.segments[{i}].start_ms must not be before previous segment end_ms"
+        prev_end_ms = end_ms
+
+        if not isinstance(text, str) or not text:
+            return f"captions.segments[{i}].text must be a non-empty string"
+
+    return ""
+
+
 def validate_render_clip_contract(contract: object) -> tuple[bool, str]:
     """Validate a render_clip request at both the schema and runtime levels."""
     if not isinstance(contract, dict):
@@ -581,6 +697,10 @@ def validate_render_clip_contract(contract: object) -> tuple[bool, str]:
     configuration_error = _validate_render_clips_configuration(contract.get("configuration"))
     if configuration_error:
         return False, configuration_error
+
+    captions_error = _validate_captions(contract.get("configuration", {}).get("captions"), duration_ms)
+    if captions_error:
+        return False, captions_error
 
     source_media_error = _validate_render_clips_source_media(contract.get("source_media"))
     if source_media_error:

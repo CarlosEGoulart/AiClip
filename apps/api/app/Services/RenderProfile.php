@@ -38,6 +38,7 @@ final class RenderProfile
         'video_bitrate_kbps',
         'audio_codec',
         'audio_bitrate_kbps',
+        'captions',
     ];
 
     public const VALID_VIDEO_CODECS = [
@@ -51,6 +52,20 @@ final class RenderProfile
         'aac',
         'libfdk_aac',
         'copy',
+    ];
+
+    public const CAPTION_DEFAULTS = [
+        'enabled' => true,
+        'font_file' => '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        'font_size' => 72,
+        'font_color' => 'ffffff',
+        'outline_color' => '000000',
+        'outline_width' => 3,
+        'background_color' => '000000',
+        'background_opacity' => 0.5,
+        'box_padding' => 10,
+        'margin_bottom' => 100,
+        'max_chars_per_line' => 32,
     ];
 
     /**
@@ -70,6 +85,7 @@ final class RenderProfile
             'video_bitrate_kbps' => (int) config('media.render_video_bitrate_kbps', 5000),
             'audio_codec' => config('media.render_audio_codec', 'aac'),
             'audio_bitrate_kbps' => (int) config('media.render_audio_bitrate_kbps', 128),
+            'captions' => self::CAPTION_DEFAULTS,
         ];
 
         // Validate configuration matches exact key set
@@ -133,6 +149,81 @@ final class RenderProfile
         if (! is_int($audioBitrate) || $audioBitrate < 32 || $audioBitrate > 320) {
             throw self::invalidConfiguration();
         }
+
+        // captions: object with all required fields
+        $captions = $configuration['captions'] ?? null;
+        if (! is_array($captions)) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.enabled: boolean
+        if (! isset($captions['enabled']) || ! is_bool($captions['enabled'])) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.font_file: string, absolute path
+        if (! isset($captions['font_file']) || ! is_string($captions['font_file']) || $captions['font_file'] === '') {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.font_size: integer 12..200
+        if (! isset($captions['font_size']) || ! is_int($captions['font_size']) || is_bool($captions['font_size'])
+            || $captions['font_size'] < 12 || $captions['font_size'] > 200) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.font_color: hex string without #, 6 chars
+        if (! self::isValidHexColor($captions['font_color'] ?? null)) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.outline_color: hex string without #, 6 chars
+        if (! self::isValidHexColor($captions['outline_color'] ?? null)) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.outline_width: integer 0..10
+        if (! isset($captions['outline_width']) || ! is_int($captions['outline_width']) || is_bool($captions['outline_width'])
+            || $captions['outline_width'] < 0 || $captions['outline_width'] > 10) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.background_color: hex string without #, 6 chars
+        if (! self::isValidHexColor($captions['background_color'] ?? null)) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.background_opacity: float 0.0..1.0
+        if (! isset($captions['background_opacity']) || ! is_float($captions['background_opacity']) && ! is_int($captions['background_opacity'])
+            || $captions['background_opacity'] < 0.0 || $captions['background_opacity'] > 1.0) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.box_padding: integer 0..50
+        if (! isset($captions['box_padding']) || ! is_int($captions['box_padding']) || is_bool($captions['box_padding'])
+            || $captions['box_padding'] < 0 || $captions['box_padding'] > 50) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.margin_bottom: integer 0..500
+        if (! isset($captions['margin_bottom']) || ! is_int($captions['margin_bottom']) || is_bool($captions['margin_bottom'])
+            || $captions['margin_bottom'] < 0 || $captions['margin_bottom'] > 500) {
+            throw self::invalidConfiguration();
+        }
+
+        // captions.max_chars_per_line: integer 10..80
+        if (! isset($captions['max_chars_per_line']) || ! is_int($captions['max_chars_per_line']) || is_bool($captions['max_chars_per_line'])
+            || $captions['max_chars_per_line'] < 10 || $captions['max_chars_per_line'] > 80) {
+            throw self::invalidConfiguration();
+        }
+    }
+
+    /**
+     * Check if a value is a valid hex color (6 characters, 0-9a-f).
+     */
+    private static function isValidHexColor(mixed $value): bool
+    {
+        return is_string($value) && strlen($value) === 6 && ctype_xdigit($value);
     }
 
     /**

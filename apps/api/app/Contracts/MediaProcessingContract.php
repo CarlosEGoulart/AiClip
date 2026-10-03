@@ -149,7 +149,8 @@ class MediaProcessingContract
             'mime_type' => 'video/mp4',
         ];
 
-        return [
+        // Build base request
+        $request = [
             'version' => RenderValidator::CONTRACT_VERSION,
             'action' => RenderValidator::ACTION,
             'media' => ['duration_ms' => $durationMs],
@@ -159,6 +160,29 @@ class MediaProcessingContract
             'source_media' => $sourceMedia,
             'output_storage' => $outputStorage,
         ];
+
+        // Add captions if transcript is available and enabled
+        $configuration = RenderProfile::configuration();
+        if ($configuration['captions']['enabled'] === true) {
+            $transcript = \App\Models\MediaTranscript::where('media_asset_id', $mediaAssetId)
+                ->where('status', \App\Models\MediaTranscript::STATUS_COMPLETED)
+                ->first();
+
+            if ($transcript !== null) {
+                $candidateStartMs = $candidate['start_ms'];
+                $candidateEndMs = $candidate['end_ms'];
+                $projectedSegments = $transcript->projectSegmentsToCandidate($candidateStartMs, $candidateEndMs);
+
+                if (! empty($projectedSegments)) {
+                    $request['captions'] = [
+                        'enabled' => true,
+                        'segments' => $projectedSegments,
+                    ];
+                }
+            }
+        }
+
+        return $request;
     }
 
     /**

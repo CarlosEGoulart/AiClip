@@ -16,6 +16,7 @@ use App\Exceptions\UpstreamRecommendationUnavailableException;
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\MediaClipRecommendation;
+use App\Models\MediaTranscript;
 use App\Services\ProcessMediaAction;
 use App\Services\RenderProfile;
 use App\Services\RenderValidator;
@@ -28,6 +29,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class RenderMediaClip implements ShouldQueue
 {
@@ -109,6 +111,16 @@ class RenderMediaClip implements ShouldQueue
             throw new InvalidInputException('invalid_input');
         }
 
+        // Load transcript for caption projection and authority snapshot
+        $transcript = MediaTranscript::where('media_asset_id', $asset->id)
+            ->where('status', MediaTranscript::STATUS_COMPLETED)
+            ->first();
+
+        $transcriptState = $transcript !== null ? 'completed' : 'absent';
+        $transcriptContentHash = $transcript !== null && ! empty($transcript->segments)
+            ? hash('sha256', json_encode($transcript->segments, JSON_THROW_ON_ERROR))
+            : null;
+
         // Preflight: conflict with different render_profile_version for same media/type/candidate
         $conflictRender = DerivedAsset::where('media_asset_id', $asset->id)
             ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
@@ -129,8 +141,16 @@ class RenderMediaClip implements ShouldQueue
             ->first();
 
         if ($existingRender !== null) {
-            // If completed, reuse (idempotent) - unique constraint ensures same profile version
+            // If completed, verify authority snapshot matches (including transcript)
             if ($existingRender->render_status === DerivedAsset::RENDER_STATUS_COMPLETED) {
+                $existingSnapshot = $existingRender->render_parameters['input_snapshot'] ?? [];
+                $existingTranscriptState = $existingSnapshot['transcript_state'] ?? 'absent';
+                $existingTranscriptHash = $existingSnapshot['transcript_content_hash'] ?? null;
+
+                if ($existingTranscriptState !== $transcriptState || $existingTranscriptHash !== $transcriptContentHash) {
+                    throw new RenderVersionConflictException('render_version_conflict');
+                }
+
                 Log::info('RenderMediaClip: reusing existing completed render', [
                     'media_asset_id' => $asset->id,
                     'candidate_index' => $this->candidateIndex,
@@ -181,6 +201,8 @@ class RenderMediaClip implements ShouldQueue
                 $durationMs,
                 $sourceMedia,
                 $outputStorageKey,
+                $transcriptState,
+                $transcriptContentHash,
             ) {
                 if (DB::connection()->getDriverName() === 'pgsql') {
                     DB::select('SELECT set_config(\'lock_timeout\', ?, true)', [$renderLockWaitSeconds.'s']);

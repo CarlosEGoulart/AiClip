@@ -148,4 +148,61 @@ class MediaTranscript extends Model
     {
         return $this->belongsTo(DerivedAsset::class);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Caption Projection
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Project transcript segments to a candidate's local timebase.
+     *
+     * @param  int  $candidateStartMs  Start of candidate in media timebase
+     * @param  int  $candidateEndMs    End of candidate in media timebase
+     * @return array<int, array{start_ms: int, end_ms: int, text: string}>
+     */
+    public function projectSegmentsToCandidate(int $candidateStartMs, int $candidateEndMs): array
+    {
+        // Only project if transcript is completed
+        if ($this->status !== self::STATUS_COMPLETED) {
+            return [];
+        }
+
+        $segments = $this->segments ?? [];
+        if (empty($segments)) {
+            return [];
+        }
+
+        $candidateDurationMs = $candidateEndMs - $candidateStartMs;
+        $projected = [];
+
+        foreach ($segments as $segment) {
+            $segmentStartMs = (int) ($segment['start_ms'] ?? 0);
+            $segmentEndMs = (int) ($segment['end_ms'] ?? 0);
+            $segmentText = (string) ($segment['text'] ?? '');
+
+            if ($segmentText === '') {
+                continue;
+            }
+
+            // Map to candidate-local timebase
+            $localStartMs = max(0, $segmentStartMs - $candidateStartMs);
+            $localEndMs = min($candidateDurationMs, $segmentEndMs - $candidateStartMs);
+
+            // Only include if segment overlaps candidate
+            if ($localEndMs > $localStartMs) {
+                $projected[] = [
+                    'start_ms' => $localStartMs,
+                    'end_ms' => $localEndMs,
+                    'text' => $segmentText,
+                ];
+            }
+        }
+
+        // Sort by local_start_ms ascending
+        usort($projected, fn (array $a, array $b) => $a['start_ms'] <=> $b['start_ms']);
+
+        return $projected;
+    }
 }

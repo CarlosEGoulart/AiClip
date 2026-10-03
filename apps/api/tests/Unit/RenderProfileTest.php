@@ -25,6 +25,19 @@ it('returns the exact configuration with spec defaults', function () {
         'video_bitrate_kbps' => 5000,
         'audio_codec' => 'aac',
         'audio_bitrate_kbps' => 128,
+        'captions' => [
+            'enabled' => true,
+            'font_file' => '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            'font_size' => 72,
+            'font_color' => 'ffffff',
+            'outline_color' => '000000',
+            'outline_width' => 3,
+            'background_color' => '000000',
+            'background_opacity' => 0.5,
+            'box_padding' => 10,
+            'margin_bottom' => 100,
+            'max_chars_per_line' => 32,
+        ],
     ]);
 });
 
@@ -268,4 +281,228 @@ it('exposes limits constants matching spec', function () {
     expect(RenderProfile::MAX_DURATION_MS)->toBe(2147483647);
     expect(RenderProfile::MAX_RECOMMENDATIONS)->toBe(1000);
     expect(RenderProfile::MAX_INPUT_BYTES)->toBe(8388608);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Caption Configuration Tests (M6.2 Stage A)
+|--------------------------------------------------------------------------
+*/
+
+it('configuration() includes captions object with all spec defaults', function () {
+    $config = RenderProfile::configuration();
+
+    expect($config)->toHaveKey('captions');
+    expect($config['captions'])->toBe([
+        'enabled' => true,
+        'font_file' => '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        'font_size' => 72,
+        'font_color' => 'ffffff',
+        'outline_color' => '000000',
+        'outline_width' => 3,
+        'background_color' => '000000',
+        'background_opacity' => 0.5,
+        'box_padding' => 10,
+        'margin_bottom' => 100,
+        'max_chars_per_line' => 32,
+    ]);
+});
+
+it('captions.enabled default is true', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['enabled'])->toBe(true);
+});
+
+it('captions.font_file default is DejaVuSans-Bold.ttf path', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['font_file'])->toBe('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf');
+});
+
+it('captions.font_size default is 72', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['font_size'])->toBe(72);
+});
+
+it('captions.font_color default is ffffff', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['font_color'])->toBe('ffffff');
+});
+
+it('captions.outline_color default is 000000', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['outline_color'])->toBe('000000');
+});
+
+it('captions.outline_width default is 3', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['outline_width'])->toBe(3);
+});
+
+it('captions.background_color default is 000000', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['background_color'])->toBe('000000');
+});
+
+it('captions.background_opacity default is 0.5', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['background_opacity'])->toBe(0.5);
+});
+
+it('captions.box_padding default is 10', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['box_padding'])->toBe(10);
+});
+
+it('captions.margin_bottom default is 100', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['margin_bottom'])->toBe(100);
+});
+
+it('captions.max_chars_per_line default is 32', function () {
+    $config = RenderProfile::configuration();
+    expect($config['captions']['max_chars_per_line'])->toBe(32);
+});
+
+it('validateConfiguration rejects font_size < 12', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['font_size'] = 11;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects font_size > 200', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['font_size'] = 201;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects outline_width < 0', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['outline_width'] = -1;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects outline_width > 10', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['outline_width'] = 11;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects background_opacity < 0.0', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['background_opacity'] = -0.1;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects background_opacity > 1.0', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['background_opacity'] = 1.1;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects margin_bottom < 0', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['margin_bottom'] = -1;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects margin_bottom > 500', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['margin_bottom'] = 501;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects max_chars_per_line < 10', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['max_chars_per_line'] = 9;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects max_chars_per_line > 80', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['max_chars_per_line'] = 81;
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects invalid hex color format (not 6 chars)', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['font_color'] = 'fff';
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration rejects invalid hex color format (non-hex chars)', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['font_color'] = 'zzzzzz';
+
+    try {
+        RenderProfile::validateConfiguration($config);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('invalid_configuration');
+    }
+});
+
+it('validateConfiguration accepts valid hex color without #', function () {
+    $config = RenderProfile::configuration();
+    $config['captions']['font_color'] = 'abcdef';
+    $config['captions']['outline_color'] = '123456';
+    $config['captions']['background_color'] = 'abc123';
+    RenderProfile::validateConfiguration($config);
+});
+
+it('CONFIGURATION_KEYS includes captions key', function () {
+    expect(RenderProfile::CONFIGURATION_KEYS)->toContain('captions');
 });

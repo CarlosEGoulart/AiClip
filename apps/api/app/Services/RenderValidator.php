@@ -75,6 +75,20 @@ final class RenderValidator
     private const CONFIGURATION_KEYS = RenderProfile::CONFIGURATION_KEYS;
 
     /**
+     * The exact captions key set for a render_clip request.
+     *
+     * @var list<string>
+     */
+    private const CAPTIONS_KEYS = ['enabled', 'segments'];
+
+    /**
+     * The exact caption segment key set.
+     *
+     * @var list<string>
+     */
+    private const CAPTION_SEGMENT_KEYS = ['start_ms', 'end_ms', 'text'];
+
+    /**
      * The exact clip key set of a worker result.
      *
      * @var list<string>
@@ -142,7 +156,21 @@ final class RenderValidator
      */
     public static function request(mixed $request): array
     {
-        $data = self::fields($request, self::REQUEST_KEYS);
+        // Extract optional captions before strict field validation
+        $captionsInput = null;
+        $requestForValidation = $request;
+
+        if (is_array($request) && isset($request['captions'])) {
+            $captionsInput = $request['captions'];
+            $requestForValidation = $request;
+            unset($requestForValidation['captions']);
+        } elseif ($request instanceof \stdClass && isset($request->captions)) {
+            $captionsInput = $request->captions;
+            $requestForValidation = (array) $request;
+            unset($requestForValidation['captions']);
+        }
+
+        $data = self::fields($requestForValidation, self::REQUEST_KEYS);
 
         self::require($data['version'] === self::CONTRACT_VERSION, 'Unsupported render contract version');
         self::require($data['action'] === self::ACTION, 'Unsupported render action');
@@ -179,6 +207,12 @@ final class RenderValidator
         self::require($outputStorage['mime_type'] === 'video/mp4', 'output_storage.mime_type must be video/mp4');
         $data['output_storage'] = $outputStorage;
 
+        // Validate optional captions object
+        if ($captionsInput !== null) {
+            $captions = self::fields($captionsInput, self::CAPTIONS_KEYS);
+            $data['captions'] = self::validateCaptions($captions, $media['duration_ms']);
+        }
+
         // Ensure NO recommendation, recommendation_id, media_asset_id, project_id in worker request
         $forbiddenKeys = ['recommendation', 'recommendation_id', 'media_asset_id', 'project_id'];
         foreach ($forbiddenKeys as $key) {
@@ -186,6 +220,50 @@ final class RenderValidator
         }
 
         return $data;
+    }
+
+    /**
+     * Validate the captions object.
+     *
+     * @param  array<string, mixed>  $captions
+     * @param  int  $mediaDurationMs
+     * @return array<string, mixed>
+     *
+     * @throws ProcessMediaException
+     */
+    private static function validateCaptions(array $captions, int $mediaDurationMs): array
+    {
+        // segments must be an array
+        self::require(is_array($captions['segments']) && array_is_list($captions['segments']), 'captions.segments must be a list');
+
+        $segments = $captions['segments'];
+        foreach ($segments as $index => $segment) {
+            // Validate segment is an object (not a list)
+            self::require(is_array($segment) && ! array_is_list($segment), 'Caption segment must be an object');
+
+            // Validate start_ms: required, integer >= 0
+            self::require(isset($segment['start_ms']), 'Caption segment missing start_ms');
+            self::integer($segment['start_ms'], 0);
+
+            // Validate end_ms: required, integer > start_ms
+            self::require(isset($segment['end_ms']), 'Caption segment missing end_ms');
+            self::integer($segment['end_ms'], $segment['start_ms'] + 1);
+
+            // Validate text: required, non-empty string
+            self::require(isset($segment['text']), 'Caption segment missing text');
+            self::require(is_string($segment['text']) && $segment['text'] !== '', 'Caption segment text must be non-empty string');
+
+            // Only keep the validated fields
+            $segments[$index] = [
+                'start_ms' => $segment['start_ms'],
+                'end_ms' => $segment['end_ms'],
+                'text' => $segment['text'],
+            ];
+        }
+
+        $captions['segments'] = $segments;
+
+        return $captions;
     }
 
     /**
@@ -295,8 +373,29 @@ final class RenderValidator
         self::require($clip['end_ms'] === $request['candidate']['end_ms'], 'Clip end_ms mismatch');
         self::require($clip['duration_ms'] === ($request['candidate']['end_ms'] - $request['candidate']['start_ms']), 'Clip duration_ms mismatch');
 
+        // Validate filter graph for captions
+        self::validateFilterGraphForCaptions($parameters['filter_graph'], $request);
+
         // Validate output metadata
         self::validateOutput($clip['output'], $parameters);
+    }
+
+    /**
+     * Validate filter graph contains drawtext when captions requested, and doesn't when not requested.
+     *
+     * @param  string  $filterGraph
+     * @param  array<string, mixed>  $request
+     */
+    private static function validateFilterGraphForCaptions(string $filterGraph, array $request): void
+    {
+        $hasCaptions = isset($request['captions']) && is_array($request['captions']) && isset($request['captions']['segments']);
+        $hasDrawtext = str_contains($filterGraph, 'drawtext');
+
+        if ($hasCaptions) {
+            self::require($hasDrawtext, 'Filter graph must contain drawtext when captions requested');
+        } else {
+            self::require(! $hasDrawtext, 'Filter graph must not contain drawtext when captions not requested');
+        }
     }
 
     /**
@@ -323,6 +422,17 @@ final class RenderValidator
 
         // Validate ffmpeg_version is present and non-empty
         self::require(is_string($parameters['ffmpeg_version']) && $parameters['ffmpeg_version'] !== '', 'FFmpeg version must be non-empty');
+
+        // Validate filter graph for captions based on configuration
+        $hasCaptionsConfig = isset($parameters['configuration']['captions']['enabled'])
+            && $parameters['configuration']['captions']['enabled'] === true;
+        $hasDrawtext = str_contains($parameters['filter_graph'], 'drawtext');
+
+        if ($hasCaptionsConfig) {
+            self::require($hasDrawtext, 'Filter graph must contain drawtext when captions configured');
+        } else {
+            self::require(! $hasDrawtext, 'Filter graph must not contain drawtext when captions not configured');
+        }
     }
 
     /**

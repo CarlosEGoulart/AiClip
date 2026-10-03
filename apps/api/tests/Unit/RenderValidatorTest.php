@@ -721,11 +721,15 @@ function renderCompletion(array $overrides = []): array
     $request = renderRequest();
     $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
 
+    // Use configuration with captions disabled for M6.1 compatibility
+    $configWithoutCaptions = RenderProfile::configuration();
+    $configWithoutCaptions['captions']['enabled'] = false;
+
     $result = [
         'algorithm' => RenderValidator::ALGORITHM,
         'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
         'parameters' => [
-            'configuration' => RenderProfile::configuration(),
+            'configuration' => $configWithoutCaptions,
             'source_media' => [
                 'disk' => 'media',
                 'key' => 'projects/1/assets/1/source.mp4',
@@ -861,4 +865,335 @@ it('rejects invalid execution_parameters timeout', function () {
 
 it('rejects invalid execution_parameters lock_wait_seconds', function () {
     assertCompletionRejected(renderCompletion(['execution_parameters.lock_wait_seconds' => 311]), 'lock_wait mismatch');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Caption Validation Tests (M6.2 Stage A)
+|--------------------------------------------------------------------------
+*/
+
+function renderRequestWithCaptions(array $captions = []): array
+{
+    $request = renderRequest();
+    $defaultCaptions = [
+        'enabled' => true,
+        'segments' => [
+            ['start_ms' => 1000, 'end_ms' => 3000, 'text' => 'First caption'],
+            ['start_ms' => 5000, 'end_ms' => 7000, 'text' => 'Second caption'],
+        ],
+    ];
+    $request['captions'] = array_merge($defaultCaptions, $captions);
+    return $request;
+}
+
+function renderRequestWithoutCaptions(): array
+{
+    return renderRequest();
+}
+
+function renderResultWithCaptions(array $overrides = []): array
+{
+    $request = renderRequestWithCaptions();
+    $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+
+    $result = [
+        'status' => 'success',
+        'render' => [
+            'algorithm' => RenderValidator::ALGORITHM,
+            'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
+            'parameters' => [
+                'configuration' => RenderProfile::configuration(),
+                'source_media' => [
+                    'disk' => 'media',
+                    'key' => 'projects/1/assets/1/source.mp4',
+                    'duration_ms' => 30000,
+                    'width' => 1920,
+                    'height' => 1080,
+                    'video_codec' => 'h264',
+                    'audio_codec' => 'aac',
+                ],
+                'ffmpeg_version' => 'ffmpeg version 6.0',
+                'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,drawtext=...',
+                'limits' => [
+                    'max_recommendations' => 1000,
+                    'max_input_bytes' => 8388608,
+                    'max_duration_ms' => 2147483647,
+                ],
+                'request_sha256' => $requestSha256,
+            ],
+            'clips' => [
+                [
+                    'candidate_index' => 0,
+                    'start_ms' => 0,
+                    'end_ms' => 10000,
+                    'duration_ms' => 10000,
+                    'output' => [
+                        'disk' => 'media',
+                        'key' => 'renders/1/1/0_20260101T000000Z.mp4',
+                        'size_bytes' => 1024000,
+                        'duration_ms' => 10000,
+                        'width' => 1080,
+                        'height' => 1920,
+                        'video_codec' => 'libx264',
+                        'audio_codec' => 'aac',
+                        'video_bitrate_kbps' => 5000,
+                        'audio_bitrate_kbps' => 128,
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    foreach ($overrides as $path => $value) {
+        $segments = explode('.', (string) $path);
+        $target = &$result;
+        foreach (array_slice($segments, 0, -1) as $segment) {
+            $target = &$target[$segment];
+        }
+        if ($value === '__REMOVE__') {
+            unset($target[array_pop($segments)]);
+        } else {
+            $target[array_pop($segments)] = $value;
+        }
+        unset($target);
+    }
+
+    return $result;
+}
+
+function renderCompletionWithCaptions(array $overrides = []): array
+{
+    $request = renderRequestWithCaptions();
+    $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+
+    $result = [
+        'algorithm' => RenderValidator::ALGORITHM,
+        'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
+        'parameters' => [
+            'configuration' => RenderProfile::configuration(),
+            'source_media' => [
+                'disk' => 'media',
+                'key' => 'projects/1/assets/1/source.mp4',
+                'duration_ms' => 30000,
+                'width' => 1920,
+                'height' => 1080,
+                'video_codec' => 'h264',
+                'audio_codec' => 'aac',
+            ],
+            'ffmpeg_version' => 'ffmpeg version 6.0',
+            'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,drawtext=...',
+            'limits' => [
+                'max_recommendations' => 1000,
+                'max_input_bytes' => 8388608,
+                'max_duration_ms' => 2147483647,
+            ],
+            'request_sha256' => $requestSha256,
+        ],
+        'clips' => [
+            [
+                'candidate_index' => 0,
+                'start_ms' => 0,
+                'end_ms' => 10000,
+                'duration_ms' => 10000,
+                'output' => [
+                    'disk' => 'media',
+                    'key' => 'renders/1/1/0_20260101T000000Z.mp4',
+                    'size_bytes' => 1024000,
+                    'duration_ms' => 10000,
+                    'width' => 1080,
+                    'height' => 1920,
+                    'video_codec' => 'libx264',
+                    'audio_codec' => 'aac',
+                    'video_bitrate_kbps' => 5000,
+                    'audio_bitrate_kbps' => 128,
+                ],
+            ],
+        ],
+        'execution_parameters' => [
+            'timeout_seconds' => 300,
+            'lock_wait_seconds' => 310,
+        ],
+    ];
+
+    foreach ($overrides as $path => $value) {
+        $segments = explode('.', (string) $path);
+        $target = &$result;
+        foreach (array_slice($segments, 0, -1) as $segment) {
+            $target = &$target[$segment];
+        }
+        if ($value === '__REMOVE__') {
+            unset($target[array_pop($segments)]);
+        } else {
+            $target[array_pop($segments)] = $value;
+        }
+        unset($target);
+    }
+
+    return $result;
+}
+
+it('accepts valid request with captions object', function () {
+    $request = renderRequestWithCaptions();
+    expect(RenderValidator::request($request))->toBe($request);
+});
+
+it('accepts valid request without captions object (M6.1 compat)', function () {
+    $request = renderRequestWithoutCaptions();
+    expect(RenderValidator::request($request))->toBe($request);
+});
+
+it('accepts request with captions.enabled=false', function () {
+    $request = renderRequestWithCaptions(['enabled' => false]);
+    expect(RenderValidator::request($request))->toBe($request);
+});
+
+it('rejects captions object missing segments', function () {
+    $request = renderRequestWithCaptions(['segments' => '__REMOVE__']);
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('captions.segments must be a list');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects captions.segments not an array', function () {
+    $request = renderRequestWithCaptions(['segments' => 'not-an-array']);
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('captions.segments must be a list');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects segment missing start_ms', function () {
+    $request = renderRequestWithCaptions([
+        'segments' => [
+            ['end_ms' => 3000, 'text' => 'First caption'],
+        ],
+    ]);
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Caption segment missing start_ms');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects segment missing end_ms', function () {
+    $request = renderRequestWithCaptions([
+        'segments' => [
+            ['start_ms' => 1000, 'text' => 'First caption'],
+        ],
+    ]);
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Caption segment missing end_ms');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects segment missing text', function () {
+    $request = renderRequestWithCaptions([
+        'segments' => [
+            ['start_ms' => 1000, 'end_ms' => 3000],
+        ],
+    ]);
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Caption segment missing text');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects segment with start_ms < 0', function () {
+    $request = renderRequestWithCaptions([
+        'segments' => [
+            ['start_ms' => -1, 'end_ms' => 3000, 'text' => 'First caption'],
+        ],
+    ]);
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects segment with end_ms <= start_ms', function () {
+    $request = renderRequestWithCaptions([
+        'segments' => [
+            ['start_ms' => 3000, 'end_ms' => 3000, 'text' => 'First caption'],
+        ],
+    ]);
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects segment with text not a string', function () {
+    $request = renderRequestWithCaptions([
+        'segments' => [
+            ['start_ms' => 1000, 'end_ms' => 3000, 'text' => 123],
+        ],
+    ]);
+    try {
+        RenderValidator::request($request);
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Caption segment text must be non-empty string');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('result validation: filter_graph contains drawtext when captions requested', function () {
+    $request = renderRequestWithCaptions();
+    $result = renderResultWithCaptions();
+    expect(RenderValidator::result($result, $request, hash('sha256', json_encode($request, JSON_THROW_ON_ERROR))))->toBe($result);
+});
+
+it('result validation: filter_graph lacks drawtext when captions requested', function () {
+    $request = renderRequestWithCaptions();
+    $result = renderResultWithCaptions(['render.parameters.filter_graph' => 'crop=...,fps=30']); // No drawtext
+    try {
+        RenderValidator::result($result, $request, hash('sha256', json_encode($request, JSON_THROW_ON_ERROR)));
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Render validation failed');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('result validation: filter_graph contains drawtext when no captions requested', function () {
+    $request = renderRequestWithoutCaptions();
+    $result = renderResultWithCaptions(); // Has drawtext
+    try {
+        RenderValidator::result($result, $request, hash('sha256', json_encode($request, JSON_THROW_ON_ERROR)));
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Render validation failed');
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('completion validation: caption config in parameters.configuration', function () {
+    assertCompletionAccepted(renderCompletionWithCaptions());
+});
+
+it('completion validation: caption config absent when not requested', function () {
+    assertCompletionAccepted(renderCompletion());
 });

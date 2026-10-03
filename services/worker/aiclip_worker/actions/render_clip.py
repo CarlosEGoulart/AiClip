@@ -132,6 +132,9 @@ def render_clip(contract: dict) -> dict:
     # Build configuration
     configuration = RenderConfiguration.from_dict(contract["configuration"])
 
+    # Extract captions from configuration if present
+    captions = contract["configuration"].get("captions")
+
     # Get output key and disk from contract
     output_key = contract["output_storage"]["key"]
     output_disk = contract["output_storage"]["disk"]
@@ -155,6 +158,7 @@ def render_clip(contract: dict) -> dict:
         output_key=output_key,
         output_disk=output_disk,
         candidate_index=candidate_index,
+        captions=captions,
     )
 
     # Convert to output format (same as render_clips function)

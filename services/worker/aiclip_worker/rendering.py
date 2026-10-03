@@ -222,8 +222,9 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         config: RenderConfiguration,
         source_width: int,
         source_height: int,
+        captions: list[dict] | None = None,
     ) -> str:
-        """Build the FFmpeg filter graph for vertical reframe."""
+        """Build the FFmpeg filter graph for vertical reframe with optional captions."""
         # Center crop to 9:16 aspect ratio
         # crop=ih*9/16:ih:(iw-ih*9/16)/2:0
         crop_width = f"ih*{9}/16"
@@ -238,7 +239,56 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             f"fps={config.target_fps}",
         ]
 
+        # Add caption drawtext filters if captions are provided
+        if captions:
+            for caption in captions:
+                drawtext = self._build_drawtext_filter(caption, config.target_width, config.target_height)
+                filter_parts.append(drawtext)
+
         return ",".join(filter_parts)
+
+    def _build_drawtext_filter(
+        self,
+        caption: dict,
+        target_width: int,
+        target_height: int,
+    ) -> str:
+        """Build a single drawtext filter for a caption segment."""
+        text = caption.get("text", "")
+        font_file = caption.get("font_file", "")
+        font_size = caption.get("font_size", 48)
+        font_color = caption.get("font_color", "white")
+        outline_width = caption.get("outline_width", 2)
+        outline_color = caption.get("outline_color", "black")
+        background_color = caption.get("background_color", "black")
+        background_opacity = caption.get("background_opacity", 0.5)
+        box_padding = caption.get("box_padding", 10)
+        margin_bottom = caption.get("margin_bottom", 100)
+        seg_start_s = caption.get("start_s", 0)
+        seg_end_s = caption.get("end_s", 0)
+
+        # Build boxcolor with opacity
+        boxcolor = f"{background_color}@{background_opacity}"
+
+        # Enable between timestamps
+        enable = f"between(t,{seg_start_s},{seg_end_s})"
+
+        parts = [
+            f"text='{text}'",
+            f"fontfile={font_file}",
+            f"fontsize={font_size}",
+            f"fontcolor={font_color}",
+            f"borderw={outline_width}",
+            f"bordercolor={outline_color}",
+            "box=1",
+            f"boxcolor={boxcolor}",
+            f"boxborderw={box_padding}",
+            "x=(w-text_w)/2",
+            f"y=h-text_h-{margin_bottom}",
+            f"enable='{enable}'",
+        ]
+
+        return "drawtext=" + ":".join(parts)
 
     def _build_filter_graph(
         self,
@@ -246,8 +296,9 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         config: RenderConfiguration,
         source_width: int,
         source_height: int,
+        captions: list[dict] | None = None,
     ) -> str:
-        return self._build_filter_graph_core(config, source_width, source_height)
+        return self._build_filter_graph_core(config, source_width, source_height, captions)
 
     def _run_ffmpeg(
         self,
@@ -519,7 +570,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             except Exception:
                 pass
 
-    def render_singular(self, duration_ms: int, source_media: SourceMediaInfo, start_ms: int, end_ms: int, configuration: RenderConfiguration, output_key: str, output_disk: str, candidate_index: int) -> dict[str, Any]:
+    def render_singular(self, duration_ms: int, source_media: SourceMediaInfo, start_ms: int, end_ms: int, configuration: RenderConfiguration, output_key: str, output_disk: str, candidate_index: int, captions: list[dict] | None = None) -> dict[str, Any]:
         """Render a singular vertical clip given explicit timing parameters."""
         # Validate timing bounds
         if start_ms < 0 or start_ms > duration_ms:
@@ -569,6 +620,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             configuration,
             source_media.width,
             source_media.height,
+            captions,
         )
 
         # Calculate timing
