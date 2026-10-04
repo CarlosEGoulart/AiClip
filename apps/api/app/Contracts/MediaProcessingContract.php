@@ -287,6 +287,14 @@ class MediaProcessingContract
         }
 
         if (($data['action'] ?? null) === 'render_clip') {
+            // Capture captions before validation (they are removed during validation)
+            $captions = null;
+            if (is_array($data) && isset($data['captions'])) {
+                $captions = $data['captions'];
+            } elseif ($data instanceof \stdClass && isset($data->captions)) {
+                $captions = $data->captions;
+            }
+
             $data = RenderValidator::request($data);
             $contract = new self;
             $contract->action = 'render_clip';
@@ -302,9 +310,9 @@ class MediaProcessingContract
             $contract->sourceMedia = $data['source_media'];
             $contract->outputStorage = $data['output_storage'];
 
-            // Capture optional captions from validated request
-            if (isset($data['captions'])) {
-                $contract->captions = $data['captions'];
+            // Restore captions from pre-validation capture
+            if ($captions !== null) {
+                $contract->captions = $captions;
             }
 
             return $contract;
