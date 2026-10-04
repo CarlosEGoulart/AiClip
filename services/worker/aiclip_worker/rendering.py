@@ -222,7 +222,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         config: RenderConfiguration,
         source_width: int,
         source_height: int,
-        captions: list[dict] | None = None,
+        caption_styling: dict[str, Any] | None = None,
+        caption_segments: list[dict] | None = None,
     ) -> str:
         """Build the FFmpeg filter graph for vertical reframe with optional captions."""
         # Center crop to 9:16 aspect ratio
@@ -239,33 +240,34 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             f"fps={config.target_fps}",
         ]
 
-        # Add caption drawtext filters if captions are provided
-        if captions:
-            for caption in captions:
-                drawtext = self._build_drawtext_filter(caption, config.target_width, config.target_height)
+        # Add caption drawtext filters if caption_segments are provided and captions are enabled
+        if caption_segments and caption_styling and caption_styling.get("enabled", False):
+            for segment in caption_segments:
+                drawtext = self._build_drawtext_filter(segment, caption_styling, config.target_width, config.target_height)
                 filter_parts.append(drawtext)
 
         return ",".join(filter_parts)
 
     def _build_drawtext_filter(
         self,
-        caption: dict,
+        segment: dict,
+        caption_styling: dict[str, Any],
         target_width: int,
         target_height: int,
     ) -> str:
         """Build a single drawtext filter for a caption segment."""
-        text = caption.get("text", "")
-        font_file = caption.get("font_file", "")
-        font_size = caption.get("font_size", 48)
-        font_color = caption.get("font_color", "white")
-        outline_width = caption.get("outline_width", 2)
-        outline_color = caption.get("outline_color", "black")
-        background_color = caption.get("background_color", "black")
-        background_opacity = caption.get("background_opacity", 0.5)
-        box_padding = caption.get("box_padding", 10)
-        margin_bottom = caption.get("margin_bottom", 100)
-        seg_start_s = caption.get("start_s", 0)
-        seg_end_s = caption.get("end_s", 0)
+        text = segment.get("text", "")
+        font_file = caption_styling.get("font_file", "")
+        font_size = caption_styling.get("font_size", 48)
+        font_color = caption_styling.get("font_color", "white")
+        outline_width = caption_styling.get("outline_width", 2)
+        outline_color = caption_styling.get("outline_color", "black")
+        background_color = caption_styling.get("background_color", "black")
+        background_opacity = caption_styling.get("background_opacity", 0.5)
+        box_padding = caption_styling.get("box_padding", 10)
+        margin_bottom = caption_styling.get("margin_bottom", 100)
+        seg_start_s = segment.get("start_s", 0)
+        seg_end_s = segment.get("end_s", 0)
 
         # Build boxcolor with opacity
         boxcolor = f"{background_color}@{background_opacity}"
@@ -296,9 +298,10 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         config: RenderConfiguration,
         source_width: int,
         source_height: int,
-        captions: list[dict] | None = None,
+        caption_styling: dict[str, Any] | None = None,
+        caption_segments: list[dict] | None = None,
     ) -> str:
-        return self._build_filter_graph_core(config, source_width, source_height, captions)
+        return self._build_filter_graph_core(config, source_width, source_height, caption_styling, caption_segments)
 
     def _run_ffmpeg(
         self,
@@ -570,7 +573,19 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             except Exception:
                 pass
 
-    def render_singular(self, duration_ms: int, source_media: SourceMediaInfo, start_ms: int, end_ms: int, configuration: RenderConfiguration, output_key: str, output_disk: str, candidate_index: int, captions: list[dict] | None = None) -> dict[str, Any]:
+    def render_singular(
+        self,
+        duration_ms: int,
+        source_media: SourceMediaInfo,
+        start_ms: int,
+        end_ms: int,
+        configuration: RenderConfiguration,
+        configuration_dict: dict[str, Any],
+        output_key: str,
+        output_disk: str,
+        candidate_index: int,
+        caption_segments: list[dict] | None = None,
+    ) -> dict[str, Any]:
         """Render a singular vertical clip given explicit timing parameters."""
         # Validate timing bounds
         if start_ms < 0 or start_ms > duration_ms:
@@ -578,14 +593,16 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         if end_ms <= start_ms or end_ms > duration_ms:
             raise InvalidCandidateIndex("end_ms invalid")
 
-        # Validate font file exists if captions are provided
-        if captions:
-            for caption in captions:
-                font_file = caption.get("font_file", "")
-                if not font_file:
-                    raise RenderFailed("Caption font_file is required but missing")
-                if not Path(font_file).is_file():
-                    raise RenderFailed(f"Caption font file not found: {font_file}")
+        # Extract caption styling from configuration dict
+        caption_styling = configuration_dict.get("captions", {}) if configuration_dict else {}
+
+        # Validate font file exists if caption_segments are provided and captions are enabled
+        if caption_segments and caption_styling.get("enabled", False):
+            font_file = caption_styling.get("font_file", "")
+            if not font_file:
+                raise RenderFailed("Caption font_file is required but missing in configuration")
+            if not Path(font_file).is_file():
+                raise RenderFailed(f"Caption font file not found: {font_file}")
 
         # Probe source media to verify metadata and ensure compatibility
         probe_data = self._probe_source_media(source_media.key)
@@ -629,7 +646,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             configuration,
             source_media.width,
             source_media.height,
-            captions,
+            caption_styling,
+            caption_segments,
         )
 
         # Calculate timing
