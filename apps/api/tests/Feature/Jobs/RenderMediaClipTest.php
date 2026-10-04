@@ -2,18 +2,20 @@
 
 namespace Tests\Feature\Jobs;
 
+use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
+use App\Jobs\RenderMediaClip;
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
-use App\Models\MediaClipRecommendation;
 use App\Models\MediaClipAnalysis;
+use App\Models\MediaClipRecommendation;
 use App\Models\MediaSceneAnalysis;
 use App\Models\MediaTranscript;
-use App\Services\ProcessMediaAction;
 use App\Services\ClipRankingProfile;
-use App\Jobs\RenderMediaClip;
+use App\Services\ProcessMediaAction;
+use App\Services\RenderProfile;
+use App\Services\RenderValidator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
@@ -90,9 +92,9 @@ function createCompletedClipAnalysisForRender(MediaAsset $asset): MediaClipAnaly
 
 function createCompletedTranscriptForRender(MediaAsset $asset, MediaSceneAnalysis $sceneAnalysis): MediaTranscript
 {
-    $derivedAsset = \App\Models\DerivedAsset::create([
+    $derivedAsset = DerivedAsset::create([
         'media_asset_id' => $asset->id,
-        'type' => \App\Models\DerivedAsset::TYPE_AUDIO_NORMALIZED,
+        'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
         'storage_disk' => 'media',
         'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
         'mime_type' => 'audio/wav',
@@ -191,8 +193,11 @@ function createCompletedRecommendationForRender(MediaAsset $asset, MediaClipAnal
 class RecordingRenderActionForRender extends ProcessMediaAction
 {
     public array $renderCalls = [];
+
     public array $renderResults = [];
+
     public bool $shouldFail = false;
+
     public string $failCode = 'render_failed';
 
     public function __construct(array $renderResults = [])
@@ -200,7 +205,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
         $this->renderResults = $renderResults;
     }
 
-    public function renderClips(\App\Contracts\MediaProcessingContract $contract): array
+    public function renderClips(MediaProcessingContract $contract): array
     {
         $request = $contract->toRenderClipMetadataArray();
         $this->renderCalls[] = $request;
@@ -212,13 +217,19 @@ class RecordingRenderActionForRender extends ProcessMediaAction
         if (empty($this->renderResults)) {
             // Return default success matching singular render_clip response format
             $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+
+            // Build filter_graph - include drawtext when captions are requested
+            $hasCaptions = isset($request['captions']) && is_array($request['captions']) && isset($request['captions']['segments']) && count($request['captions']['segments']) > 0;
+            $baseFilterGraph = 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30';
+            $filterGraph = $hasCaptions ? $baseFilterGraph.',drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text=\'Test\':fontsize=72:fontcolor=white:x=(w-text_w)/2:y=h-th-100' : $baseFilterGraph;
+
             return [
                 'status' => 'success',
                 'render' => [
-                    'algorithm' => \App\Services\RenderValidator::ALGORITHM,
-                    'algorithm_version' => \App\Services\RenderValidator::ALGORITHM_VERSION,
+                    'algorithm' => RenderValidator::ALGORITHM,
+                    'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
                     'parameters' => [
-                        'configuration' => \App\Services\RenderProfile::configuration(),
+                        'configuration' => RenderProfile::configuration(),
                         'source_media' => [
                             'disk' => $request['source_media']['disk'],
                             'key' => $request['source_media']['key'],
@@ -229,7 +240,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
                             'audio_codec' => $request['source_media']['audio_codec'],
                         ],
                         'ffmpeg_version' => 'ffmpeg version 6.0',
-                        'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
+                        'filter_graph' => $filterGraph,
                         'limits' => [
                             'max_recommendations' => 1000,
                             'max_input_bytes' => 8388608,
@@ -284,7 +295,7 @@ it('renders clip when explicitly dispatched with valid candidate_index', functio
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $result = $job->handle();
@@ -314,7 +325,7 @@ it('fails when candidate_index out of bounds', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 5, $action); // Out of bounds (only 2 candidates)
 
     $thrown = null;
@@ -391,7 +402,7 @@ it('fails when selected candidate has null semantic_score', function () {
         ],
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -423,7 +434,7 @@ it('throws when M5 recommendation is pending', function () {
         'status' => MediaClipRecommendation::STATUS_PENDING,
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -456,7 +467,7 @@ it('throws when M5 recommendation failed', function () {
         'error' => 'ranking_failed',
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -489,7 +500,7 @@ it('throws when M5 recommendation unavailable', function () {
         'reason' => 'no_candidate_text',
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -518,7 +529,7 @@ it('throws when M5 recommendation missing', function () {
     // No MediaClipRecommendation row at all
     $fakeRecommendationId = 99999;
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $fakeRecommendationId, 0, $action);
 
     $thrown = null;
@@ -545,12 +556,38 @@ it('reuses existing completed render, no worker call', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
+    // Build the same input_snapshot that the job would create
+    $renderConfiguration = RenderProfile::configuration();
+    $sourceMedia = [
+        'disk' => $asset->storage_disk,
+        'key' => $asset->storage_key,
+        'width' => $asset->probe_result['width'] ?? 1920,
+        'height' => $asset->probe_result['height'] ?? 1080,
+        'video_codec' => $asset->probe_result['video_codec'] ?? 'h264',
+        'audio_codec' => $asset->probe_result['audio_codec'] ?? 'aac',
+    ];
+
+    $transcriptState = 'completed';
+    $transcriptContentHash = hash('sha256', json_encode($transcript->segments, JSON_THROW_ON_ERROR));
+
+    $inputSnapshot = [
+        'duration_ms' => $asset->duration_ms,
+        'recommendation' => [
+            'candidates' => $recommendation->recommendations ?? [],
+            'candidate_index' => 0,
+        ],
+        'configuration' => $renderConfiguration,
+        'source_media' => $sourceMedia,
+        'transcript_state' => $transcriptState,
+        'transcript_content_hash' => $transcriptContentHash,
+    ];
+
     // Pre-create completed render with render_status and lifecycle fields
     DerivedAsset::create([
         'media_asset_id' => $asset->id,
         'type' => DerivedAsset::TYPE_RENDERED_CLIP,
         'candidate_index' => 0,
-        'render_profile_version' => \App\Services\RenderProfile::RENDER_PROFILE_VERSION,
+        'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
         'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
         'render_completed_at' => now(),
         'storage_disk' => 'media',
@@ -561,11 +598,14 @@ it('reuses existing completed render, no worker call', function () {
         'width' => 1080,
         'height' => 1920,
         'codec' => 'libx264',
-        'render_configuration' => \App\Services\RenderProfile::configuration(),
-        'render_parameters' => ['test' => 'data'],
+        'render_configuration' => $renderConfiguration,
+        'render_parameters' => array_merge(
+            ['configuration' => $renderConfiguration, 'source_media' => $sourceMedia],
+            ['input_snapshot' => $inputSnapshot]
+        ),
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $result = $job->handle();
@@ -612,7 +652,7 @@ it('throws version_conflict when existing render has different M5 authority', fu
         'codec' => 'libx264',
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -639,7 +679,7 @@ it('produces different output for different candidate_index', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
 
     // Render candidate 0
     $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
@@ -682,7 +722,7 @@ it('rejects negative candidate_index', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, -1, $action);
 
     $thrown = null;
@@ -709,7 +749,7 @@ it('is idempotent - re-dispatch returns same DerivedAsset', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
 
     $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
     $result1 = $job1->handle();
@@ -734,7 +774,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $action->shouldFail = true;
     $action->failCode = 'render_failed';
 
@@ -759,7 +799,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
     expect($render->render_error)->toBe('render_failed');
 
     // Now retry with success
-    $action2 = new RecordingRenderActionForRender();
+    $action2 = new RecordingRenderActionForRender;
     $job2 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action2);
     $result2 = $job2->handle();
 
@@ -782,7 +822,7 @@ it('throws when asset has invalid probe data', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;

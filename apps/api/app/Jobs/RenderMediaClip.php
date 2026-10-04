@@ -29,7 +29,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class RenderMediaClip implements ShouldQueue
 {
@@ -156,9 +155,10 @@ class RenderMediaClip implements ShouldQueue
                     'candidate_index' => $this->candidateIndex,
                     'derived_asset_id' => $existingRender->id,
                 ]);
+
                 return $existingRender;
             }
-            
+
             // If failed, we allow retry by continuing to claim transaction
         }
 
@@ -201,8 +201,6 @@ class RenderMediaClip implements ShouldQueue
                 $durationMs,
                 $sourceMedia,
                 $outputStorageKey,
-                $transcriptState,
-                $transcriptContentHash,
             ) {
                 if (DB::connection()->getDriverName() === 'pgsql') {
                     DB::select('SELECT set_config(\'lock_timeout\', ?, true)', [$renderLockWaitSeconds.'s']);
@@ -303,12 +301,17 @@ class RenderMediaClip implements ShouldQueue
                     $locked->candidate_index = $clip['candidate_index'];
                     $locked->render_profile_version = RenderProfile::RENDER_PROFILE_VERSION;
                     $locked->render_configuration = $renderConfiguration;
-                    $locked->render_parameters = $result['render']['parameters'];
+
+                    // Merge input_snapshot into render_parameters for idempotency verification
+                    $renderParameters = $result['render']['parameters'];
+                    $renderParameters['input_snapshot'] = $inputSnapshot;
+                    $locked->render_parameters = $renderParameters;
+
                     $locked->render_error = null;
                     $locked->save();
                 } catch (ProcessMediaException $e) {
                     if ($e->getMessage() === 'clip_render_aborted' && $e->getPrevious() === null) {
-                        throw new RenderAbortedException();
+                        throw new RenderAbortedException;
                     }
 
                     if ($e->getMessage() === 'invalid_configuration') {
@@ -326,14 +329,14 @@ class RenderMediaClip implements ShouldQueue
 
                     // Expected worker/validation failure: sanitized failed render only
                     $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
-                        $locked->render_completed_at = now();
+                    $locked->render_completed_at = now();
                     $locked->render_error = 'render_failed';
                     $locked->save();
                 }
             });
         } catch (\Throwable $exception) {
             if ($this->isLockTimeout($exception)) {
-                throw new RenderBusyException();
+                throw new RenderBusyException;
             }
 
             if ($exception instanceof ProcessMediaException
@@ -354,7 +357,7 @@ class RenderMediaClip implements ShouldQueue
                 'media_asset_id' => $asset->id,
             ]);
 
-            throw new RenderAbortedException();
+            throw new RenderAbortedException;
         }
 
         // Fresh reread after transaction
