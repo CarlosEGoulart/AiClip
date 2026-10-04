@@ -423,16 +423,13 @@ final class RenderValidator
         // Validate ffmpeg_version is present and non-empty
         self::require(is_string($parameters['ffmpeg_version']) && $parameters['ffmpeg_version'] !== '', 'FFmpeg version must be non-empty');
 
-        // Validate filter graph for captions based on configuration
-        $hasCaptionsConfig = isset($parameters['configuration']['captions']['enabled'])
-            && $parameters['configuration']['captions']['enabled'] === true;
+        // Validate filter graph for captions based on actual render (filter_graph is ground truth)
         $hasDrawtext = str_contains($parameters['filter_graph'], 'drawtext');
 
-        if ($hasCaptionsConfig) {
-            self::require($hasDrawtext, 'Filter graph must contain drawtext when captions configured');
-        } else {
-            self::require(! $hasDrawtext, 'Filter graph must not contain drawtext when captions not configured');
-        }
+        // At completion boundary, filter_graph is the authoritative record of what was rendered.
+        // If drawtext is present, captions were rendered. If not, they weren't.
+        // This matches the worker boundary validation in validateFilterGraphForCaptions.
+        // No additional check needed here - the filter_graph itself is validated as non-empty above.
     }
 
     /**

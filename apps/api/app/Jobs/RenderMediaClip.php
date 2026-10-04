@@ -257,6 +257,8 @@ class RenderMediaClip implements ShouldQueue
                     ],
                     'configuration' => $renderConfiguration,
                     'source_media' => $sourceMedia,
+                    'transcript_state' => $transcriptState,
+                    'transcript_content_hash' => $transcriptContentHash,
                 ];
 
                 try {
@@ -277,14 +279,8 @@ class RenderMediaClip implements ShouldQueue
                     $result = $action->renderClips($renderContractObj);
 
                     // Validate result
-                    $requestSha256 = hash('sha256', json_encode($renderContract));
-                    RenderValidator::validateCompletion([
-                        'algorithm' => $result['render']['algorithm'],
-                        'algorithm_version' => $result['render']['algorithm_version'],
-                        'parameters' => $result['render']['parameters'],
-                        'clips' => $result['render']['clips'],
-                        'execution_parameters' => $executionParameters,
-                    ]);
+                    $requestSha256 = hash('sha256', json_encode($renderContract, JSON_THROW_ON_ERROR));
+                    RenderValidator::result($result, $renderContract, $requestSha256);
 
                     // Mark completed
                     $clip = $result['render']['clips'][0];

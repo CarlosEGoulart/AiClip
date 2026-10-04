@@ -58,6 +58,9 @@ class MediaProcessingContract
     /** @var array{disk: string, key: string, width: int, height: int, video_codec: string, audio_codec: string|null}|null */
     public ?array $sourceMedia = null;
 
+    /** @var array{enabled: bool, segments: array<int, array{start_ms: int, end_ms: int, text: string}>}|null */
+    public ?array $captions = null;
+
     /** @var array{min_duration_ms: int, target_duration_ms: int, max_duration_ms: int, max_candidates: int, weights: array{duration_fit: int, speech_coverage: int, boundary_alignment: int}}|array<string, mixed>|null */
     public ?array $configuration = null;
 
@@ -299,6 +302,11 @@ class MediaProcessingContract
             $contract->sourceMedia = $data['source_media'];
             $contract->outputStorage = $data['output_storage'];
 
+            // Capture optional captions from validated request
+            if (isset($data['captions'])) {
+                $contract->captions = $data['captions'];
+            }
+
             return $contract;
         }
 
@@ -442,7 +450,7 @@ class MediaProcessingContract
      * version, action, media.duration_ms, candidate_index, candidate{start_ms,end_ms},
      * configuration, source_media, output_storage.
      *
-     * @return array{version: string, action: string, media: array{duration_ms: int}, candidate_index: int, candidate: array{start_ms: int, end_ms: int}, configuration: array, source_media: array, output_storage: array{disk: string, key: string, mime_type: string}}
+     * @return array{version: string, action: string, media: array{duration_ms: int}, candidate_index: int, candidate: array{start_ms: int, end_ms: int}, configuration: array, source_media: array, output_storage: array{disk: string, key: string, mime_type: string}, captions?: array{enabled: bool, segments: array<int, array{start_ms: int, end_ms: int, text: string}>}}
      */
     public function toRenderClipMetadataArray(): array
     {
@@ -459,6 +467,10 @@ class MediaProcessingContract
             'source_media' => $this->sourceMedia,
             'output_storage' => $this->outputStorage,
         ];
+
+        if ($this->captions !== null) {
+            $data['captions'] = $this->captions;
+        }
 
         return $data;
     }
