@@ -320,7 +320,11 @@ class RenderMediaClip implements ShouldQueue
                             $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
                             $locked->render_completed_at = now();
                             $locked->render_error = 'invalid_input';
-                            $locked->save();
+                            try {
+                                $locked->save();
+                            } catch (\Throwable) {
+                                // Ignore save failure - transaction will roll back anyway
+                            }
 
                             return;
                         }
@@ -331,7 +335,11 @@ class RenderMediaClip implements ShouldQueue
                     $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
                     $locked->render_completed_at = now();
                     $locked->render_error = 'render_failed';
-                    $locked->save();
+                    try {
+                        $locked->save();
+                    } catch (\Throwable) {
+                        // Ignore save failure - transaction will roll back anyway
+                    }
                 }
             });
         } catch (\Throwable $exception) {
