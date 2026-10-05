@@ -229,7 +229,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
                     'algorithm' => RenderValidator::ALGORITHM,
                     'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
                     'parameters' => [
-                        'configuration' => RenderProfile::configuration(),
+                        'configuration' => $request['configuration'],
                         'source_media' => [
                             'disk' => $request['source_media']['disk'],
                             'key' => $request['source_media']['key'],
