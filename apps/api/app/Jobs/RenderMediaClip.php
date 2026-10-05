@@ -196,7 +196,6 @@ class RenderMediaClip implements ShouldQueue
                 $recommendation,
                 $action,
                 $renderConfiguration,
-                $executionParameters,
                 $renderLockWaitSeconds,
                 $durationMs,
                 $sourceMedia,
@@ -306,25 +305,29 @@ class RenderMediaClip implements ShouldQueue
 
                     $locked->render_error = null;
                     $locked->save();
-                } catch (ProcessMediaException $e) {
-                    if ($e->getMessage() === 'clip_render_aborted' && $e->getPrevious() === null) {
-                        throw new RenderAbortedException;
+                } catch (\Throwable $e) {
+                    // Handle ProcessMediaException with specific logic
+                    if ($e instanceof ProcessMediaException) {
+                        if ($e->getMessage() === 'clip_render_aborted' && $e->getPrevious() === null) {
+                            throw new RenderAbortedException;
+                        }
+
+                        if ($e->getMessage() === 'invalid_configuration') {
+                            throw $e;
+                        }
+
+                        if ($e->getMessage() === 'invalid_input') {
+                            $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
+                            $locked->render_completed_at = now();
+                            $locked->render_error = 'invalid_input';
+                            $locked->save();
+
+                            return;
+                        }
                     }
 
-                    if ($e->getMessage() === 'invalid_configuration') {
-                        throw $e;
-                    }
-
-                    if ($e->getMessage() === 'invalid_input') {
-                        $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
-                        $locked->render_completed_at = now();
-                        $locked->render_error = 'invalid_input';
-                        $locked->save();
-
-                        return;
-                    }
-
-                    // Expected worker/validation failure: sanitized failed render only
+                    // All other exceptions (including validation failures, JsonException, etc.)
+                    // are treated as worker/validation failures - mark as failed and commit
                     $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
                     $locked->render_completed_at = now();
                     $locked->render_error = 'render_failed';
