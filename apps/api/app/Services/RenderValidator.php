@@ -288,10 +288,17 @@ final class RenderValidator
                 'algorithm', 'algorithm_version', 'parameters', 'clips',
             ]);
 
+            \Log::info('RenderValidator: validating render', [
+                'render_keys' => array_keys($render),
+                'request_sha256' => $requestSha256,
+                'has_request_sha256_in_params' => isset($render['parameters']['request_sha256']),
+            ]);
+
             self::validateRender($render, $request, $requestSha256);
 
             return $result;
-        } catch (ProcessMediaException) {
+        } catch (ProcessMediaException $e) {
+            \Log::error('RenderValidator: validation failed', ['message' => $e->getMessage()]);
             // Sanitized: fixed category, no previous cause, no worker detail.
             throw self::validationFailed();
         }
@@ -614,5 +621,45 @@ final class RenderValidator
         }
 
         return is_array($value) ? array_map(self::toArrays(...), $value) : $value;
+    }
+
+    /**
+     * Serialize to canonical JSON for SHA256 digest computation.
+     *
+     * Matches the Python worker's canonical JSON: sorted keys, no whitespace,
+     * no ASCII escaping, forward slashes unescaped.
+     *
+     * @param  mixed  $value
+     * @return string
+     */
+    private static function canonicalJson(mixed $value): string
+    {
+        $sorted = self::sortKeysRecursive($value);
+        return json_encode(
+            $sorted,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+    }
+
+    /**
+     * Recursively sort array keys for canonical JSON.
+     *
+     * @param  mixed  $value
+     * @return mixed
+     */
+    private static function sortKeysRecursive(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        // Check if it's a list (sequential integer keys starting from 0)
+        if (array_is_list($value)) {
+            return array_map([self::class, 'sortKeysRecursive'], $value);
+        }
+
+        // It's an object (associative array) - sort keys and recurse
+        ksort($value);
+        return array_map([self::class, 'sortKeysRecursive'], $value);
     }
 }

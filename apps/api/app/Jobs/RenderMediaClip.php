@@ -45,6 +45,50 @@ class RenderMediaClip implements ShouldQueue
     public int $backoff = 5;
 
     /**
+     * Encode value as canonical JSON for SHA256 binding.
+     *
+     * Canonical JSON requirements (spec.md):
+     * - Sorted keys (recursive)
+     * - No whitespace (separators=(',', ':'))
+     * - Strict UTF-8 (JSON_UNESCAPED_UNICODE)
+     * - No trailing newline
+     * - Forward slashes unescaped (JSON_UNESCAPED_SLASHES)
+     *
+     * @param  mixed  $value
+     * @return string
+     */
+    private static function canonicalJson(mixed $value): string
+    {
+        $sorted = self::sortKeysRecursive($value);
+        return json_encode(
+            $sorted,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+    }
+
+    /**
+     * Recursively sort array keys for canonical JSON.
+     *
+     * @param  mixed  $value
+     * @return mixed
+     */
+    private static function sortKeysRecursive(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        // Check if it's a list (sequential integer keys starting from 0)
+        if (array_is_list($value)) {
+            return array_map([self::class, 'sortKeysRecursive'], $value);
+        }
+
+        // It's an object (associative array) - sort keys and recurse
+        ksort($value);
+        return array_map([self::class, 'sortKeysRecursive'], $value);
+    }
+
+    /**
      * Create a new job instance.
      */
     public function __construct(
@@ -290,7 +334,7 @@ class RenderMediaClip implements ShouldQueue
 
                     // Validate result
                     $requestArray = $renderContractObj->toRenderClipMetadataArray();
-                    $requestSha256 = hash('sha256', json_encode($requestArray, JSON_THROW_ON_ERROR));
+                    $requestSha256 = hash('sha256', self::canonicalJson($requestArray));
                     RenderValidator::result($result, $requestArray, $requestSha256);
 
                     // Mark completed
@@ -317,6 +361,11 @@ class RenderMediaClip implements ShouldQueue
                     $locked->render_error = null;
                     $locked->save();
                 } catch (ProcessMediaException $e) {
+                    Log::error('RenderMediaClip: worker error', [
+                        'message' => $e->getMessage(),
+                        'stderr' => $e->stderr,
+                        'exitCode' => $e->exitCode,
+                    ]);
                     if ($e->getMessage() === 'clip_render_aborted') {
                         // Worker aborted render (e.g., FFmpeg error) - mark as failed instead of throwing
                         // to ensure DerivedAsset is committed inside the transaction
@@ -346,6 +395,7 @@ class RenderMediaClip implements ShouldQueue
                     $locked->render_completed_at = now();
                     $locked->render_error = 'render_failed';
                     $locked->save();
+                }
 
             });
         } catch (\Throwable $exception) {

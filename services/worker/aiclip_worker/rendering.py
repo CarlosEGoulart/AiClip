@@ -234,11 +234,16 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
     ) -> str:
         """Build the FFmpeg filter graph for vertical reframe with optional captions."""
         # Center crop to 9:16 aspect ratio
-        # crop=ih*9/16:ih:(iw-ih*9/16)/2:0
-        crop_width = f"ih*{9}/16"
-        crop_height = "ih"
-        crop_x = f"(iw-ih*{9}/16)/2"
-        crop_y = "0"
+        # Calculate integer crop dimensions to avoid FFmpeg float issues
+        # Target 9:16 aspect ratio: crop_width / crop_height = 9/16
+        # crop_height = source_height, crop_width = source_height * 9 / 16
+        # Ensure crop_width is even integer
+        crop_height = source_height
+        crop_width = (crop_height * 9) // 16
+        if crop_width % 2 != 0:
+            crop_width += 1  # Ensure even
+        crop_x = (source_width - crop_width) // 2
+        crop_y = 0
 
         filter_parts = [
             f"crop={crop_width}:{crop_height}:{crop_x}:{crop_y}",
@@ -330,6 +335,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             "-filter_complex", filter_graph,
             "-c:v", config.video_codec,
             "-b:v", f"{config.video_bitrate_kbps}k",
+            "-pix_fmt", "yuv420p",
         ]
         if has_audio:
             cmd.extend([
@@ -356,7 +362,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             raise RenderFailed(f"FFmpeg execution failed: {e}")
 
         if result.returncode != 0:
-            raise RenderFailed("FFmpeg failed")
+            raise RenderFailed(f"FFmpeg failed: {result.stderr}")
 
         # Probe output file for metadata
         try:
@@ -594,6 +600,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         caption_segments: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Render a singular vertical clip given explicit timing parameters."""
+        
         # Validate timing bounds
         if start_ms < 0 or start_ms > duration_ms:
             raise InvalidCandidateIndex("start_ms out of range")
@@ -630,6 +637,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         probed_video_codec = video_stream.get("codec_name", "")
         probed_audio_codec = audio_stream.get("codec_name") if audio_stream else None
 
+        
+
         # Validate probed dimensions and codecs match source_media contract
         if probed_width != source_media.width:
             raise RenderFailed(f"Source media width mismatch: expected {source_media.width}, got {probed_width}")
@@ -660,6 +669,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         # Calculate timing
         start_s = start_ms / 1000.0
         duration_s = (end_ms - start_ms) / 1000.0
+        expected_duration_ms = end_ms - start_ms
 
         # Create isolated temporary directory under /tmp/renders/{uuid}
         temp_dir = Path("/tmp/renders") / uuid.uuid4().hex
@@ -678,6 +688,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                 duration_s,
                 has_audio,
             )
+
+            
 
             # Validate temporary file
             if not temp_output_path.exists():
@@ -712,6 +724,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             if temp_video_stream is None:
                 raise RenderFailed("No video stream found in temporary output")
 
+            
+
             # Prepare final output path
             try:
                 final_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -720,7 +734,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
 
             # Move temporary file to final location
             try:
-                os.replace(str(temp_output_path), str(final_output_path))
+                shutil.move(str(temp_output_path), str(final_output_path))
             except Exception as e:
                 raise RenderFailed(f"Failed to move temporary file to final location: {e}")
 
@@ -780,6 +794,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                     pass
                 raise RenderFailed("No video stream found in final output")
 
+            
+
             # Extract metadata
             final_duration_ms = 0
             if final_video_stream and "duration" in final_video_stream:
@@ -809,7 +825,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             # Get file size (already have final_size)
             size_bytes = final_size
 
-            # Validate final output
+            
+
             if final_width != configuration.target_width or final_height != configuration.target_height:
                 # Clean up final partial file
                 try:
@@ -853,7 +870,6 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                     raise RenderFailed(f"Final output audio codec should be empty but got: {final_audio_codec}")
 
             # Check duration accuracy on final file
-            expected_duration_ms = end_ms - start_ms
             if abs(final_duration_ms - expected_duration_ms) > 50:
                 # Clean up final partial file
                 try:
@@ -878,8 +894,8 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                     "duration_ms": final_duration_ms,
                     "width": final_width,
                     "height": final_height,
-                    "video_codec": configuration.video_codec,  # logical codec
-                    "audio_codec": configuration.audio_codec if source_media.audio_codec is not None else None,
+                    "video_codec": final_video_codec,  # probed codec (e.g., h264)
+                    "audio_codec": final_audio_codec if source_media.audio_codec is not None else None,
                     "video_bitrate_kbps": video_bitrate,
                     "audio_bitrate_kbps": audio_bitrate,
                     "mime_type": "video/mp4",

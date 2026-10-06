@@ -98,16 +98,18 @@ php artisan migrate --force
 - `services/worker/contracts/media_processing_v1.json` (schema extension — move captions to top-level)
 - `services/worker/aiclip_worker/contracts.py` (caption validation — top-level + config.captions styling; 6-char hex color)
 - `services/worker/aiclip_worker/actions/render_clip.py` (pass-through both config.captions and top-level captions)
-- `services/worker/aiclip_worker/rendering.py` (filter graph extension — combine styling + segments; ms→s conversion)
+- `services/worker/aiclip_worker/rendering.py` (filter graph extension — combine styling + segments; ms→s conversion; **fix output metadata to return probed values from ffprobe, not configuration values**)
 - `services/worker/tests/test_render_clip_contract_validation.py` (caption contract tests)
 - `services/worker/tests/test_ffmpeg_vertical_renderer.py` (caption filter graph tests)
 - `services/worker/tests/test_render_configuration.py` (caption config validation)
+- `services/worker/tests/test_render_clip_integration_duration.py` (**update assertions to expect probed `video_codec` (e.g., `h264`) not configuration value (`libx264`)**)
 
 ### Targeted RED
 
 - `cd services/worker && python -m pytest tests/test_render_clip_contract_validation.py -v` (expect failure on caption schema)
 - `cd services/worker && python -m pytest tests/test_ffmpeg_vertical_renderer.py -v` (expect failure on caption filter graph)
 - `cd services/worker && python -m pytest tests/test_render_configuration.py -v` (expect failure on caption config)
+- `cd services/worker && python -m pytest tests/test_render_clip_integration_duration.py -v` (expect failure on output metadata assertions)
 - `cd services/worker && python -m pytest tests/test_rank_clips.py tests/test_contract_rank_clips.py -v` (must pass; if fails, revert)
 
 ### Targeted GREEN commands
@@ -154,8 +156,10 @@ cd services/worker && python -m pytest tests/ -v --ignore=tests/test_render_clip
 ### Behavior
 
 - Laravel `RenderMediaClip` job projects captions from `MediaTranscript` (with escaped text) and includes in worker contract as **top-level `captions` object**.
-- `ProcessMediaAction::renderClips()` sends extended contract to `render-clip` subcommand.
+- `ProcessMediaAction::renderClips()` sends extended contract to `render-clip` subcommand. **Laravel computes SHA256 from exact JSON bytes sent to worker stdin (`json_encode($request, JSON_THROW_ON_ERROR)`).**
 - Real `FFmpegVerticalClipRenderer.render_singular()` executes FFmpeg with caption filter graph.
+- **Worker probes output file with ffprobe and returns probed metadata in `output` object (video_codec, audio_codec, width, height, duration_ms, video_bitrate_kbps, audio_bitrate_kbps), NOT configuration values.**
+- Worker computes SHA256 from raw stdin bytes read; must match Laravel's computed hash exactly (identical serialization, deterministic key ordering).
 - FFprobe validation includes checking output duration, resolution, codec, and filter graph presence.
 - Idempotency/concurrency: retry uses persisted storage key; durable pending claim already has `storage_disk`/`storage_key`.
 - Caption filter graph recorded in result `parameters.filter_graph`.
@@ -164,13 +168,13 @@ cd services/worker && python -m pytest tests/ -v --ignore=tests/test_render_clip
 ### Likely files/categories
 
 - `apps/api/app/Jobs/RenderMediaClip.php` (full integration with captions)
-- `apps/api/app/Services/ProcessMediaAction.php` (renderClips timeout/config unchanged)
-- `services/worker/aiclip_worker/rendering.py` (real FFmpeg caption rendering)
+- `apps/api/app/Services/ProcessMediaAction.php` (renderClips timeout/config unchanged; **ensure SHA256 computed from exact stdin bytes**)
+- `services/worker/aiclip_worker/rendering.py` (real FFmpeg caption rendering; **fix output metadata to return probed values; ensure SHA256 computed from raw stdin**)
 - `services/worker/aiclip_worker/errors.py` (sanitized error mapping for caption failures)
 - `apps/api/tests/Feature/Jobs/RenderMediaClipTest.php` (real worker integration)
 - `apps/api/tests/Feature/Jobs/ProcessMediaAssetRenderRealWorkerTest.php` (regression)
 - `services/worker/tests/test_render_clip_integration.py` (real FFmpeg caption integration)
-- `services/worker/tests/test_render_clip_integration_duration.py` (duration tolerance with captions)
+- `services/worker/tests/test_render_clip_integration_duration.py` (duration tolerance with captions; **update assertions for probed output metadata**)
 - `apps/api/tests/Unit/RenderValidatorTest.php` (completion validation with captions)
 
 ### Targeted RED
@@ -178,7 +182,7 @@ cd services/worker && python -m pytest tests/ -v --ignore=tests/test_render_clip
 - `php artisan test tests/Feature/Jobs/RenderMediaClipTest.php` (expect failure on caption integration)
 - `php artisan test tests/Feature/Jobs/ProcessMediaAssetRenderRealWorkerTest.php` (regression)
 - `cd services/worker && python -m pytest tests/test_render_clip_integration.py -v` (expect failure on FFmpeg caption integration)
-- `cd services/worker && python -m pytest tests/test_render_clip_integration_duration.py -v` (expect failure on duration tolerance with captions)
+- `cd services/worker && python -m pytest tests/test_render_clip_integration_duration.py -v` (expect failure on duration tolerance with captions / output metadata)
 - `php artisan test --filter=RenderValidatorTest` (completion validation with captions)
 
 ### Targeted GREEN commands

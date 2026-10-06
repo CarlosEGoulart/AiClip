@@ -22,7 +22,7 @@ MAX_OUTPUT_BYTES = 1024 * 1024  # 1 MiB
 _DIGEST_ALPHABET = frozenset("0123456789abcdef")
 
 
-def error(code: str) -> dict[str, Any]:
+def error(code: str, stderr: str = "") -> dict[str, Any]:
     """Create standardized error envelope."""
     messages = {
         "invalid_contract": "Invalid render contract",
@@ -32,7 +32,7 @@ def error(code: str) -> dict[str, Any]:
         "status": "error",
         "code": code,
         "error": messages.get(code, "Clip render failed"),
-        "stderr": "",
+        "stderr": stderr,
     }
 
 
@@ -87,12 +87,25 @@ def _read_stdin() -> bytes:
 def _emit(result: dict[str, Any]) -> int:
     """Write exactly one bounded strict JSON envelope and the exit code."""
     try:
-        output = json.dumps(result, allow_nan=False, separators=(",", ":"))
+        # Canonical JSON for output: sort_keys=True, separators=(',', ':'), ensure_ascii=False
+        output = json.dumps(
+            result,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            ensure_ascii=False,
+        )
         if len(output.encode("utf-8")) > MAX_OUTPUT_BYTES:
             raise ValueError("Output too large")
     except (ValueError, TypeError):
         result = error("render_failed")
-        output = json.dumps(result, allow_nan=False, separators=(",", ":"))
+        output = json.dumps(
+            result,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            ensure_ascii=False,
+        )
     sys.stdout.write(output)
 
     if result.get("status") == "success":
@@ -100,6 +113,17 @@ def _emit(result: dict[str, Any]) -> int:
     if result.get("code") == "invalid_contract":
         return 2
     return 1
+
+
+def _canonical_json(value: Any) -> str:
+    """Serialize to canonical JSON: sorted keys, no whitespace, no ASCII escaping."""
+    return json.dumps(
+        value,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        ensure_ascii=False,
+    )
 
 
 def render_clip(contract: dict, request_sha256: str | None = None) -> dict:
@@ -116,6 +140,10 @@ def render_clip(contract: dict, request_sha256: str | None = None) -> dict:
             raise ValueError(f"Invalid contract: {reason}")
     except Exception:
         raise RenderFailed("Invalid render contract")
+
+    # Compute canonical request SHA256 if not provided
+    if request_sha256 is None:
+        request_sha256 = hashlib.sha256(_canonical_json(contract).encode("utf-8")).hexdigest()
 
     # Build source media info
     source_media = contract["source_media"]
@@ -207,6 +235,7 @@ def run_cli(argv: list[str]) -> int:
     The request is accepted from stdin only; argument-list
     and file transports are rejected without echoing their payload.
     """
+    import traceback
     try:
         parser = _Parser(prog="aiclip_worker render-clip", add_help=False)
         parser.parse_args(argv)  # any argument is rejected without echo
@@ -221,27 +250,27 @@ def run_cli(argv: list[str]) -> int:
             parse_float=_finite_float,
             object_pairs_hook=_unique_object,
         )
-        request_sha256 = hashlib.sha256(raw).hexdigest()
-    except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
-        return _emit(error("invalid_contract"))
+        request_sha256 = hashlib.sha256(_canonical_json(contract).encode("utf-8")).hexdigest()
+    except (OSError, ValueError, TypeError, UnicodeError, RecursionError) as e:
+        return _emit(error("invalid_contract", traceback.format_exc()))
 
     try:
         # Validate contract
         try:
             is_valid, _reason = validate_contract(contract)
         except ContractSchemaUnavailable:
-            return _emit(error("render_failed"))
+            return _emit(error("render_failed", traceback.format_exc()))
         if not is_valid:
-            return _emit(error("invalid_contract"))
+            return _emit(error("invalid_contract", "Contract validation failed"))
 
         if not _is_digest(request_sha256):
-            return _emit(error("invalid_contract"))
+            return _emit(error("invalid_contract", "Invalid request digest"))
 
         result = render_clip(contract, request_sha256)
 
-    except RenderFailed:
-        return _emit(error("render_failed"))
-    except Exception:
-        return _emit(error("render_failed"))
+    except RenderFailed as e:
+        return _emit(error("render_failed", f"RenderFailed: {e}"))
+    except Exception as e:
+        return _emit(error("render_failed", traceback.format_exc()))
 
     return _emit(result)

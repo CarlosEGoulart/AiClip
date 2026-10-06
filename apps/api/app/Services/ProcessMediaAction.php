@@ -25,6 +25,50 @@ class ProcessMediaAction
     private const MAX_RANKING_OUTPUT_BYTES = 1048576;
 
     /**
+     * Encode value as canonical JSON for SHA256 binding.
+     *
+     * Canonical JSON requirements (spec.md):
+     * - Sorted keys (recursive)
+     * - No whitespace (separators=(',', ':'))
+     * - Strict UTF-8 (JSON_UNESCAPED_UNICODE)
+     * - No trailing newline
+     * - Forward slashes unescaped (JSON_UNESCAPED_SLASHES)
+     *
+     * @param  mixed  $value
+     * @return string
+     */
+    private static function canonicalJson(mixed $value): string
+    {
+        $sorted = self::sortKeysRecursive($value);
+        return json_encode(
+            $sorted,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+    }
+
+    /**
+     * Recursively sort array keys for canonical JSON.
+     *
+     * @param  mixed  $value
+     * @return mixed
+     */
+    private static function sortKeysRecursive(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        // Check if it's a list (sequential integer keys starting from 0)
+        if (array_is_list($value)) {
+            return array_map([self::class, 'sortKeysRecursive'], $value);
+        }
+
+        // It's an object (associative array) - sort keys and recurse
+        ksort($value);
+        return array_map([self::class, 'sortKeysRecursive'], $value);
+    }
+
+    /**
      * Probe media file using the Python worker CLI.
      *
      * @return array{status: string, probe: array<string, mixed>}
@@ -357,10 +401,7 @@ class ProcessMediaAction
         try {
             $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
             $request = $contract->toRankClipsMetadataArray();
-            $contractJson = json_encode($request, JSON_THROW_ON_ERROR);
-
-            // Python hashes the exact raw stdin bytes; Laravel computes the
-            // same digest over the exact bytes it is about to send.
+            $contractJson = self::canonicalJson($request);
             $requestSha256 = hash('sha256', $contractJson);
 
             $process = $this->createProcess([
@@ -443,10 +484,7 @@ class ProcessMediaAction
         try {
             $workerCommand = config('media.worker_command', 'python -m aiclip_worker.cli');
             $request = $contract->toRenderClipMetadataArray();
-            $contractJson = json_encode($request, JSON_THROW_ON_ERROR);
-
-            // Python hashes the exact raw stdin bytes; Laravel computes the
-            // same digest over the exact bytes it is about to send.
+            $contractJson = self::canonicalJson($request);
             $requestSha256 = hash('sha256', $contractJson);
 
             $process = $this->createProcess([
@@ -479,6 +517,17 @@ class ProcessMediaAction
             }
 
             if (! $process->isSuccessful()) {
+                // Try to parse error output as JSON (worker returns error envelope in stdout)
+                $errorOutput = json_decode($stdout, true);
+                if (is_array($errorOutput) && isset($errorOutput['code'])) {
+                    // Log stderr for debugging
+                    $stderr = $process->getErrorOutput();
+                    if ($stderr) {
+                        Log::error('Worker render-clip stderr', ['stderr' => $stderr]);
+                    }
+                    throw ProcessMediaException::fromWorkerOutput($errorOutput, $process->getExitCode() ?? 1);
+                }
+
                 // Worker diagnostics, stdout, stderr and the error envelope are
                 // never propagated: only a fixed category, the exit code and an
                 // empty stderr cross this boundary.

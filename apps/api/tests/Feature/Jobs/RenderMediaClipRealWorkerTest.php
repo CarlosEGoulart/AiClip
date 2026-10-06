@@ -13,6 +13,8 @@ use App\Services\ClipRankingProfile;
 use App\Services\ProcessMediaAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\Filesystem;
+use League\Flysystem\Local\LocalFilesystemAdapter;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
@@ -22,6 +24,14 @@ uses(TestCase::class, RefreshDatabase::class);
 | Fixtures for RenderMediaClip real worker tests
 |--------------------------------------------------------------------------
 */
+
+beforeEach(function () {
+    // Register a test disk that points to the app root so the worker (running from app root)
+    // can access files via relative paths
+    Storage::extend('test-worker', function () {
+        return new Filesystem(new LocalFilesystemAdapter(base_path()));
+    });
+});
 
 function createProbedAssetForRealWorker(array $overrides = []): MediaAsset
 {
@@ -35,8 +45,8 @@ function createProbedAssetForRealWorker(array $overrides = []): MediaAsset
             'video_codec' => 'h264',
             'audio_codec' => 'aac',
         ],
-        // Use local disk so worker can read file directly via ffmpeg
-        'storage_disk' => 'local',
+        // Use test-worker disk (points to app root) so worker can read file directly via ffmpeg
+        'storage_disk' => 'test-worker',
         'storage_key' => 'tests/real-worker/source.mp4',
     ], $overrides));
 
@@ -45,10 +55,30 @@ function createProbedAssetForRealWorker(array $overrides = []): MediaAsset
         'storage_key' => "tests/real-worker/{$asset->id}/source.mp4",
     ]);
 
-    // Copy fixture to local storage for this test
-    $fixturePath = base_path('services/worker/tests/fixtures/valid_sample.mp4');
-    if (file_exists($fixturePath)) {
-        Storage::disk('local')->put($asset->storage_key, file_get_contents($fixturePath));
+    // Generate a valid test video using FFmpeg that matches the expected probe data
+    // Cache the generated video to avoid regenerating for each test
+    $appRoot = getcwd(); // This is apps/api when running php artisan test
+    $cachePath = $appRoot . '/tests/real-worker/cached_source.mp4';
+    $destPath = $appRoot . '/' . $asset->storage_key;
+    $dir = dirname($destPath);
+    if (! is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+
+    // Generate cached video if it doesn't exist
+    if (! file_exists($cachePath) || filesize($cachePath) === 0) {
+        // Generate 30-second test video: 1920x1080, 30fps, h264, aac audio
+        // Use ultrafast preset for speed
+        $ffmpegCmd = "ffmpeg -y -f lavfi -i testsrc=duration=30:size=1920x1080:rate=30 -f lavfi -i sine=frequency=1000:duration=30 -c:v libx264 -preset ultrafast -c:a aac -pix_fmt yuv420p -t 30 {$cachePath} 2>&1";
+        $result = shell_exec($ffmpegCmd);
+        if ($result === null || ! file_exists($cachePath) || filesize($cachePath) === 0) {
+            throw new \RuntimeException("Failed to generate cached test video: {$result}");
+        }
+    }
+
+    // Copy cached video to test-specific location
+    if (! copy($cachePath, $destPath)) {
+        throw new \RuntimeException("Failed to copy cached video to {$destPath}");
     }
 
     return $asset->fresh();

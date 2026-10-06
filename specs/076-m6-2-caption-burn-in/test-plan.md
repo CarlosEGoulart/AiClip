@@ -80,6 +80,9 @@ This test plan derives exclusively from `specs/076-m6-2-caption-burn-in/spec.md`
 | TC-LRV-CAP-13 | Completion validation: caption config absent when not requested | Pass |
 | TC-LRV-CAP-14 | Request validation: `configuration.captions` contains styling only (no segments) | Pass |
 | TC-LRV-CAP-15 | Request validation: `configuration.captions` contains segments → reject | Fail: invalid contract |
+| TC-LRV-CAP-16 | **Result validation: SHA256 binding matches exact request bytes sent to worker** | Pass (identical serialization) |
+| TC-LRV-CAP-17 | **Result validation: SHA256 binding mismatch fails** | Fail: render_failed |
+| TC-LRV-CAP-18 | **Result validation: output metadata uses probed values (video_codec from ffprobe, not config)** | Pass |
 
 #### 1.3 MediaTranscript Segment Projection — `MediaTranscriptTest.php` (new or existing)
 
@@ -176,12 +179,13 @@ This test plan derives exclusively from `specs/076-m6-2-caption-burn-in/spec.md`
 |---|---|---|
 | TC-E2E-CAP-01 | Real FFmpeg on fixture with caption segments | Output 1080x1920 MP4 with captions |
 | TC-E2E-CAP-02 | Output duration matches candidate bounds (±50ms) | Duration within tolerance |
-| TC-E2E-CAP-03 | Output has video codec libx264, audio codec aac | Probe confirms |
+| TC-E2E-CAP-03 | **Output metadata uses probed values: video_codec from ffprobe (e.g., h264), NOT config value (libx264)** | Probe confirms |
 | TC-E2E-CAP-04 | Filter graph in result parameters contains `drawtext` | Non-empty, contains drawtext |
 | TC-E2E-CAP-05 | FFmpeg version recorded | Non-empty string |
 | TC-E2E-CAP-06 | Source media metadata in parameters | Matches probe |
 | TC-E2E-CAP-07 | **Caption styling configuration** in `parameters.configuration.captions` | Matches request config.captions |
 | TC-E2E-CAP-08 | Without transcript: output matches M6.1 (no drawtext) | Regression: no captions |
+| TC-E2E-CAP-09 | **SHA256 binding: worker computes from raw stdin, matches Laravel's json_encode(request)** | Pass (identical) |
 
 **Fixture:** `tests/fixtures/render_source.mp4` — 1920x1080, 30 seconds, H.264/AAC, with audio.
 **Caption fixture:** Deterministic transcript segments mapped to candidate timebase.
@@ -192,6 +196,7 @@ This test plan derives exclusively from `specs/076-m6-2-caption-burn-in/spec.md`
 |---|---|---|
 | TC-DUR-CAP-01 | Caption burn-in does not affect duration accuracy | ±50ms tolerance maintained |
 | TC-DUR-CAP-02 | Multiple caption segments, no duration drift | ±50ms tolerance maintained |
+| TC-DUR-CAP-03 | **Output metadata uses probed values (video_codec from ffprobe, e.g., h264, not config libx264)** | Assertions updated to expect probed values |
 
 ### 5. Laravel Feature/Integration Tests
 
@@ -282,6 +287,8 @@ All applicable test scenarios above must pass. Browser visual review and new Pla
 | Errors & privacy (caption text never logged) | 5.1, 3.3 |
 | Persistence: DerivedAsset extension | 5.1, 5.2 |
 | Validation: independent Laravel | 1.2, 5.1 |
+| **Validation contract: SHA256 binding (identical serialization)** | 1.2 (TC-LRV-CAP-16, TC-LRV-CAP-17), 4.1 (TC-E2E-CAP-09) |
+| **Validation contract: output metadata from probe (not config)** | 1.2 (TC-LRV-CAP-18), 4.1 (TC-E2E-CAP-03), 4.2 (TC-DUR-CAP-03) |
 | Lifecycle & concurrency | 5.1 (TC-RMJ-CAP-10) |
 | RenderMediaClip job boundary | 5.1, 5.2 |
 | ProcessMediaAsset non-integration | 5.3 |
