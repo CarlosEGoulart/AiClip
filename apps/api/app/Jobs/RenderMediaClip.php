@@ -346,6 +346,19 @@ class RenderMediaClip implements ShouldQueue
                     $locked->render_completed_at = now();
                     $locked->render_error = 'render_failed';
                     $locked->save();
+                } catch (\Illuminate\Database\QueryException $e) {
+                    // Database contention (lock timeout, deadlock, duplicate key) - mark as failed
+                    // to ensure DerivedAsset is committed inside the transaction
+                    $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
+                    $locked->render_completed_at = now();
+                    $locked->render_error = 'database_error';
+                    $locked->save();
+                } catch (\PDOException $e) {
+                    // PDO-level database errors - mark as failed
+                    $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
+                    $locked->render_completed_at = now();
+                    $locked->render_error = 'database_error';
+                    $locked->save();
                 }
             });
         } catch (\Throwable $exception) {
