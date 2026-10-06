@@ -35,14 +35,21 @@ function createProbedAssetForRealWorker(array $overrides = []): MediaAsset
             'video_codec' => 'h264',
             'audio_codec' => 'aac',
         ],
-        'storage_disk' => 'media',
-        'storage_key' => 'projects/1/assets/1/source.mp4',
+        // Use local disk so worker can read file directly via ffmpeg
+        'storage_disk' => 'local',
+        'storage_key' => 'tests/real-worker/source.mp4',
     ], $overrides));
 
     // Update storage_key to use actual asset ID for uniqueness
     $asset->update([
-        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/source.mp4",
+        'storage_key' => "tests/real-worker/{$asset->id}/source.mp4",
     ]);
+
+    // Copy fixture to local storage for this test
+    $fixturePath = base_path('services/worker/tests/fixtures/valid_sample.mp4');
+    if (file_exists($fixturePath)) {
+        Storage::disk('local')->put($asset->storage_key, file_get_contents($fixturePath));
+    }
 
     return $asset->fresh();
 }
@@ -92,8 +99,9 @@ function createCompletedTranscriptForRealWorker(MediaAsset $asset, MediaSceneAna
     $derivedAsset = DerivedAsset::create([
         'media_asset_id' => $asset->id,
         'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
-        'storage_disk' => 'media',
-        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
+        // Use local disk for derived assets too
+        'storage_disk' => 'local',
+        'storage_key' => "tests/real-worker/{$asset->id}/derivatives/audio/test.wav",
         'mime_type' => 'audio/wav',
         'size_bytes' => 1024000,
         'duration_ms' => 30000,
@@ -196,6 +204,14 @@ function createCompletedRecommendationForRealWorker(MediaAsset $asset, MediaClip
 |--------------------------------------------------------------------------
 */
 
+// Disable global ProcessMediaAction mock for these tests
+beforeEach(function () {
+    // Clear the global mock from TestCase::setUp()
+    app()->forgetInstance(ProcessMediaAction::class);
+    // Bind the real ProcessMediaAction
+    app()->bind(ProcessMediaAction::class, ProcessMediaAction::class);
+});
+
 /*
 | TC-RMR-CAP-01: Full job with real worker, FFmpeg, transcript
 */
@@ -206,11 +222,8 @@ it('full job with real worker, FFmpeg, transcript produces DerivedAsset with cap
         $this->markTestSkipped('FFmpeg not available');
     }
 
-    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
-    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
-    if (! $fontCheck) {
-        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
-    }
+    // Font is installed via fonts-dejavu-core in CI workflow
+    // No need to check for it here
 
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
@@ -256,12 +269,6 @@ it('output file exists at expected storage key', function () {
         $this->markTestSkipped('FFmpeg not available');
     }
 
-    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
-    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
-    if (! $fontCheck) {
-        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
-    }
-
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
     $clipAnalysis = createCompletedClipAnalysisForRealWorker($asset);
@@ -289,12 +296,6 @@ it('DerivedAsset render_parameters includes caption config and filter_graph', fu
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
-    }
-
-    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
-    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
-    if (! $fontCheck) {
-        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
     }
 
     $asset = createProbedAssetForRealWorker();
@@ -350,12 +351,6 @@ it('DerivedAsset output metadata matches probe within tolerance', function () {
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
-    }
-
-    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
-    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
-    if (! $fontCheck) {
-        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
     }
 
     $asset = createProbedAssetForRealWorker();
@@ -421,12 +416,6 @@ it('different candidate_index produces distinct DerivedAsset row', function () {
         $this->markTestSkipped('FFmpeg not available');
     }
 
-    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
-    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
-    if (! $fontCheck) {
-        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
-    }
-
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
     $clipAnalysis = createCompletedClipAnalysisForRealWorker($asset);
@@ -466,13 +455,6 @@ it('without transcript: M6.1 regression still works (no captions)', function () 
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
-    }
-
-    // Check if DejaVu Sans Bold font is available (required for drawtext filter in other tests)
-    // This test doesn't use captions but we keep the check for consistency
-    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
-    if (! $fontCheck) {
-        $this->markTestSkipped('DejaVu Sans Bold font not available');
     }
 
     $asset = createProbedAssetForRealWorker();

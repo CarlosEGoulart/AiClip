@@ -34,14 +34,21 @@ function createProbedAssetForRenderReal(array $overrides = []): MediaAsset
             'video_codec' => 'h264',
             'audio_codec' => 'aac',
         ],
-        'storage_disk' => 'media',
-        'storage_key' => 'projects/1/assets/1/source.mp4',
+        // Use local disk so worker can read file directly via ffmpeg
+        'storage_disk' => 'local',
+        'storage_key' => 'tests/real-worker/source.mp4',
     ], $overrides));
 
     // Update storage_key to use actual asset ID for uniqueness
     $asset->update([
-        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/source.mp4",
+        'storage_key' => "tests/real-worker/{$asset->id}/source.mp4",
     ]);
+
+    // Copy fixture to local storage for this test
+    $fixturePath = base_path('services/worker/tests/fixtures/valid_sample.mp4');
+    if (file_exists($fixturePath)) {
+        Storage::disk('local')->put($asset->storage_key, file_get_contents($fixturePath));
+    }
 
     return $asset->fresh();
 }
@@ -91,8 +98,9 @@ function createCompletedTranscriptReal(MediaAsset $asset, MediaSceneAnalysis $sc
     $derivedAsset = \App\Models\DerivedAsset::create([
         'media_asset_id' => $asset->id,
         'type' => \App\Models\DerivedAsset::TYPE_AUDIO_NORMALIZED,
-        'storage_disk' => 'media',
-        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
+        // Use local disk for derived assets too
+        'storage_disk' => 'local',
+        'storage_key' => "tests/real-worker/{$asset->id}/derivatives/audio/test.wav",
         'mime_type' => 'audio/wav',
         'size_bytes' => 1024000,
         'duration_ms' => 30000,
@@ -186,6 +194,14 @@ function createCompletedRecommendationReal(MediaAsset $asset, MediaClipAnalysis 
 |--------------------------------------------------------------------------
 */
 
+// Disable global ProcessMediaAction mock for these tests
+beforeEach(function () {
+    // Clear the global mock from TestCase::setUp()
+    app()->forgetInstance(ProcessMediaAction::class);
+    // Bind the real ProcessMediaAction
+    app()->bind(ProcessMediaAction::class, ProcessMediaAction::class);
+});
+
 /*
 |--------------------------------------------------------------------------
 | TC-PMR-REG-01: ProcessMediaAsset completes with real worker but NO auto-render
@@ -205,15 +221,8 @@ it('completes asset with real worker but does NOT auto-render', function () {
     $transcript = createCompletedTranscriptReal($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationReal($asset, $clipAnalysis, $transcript);
 
-    // Create test fixture video if needed
-    $fixturePath = base_path('services/worker/tests/fixtures/render_source.mp4');
-    if (!file_exists($fixturePath)) {
-        $this->markTestSkipped('FFmpeg fixture video not available');
-    }
-
-    // Copy fixture to storage for this test
-    $storagePath = 'projects/1/assets/'.$asset->id.'/source.mp4';
-    Storage::disk('media')->put($storagePath, file_get_contents($fixturePath));
+    // Fixture is already copied in createProbedAssetForRenderReal()
+    // Use valid_sample.mp4 as the test fixture
 
     $action = app(ProcessMediaAction::class);
     $job = new \App\Jobs\ProcessMediaAsset($asset, 'test-key-real-worker', $action);
