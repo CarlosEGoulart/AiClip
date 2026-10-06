@@ -59,11 +59,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install FFmpeg
+      - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
           ffprobe -version
+          fc-list | grep -i dejavu
 
       - name: Install worker dependencies
         working-directory: services/worker

@@ -206,6 +206,12 @@ it('full job with real worker, FFmpeg, transcript produces DerivedAsset with cap
         $this->markTestSkipped('FFmpeg not available');
     }
 
+    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
+    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
+    if (! $fontCheck) {
+        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
+    }
+
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
     $clipAnalysis = createCompletedClipAnalysisForRealWorker($asset);
@@ -250,6 +256,12 @@ it('output file exists at expected storage key', function () {
         $this->markTestSkipped('FFmpeg not available');
     }
 
+    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
+    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
+    if (! $fontCheck) {
+        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
+    }
+
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
     $clipAnalysis = createCompletedClipAnalysisForRealWorker($asset);
@@ -277,6 +289,12 @@ it('DerivedAsset render_parameters includes caption config and filter_graph', fu
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
+    }
+
+    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
+    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
+    if (! $fontCheck) {
+        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
     }
 
     $asset = createProbedAssetForRealWorker();
@@ -332,6 +350,12 @@ it('DerivedAsset output metadata matches probe within tolerance', function () {
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
+    }
+
+    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
+    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
+    if (! $fontCheck) {
+        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
     }
 
     $asset = createProbedAssetForRealWorker();
@@ -397,6 +421,12 @@ it('different candidate_index produces distinct DerivedAsset row', function () {
         $this->markTestSkipped('FFmpeg not available');
     }
 
+    // Check if DejaVu Sans Bold font is available (required for drawtext filter)
+    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
+    if (! $fontCheck) {
+        $this->markTestSkipped('DejaVu Sans Bold font not available (required for captions)');
+    }
+
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
     $clipAnalysis = createCompletedClipAnalysisForRealWorker($asset);
@@ -436,6 +466,13 @@ it('without transcript: M6.1 regression still works (no captions)', function () 
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
+    }
+
+    // Check if DejaVu Sans Bold font is available (required for drawtext filter in other tests)
+    // This test doesn't use captions but we keep the check for consistency
+    $fontCheck = shell_exec('fc-list | grep -i "DejaVuSans-Bold"');
+    if (! $fontCheck) {
+        $this->markTestSkipped('DejaVu Sans Bold font not available');
     }
 
     $asset = createProbedAssetForRealWorker();
