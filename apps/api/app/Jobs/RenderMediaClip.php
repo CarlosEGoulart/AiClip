@@ -115,6 +115,15 @@ class RenderMediaClip implements ShouldQueue
             ->where('status', MediaTranscript::STATUS_COMPLETED)
             ->first();
 
+        // Fail if there's a non-completed transcript (pending/transcribing) - upstream not ready
+        $pendingTranscript = MediaTranscript::where('media_asset_id', $asset->id)
+            ->whereIn('status', [MediaTranscript::STATUS_PENDING, MediaTranscript::STATUS_TRANSCRIBING])
+            ->first();
+
+        if ($pendingTranscript !== null) {
+            throw new UpstreamRecommendationUnavailableException('upstream_recommendation_unavailable');
+        }
+
         $transcriptState = $transcript !== null ? 'completed' : 'absent';
         $transcriptContentHash = $transcript !== null && ! empty($transcript->segments)
             ? hash('sha256', json_encode($transcript->segments, JSON_THROW_ON_ERROR))

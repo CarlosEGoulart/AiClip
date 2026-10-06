@@ -181,6 +181,7 @@ class MediaTranscript extends Model
         $text = str_replace(':', '\\:', $text);
         $text = str_replace("'", "\\'", $text);
         $text = str_replace('%', '\\%', $text);
+        $text = str_replace('"', '\\"', $text);
 
         // Word-wrap at max_chars_per_line
         if ($maxCharsPerLine > 0 && strlen($text) > $maxCharsPerLine) {
