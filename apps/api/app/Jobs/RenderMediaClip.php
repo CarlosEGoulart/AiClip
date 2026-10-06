@@ -318,7 +318,14 @@ class RenderMediaClip implements ShouldQueue
                     $locked->save();
                 } catch (ProcessMediaException $e) {
                     if ($e->getMessage() === 'clip_render_aborted' && $e->getPrevious() === null) {
-                        throw new RenderAbortedException;
+                        // Worker aborted render (e.g., FFmpeg error) - mark as failed instead of throwing
+                        // to ensure DerivedAsset is committed inside the transaction
+                        $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
+                        $locked->render_completed_at = now();
+                        $locked->render_error = 'render_aborted';
+                        $locked->save();
+
+                        return;
                     }
 
                     if ($e->getMessage() === 'invalid_configuration') {
