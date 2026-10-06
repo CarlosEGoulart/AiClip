@@ -79,15 +79,22 @@ both Issue #64 branches preserved. M6.1 — Durable Baseline Vertical Clip
 Render Pipeline (Issue #69, PR #73) is completed and merged. M6.1 delivers
 `ffmpeg_vertical_baseline` v1.0.0 render profile `vertical_v1` producing
 persisted `DerivedAsset` records with `type=clip_rendered`, candidate index,
-render timestamps, and error capture. No implementation issue is active.
-M6.2+ remain future, not active, not authorized, and not implemented.
+render timestamps, and error capture.
+
+M6.2 — Deterministic Caption Burn-In (Issue #76, PR #77) is active and in
+progress. It extends the M6.1 `ffmpeg_vertical_baseline` v1.0.0 pipeline with
+optional caption burn-in via FFmpeg `drawtext` filter chain, using
+`MediaTranscript.segments` projected to candidate-local timebase with escaped
+text. Worker contract `render_clip` v1.0.0 extended additively with top-level
+`captions` object (enabled + segments) and `configuration.captions` styling.
+No implementation issue is active after M6.2 closure.
 
 # Next Architectural Goal
 
-M6.2+ — Vertical Clip Rendering enhancements (captions, multi-candidate batch
-rendering, render profiles beyond `vertical_v1`) and M7 — Clip Review
-Experience are the next architectural goals. They are not active, not
-authorized, and not implemented; planning and implementing them require
-separate explicit authorization. A standalone queue-consuming Python service
-remains a future architectural evolution, not the current CLI execution
-topology.
+M6.2 — Caption burn-in (Issue #76, PR #77) is the active implementation.
+M6.3+ — Multi-candidate batch rendering, face-aware caption placement, render
+profiles beyond `vertical_v1`, and M7 — Clip Review Experience are the next
+architectural goals. They are not active, not authorized, and not implemented;
+planning and implementing them require separate explicit authorization. A
+standalone queue-consuming Python service remains a future architectural
+evolution, not the current CLI execution topology.

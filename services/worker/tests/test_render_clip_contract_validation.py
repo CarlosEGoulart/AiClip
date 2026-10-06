@@ -159,3 +159,67 @@ def test_output_storage_is_strict_and_requires_mp4():
     contract["output_storage"]["extra"] = "x"
     assert render_clip_schema_errors(contract)
     assert_rejected(contract)
+
+
+# ---------------------------------------------------------------------------
+# M6.2 caption styling in the singular request configuration
+# ---------------------------------------------------------------------------
+
+VALID_CAPTION_STYLING = {
+    "enabled": True,
+    "font_file": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "font_size": 72,
+    "font_color": "ffffff",
+    "outline_color": "000000",
+    "outline_width": 3,
+    "background_color": "000000",
+    "background_opacity": 0.5,
+    "box_padding": 10,
+    "margin_bottom": 100,
+    "max_chars_per_line": 32,
+}
+
+
+def valid_render_clip_contract_with_captions() -> dict:
+    contract = valid_render_clip_contract()
+    contract["configuration"]["captions"] = copy.deepcopy(VALID_CAPTION_STYLING)
+    contract["captions"] = {
+        "enabled": True,
+        "segments": [{"start_ms": 1500, "end_ms": 8000, "text": "Caption text"}],
+    }
+    return contract
+
+
+def test_singular_contract_accepts_configuration_with_captions_styling():
+    """The M6.2 request configuration carries the 8th key (captions) and must pass."""
+    contract = valid_render_clip_contract_with_captions()
+    assert render_clip_schema_errors(contract) == []
+    valid, reason = validate_contract(contract)
+    assert valid is True, reason
+
+
+def test_singular_contract_still_rejects_unknown_configuration_field_with_captions_present():
+    contract = valid_render_clip_contract_with_captions()
+    contract["configuration"]["timeout"] = 300
+    assert render_clip_schema_errors(contract)
+    assert_rejected(contract)
+
+
+def test_singular_contract_rejects_incomplete_caption_styling():
+    contract = valid_render_clip_contract_with_captions()
+    del contract["configuration"]["captions"]["font_size"]
+    assert_rejected(contract)
+
+
+def test_singular_contract_rejects_segments_inside_caption_styling():
+    contract = valid_render_clip_contract_with_captions()
+    contract["configuration"]["captions"]["segments"] = [
+        {"start_ms": 1500, "end_ms": 8000, "text": "Caption text"}
+    ]
+    assert_rejected(contract)
+
+
+def test_singular_contract_rejects_invalid_caption_color_format():
+    contract = valid_render_clip_contract_with_captions()
+    contract["configuration"]["captions"]["font_color"] = "#ffffff"
+    assert_rejected(contract)

@@ -229,3 +229,117 @@ def test_render_clip_duration_accuracy_via_cli(tmp_path):
     assert output["duration_ms"] > 0
     # Output duration should also be within ±50ms (it's the same as clip.duration_ms)
     assert abs(output["duration_ms"] - expected_duration_ms) <= 50
+
+
+# ---------------------------------------------------------------------------
+# M6.2 Duration accuracy with captions (TC-DUR-CAP-01, TC-DUR-CAP-02)
+# ---------------------------------------------------------------------------
+
+CAPTION_STYLING_DUR = {
+    "enabled": True,
+    "font_file": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "font_size": 72,
+    "font_color": "ffffff",
+    "outline_color": "000000",
+    "outline_width": 3,
+    "background_color": "000000",
+    "background_opacity": 0.5,
+    "box_padding": 10,
+    "margin_bottom": 100,
+    "max_chars_per_line": 32,
+}
+
+
+def caption_segments_dur(candidate_start_ms: int, candidate_end_ms: int) -> list[dict]:
+    """Create caption segments within the candidate bounds."""
+    start_ms = candidate_start_ms + (candidate_end_ms - candidate_start_ms) // 4
+    end_ms = candidate_start_ms + 3 * (candidate_end_ms - candidate_start_ms) // 4
+    return [
+        {
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+            "text": "Burned caption",
+        }
+    ]
+
+
+@pytest.mark.skipif(not check_ffmpeg_available(), reason="FFmpeg or ffprobe not available (BLOCKED_ENV)")
+def test_dur_cap_01_caption_burn_in_does_not_affect_duration_accuracy_via_function(tmp_path):
+    """TC-DUR-CAP-01: Caption burn-in does not affect duration accuracy via function."""
+    fixture_path = Path(__file__).parent / "fixtures" / "valid_sample.mp4"
+    assert fixture_path.exists(), f"Fixture not found: {fixture_path}"
+    output_key = tmp_path / "rendered.mp4"
+
+    contract = valid_render_clip_contract(fixture_path, str(output_key))
+    contract["configuration"]["captions"] = CAPTION_STYLING_DUR
+    candidate_start = contract["candidate"]["start_ms"]
+    candidate_end = contract["candidate"]["end_ms"]
+    contract["captions"] = {
+        "enabled": True,
+        "segments": caption_segments_dur(candidate_start, candidate_end),
+    }
+
+    valid, reason = validate_contract(contract)
+    assert valid, f"Contract validation failed: {reason}"
+
+    result = render_clip(contract)
+
+    assert result.get("status") == "success"
+    clip = result["render"]["clips"][0]
+    expected_duration_ms = candidate_end - candidate_start
+    actual_duration_ms = clip["duration_ms"]
+    # Check that the actual duration is within ±50ms of expected
+    assert abs(actual_duration_ms - expected_duration_ms) <= 50, \
+        f"Duration mismatch with captions: expected {expected_duration_ms}ms, got {actual_duration_ms}ms"
+    # Output duration should also be within ±50ms
+    assert abs(clip["output"]["duration_ms"] - expected_duration_ms) <= 50
+
+
+@pytest.mark.skipif(not check_ffmpeg_available(), reason="FFmpeg or ffprobe not available (BLOCKED_ENV)")
+def test_dur_cap_02_multiple_caption_segments_no_duration_drift_via_function(tmp_path):
+    """TC-DUR-CAP-02: Multiple caption segments, no duration drift via function."""
+    fixture_path = Path(__file__).parent / "fixtures" / "valid_sample.mp4"
+    assert fixture_path.exists(), f"Fixture not found: {fixture_path}"
+    output_key = tmp_path / "rendered.mp4"
+
+    contract = valid_render_clip_contract(fixture_path, str(output_key))
+    contract["configuration"]["captions"] = CAPTION_STYLING_DUR
+    candidate_start = contract["candidate"]["start_ms"]
+    candidate_end = contract["candidate"]["end_ms"]
+    # Multiple segments
+    duration = candidate_end - candidate_start
+    contract["captions"] = {
+        "enabled": True,
+        "segments": [
+            {
+                "start_ms": candidate_start + duration // 10,
+                "end_ms": candidate_start + 3 * duration // 10,
+                "text": "First caption segment",
+            },
+            {
+                "start_ms": candidate_start + 4 * duration // 10,
+                "end_ms": candidate_start + 6 * duration // 10,
+                "text": "Second caption segment",
+            },
+            {
+                "start_ms": candidate_start + 7 * duration // 10,
+                "end_ms": candidate_start + 9 * duration // 10,
+                "text": "Third caption segment",
+            },
+        ],
+    }
+
+    valid, reason = validate_contract(contract)
+    assert valid, f"Contract validation failed: {reason}"
+
+    result = render_clip(contract)
+
+    assert result.get("status") == "success"
+    clip = result["render"]["clips"][0]
+    expected_duration_ms = candidate_end - candidate_start
+    actual_duration_ms = clip["duration_ms"]
+    # Check that the actual duration is within ±50ms of expected
+    assert abs(actual_duration_ms - expected_duration_ms) <= 50, \
+        f"Duration mismatch with multiple captions: expected {expected_duration_ms}ms, got {actual_duration_ms}ms"
+    # Output duration should also be within ±50ms
+    assert abs(clip["output"]["duration_ms"] - expected_duration_ms) <= 50

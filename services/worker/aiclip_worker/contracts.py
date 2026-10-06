@@ -336,17 +336,8 @@ def _validate_rank_clips(contract: dict[str, Any]) -> tuple[bool, str]:
     return validate_rank_clips_contract(contract)
 
 
-def _validate_render_clips_configuration(configuration: object) -> str:
-    """Return an error message unless the render configuration is valid."""
-    if not isinstance(configuration, dict):
-        return "configuration must be an object"
-    if set(configuration.keys()) != set(RENDER_CLIPS_CONFIG_KEYS):
-        missing = sorted(set(RENDER_CLIPS_CONFIG_KEYS) - set(configuration.keys()))
-        unknown = sorted(set(configuration.keys()) - set(RENDER_CLIPS_CONFIG_KEYS))
-        if unknown:
-            return f"configuration contains unknown fields: {unknown}"
-        return f"configuration missing required fields: {missing}"
-
+def _validate_render_configuration_fields(configuration: dict[str, Any]) -> str:
+    """Return an error message unless the pinned rendering profile fields are valid."""
     target_width = configuration["target_width"]
     target_height = configuration["target_height"]
     target_fps = configuration["target_fps"]
@@ -371,6 +362,41 @@ def _validate_render_clips_configuration(configuration: object) -> str:
         return "audio_bitrate_kbps must be an integer between 32 and 320"
 
     return ""
+
+
+def _validate_render_clips_configuration(configuration: object) -> str:
+    """Return an error message unless the plural render configuration is valid."""
+    if not isinstance(configuration, dict):
+        return "configuration must be an object"
+    if set(configuration.keys()) != set(RENDER_CLIPS_CONFIG_KEYS):
+        missing = sorted(set(RENDER_CLIPS_CONFIG_KEYS) - set(configuration.keys()))
+        unknown = sorted(set(configuration.keys()) - set(RENDER_CLIPS_CONFIG_KEYS))
+        if unknown:
+            return f"configuration contains unknown fields: {unknown}"
+        return f"configuration missing required fields: {missing}"
+
+    return _validate_render_configuration_fields(configuration)
+
+
+def _validate_render_clip_configuration(configuration: object) -> str:
+    """Return an error message unless the singular render configuration is valid.
+
+    The singular request carries the seven rendering profile fields plus the
+    optional captions styling object; every other key is rejected with the
+    same messages as the plural configuration.
+    """
+    if not isinstance(configuration, dict):
+        return "configuration must be an object"
+
+    keys = set(configuration.keys())
+    unknown = sorted(keys - set(RENDER_CLIP_CONFIG_KEYS))
+    if unknown:
+        return f"configuration contains unknown fields: {unknown}"
+    missing = sorted(set(RENDER_CLIPS_CONFIG_KEYS) - keys)
+    if missing:
+        return f"configuration missing required fields: {missing}"
+
+    return _validate_render_configuration_fields(configuration)
 
 
 def _validate_render_clips_recommendation(recommendation: object, duration_ms: int) -> str:
@@ -749,7 +775,7 @@ def validate_render_clip_contract(contract: object) -> tuple[bool, str]:
     if start_ms < 0 or end_ms <= start_ms or end_ms > duration_ms:
         return False, "candidate bounds invalid: require 0 <= start_ms < end_ms <= duration_ms"
 
-    configuration_error = _validate_render_clips_configuration(contract.get("configuration"))
+    configuration_error = _validate_render_clip_configuration(contract.get("configuration"))
     if configuration_error:
         return False, configuration_error
 

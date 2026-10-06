@@ -14,7 +14,6 @@ from aiclip_worker.rendering import (
     FFmpegVerticalClipRenderer,
     RenderConfiguration,
     RenderFailed,
-    DEFAULT_FFMPEG_TIMEOUT,
     SourceMediaInfo,
 )
 
@@ -103,7 +102,7 @@ def _emit(result: dict[str, Any]) -> int:
     return 1
 
 
-def render_clip(contract: dict) -> dict:
+def render_clip(contract: dict, request_sha256: str | None = None) -> dict:
     """Execute the singular render_clip action.
 
     This is the execution seam for Stage C. Stage B fails closed to prevent
@@ -180,7 +179,10 @@ def render_clip(contract: dict) -> dict:
             "algorithm": "ffmpeg_vertical_baseline",
             "algorithm_version": "1.0.0",
             "parameters": {
-                "configuration": parameters["configuration"],
+                # Echo the validated request configuration verbatim: the result
+                # contract binds it with a strict identity comparison against
+                # the request, including the captions styling object.
+                "configuration": contract["configuration"],
                 "source_media": parameters["source_media"],
                 "ffmpeg_version": parameters["ffmpeg_version"],
                 "filter_graph": parameters["filter_graph"],
@@ -191,6 +193,10 @@ def render_clip(contract: dict) -> dict:
             ],
         },
     }
+
+    # Add request_sha256 to parameters for binding (like plural render_clips does)
+    if request_sha256 is not None:
+        render_result["render"]["parameters"]["request_sha256"] = request_sha256
 
     return render_result
 
@@ -215,6 +221,7 @@ def run_cli(argv: list[str]) -> int:
             parse_float=_finite_float,
             object_pairs_hook=_unique_object,
         )
+        request_sha256 = hashlib.sha256(raw).hexdigest()
     except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
         return _emit(error("invalid_contract"))
 
@@ -227,15 +234,10 @@ def run_cli(argv: list[str]) -> int:
         if not is_valid:
             return _emit(error("invalid_contract"))
 
-        
+        if not _is_digest(request_sha256):
+            return _emit(error("invalid_contract"))
 
-        # Parse configuration
-        configuration = RenderConfiguration.from_dict(contract["configuration"])
-
-        # Get FFmpeg timeout from config (default 300s)
-        ffmpeg_timeout = DEFAULT_FFMPEG_TIMEOUT
-
-        result = render_clip(contract)
+        result = render_clip(contract, request_sha256)
 
     except RenderFailed:
         return _emit(error("render_failed"))

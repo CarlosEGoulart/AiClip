@@ -28,6 +28,7 @@ class RenderConfiguration:
     video_bitrate_kbps: int = 5000
     audio_codec: str = "aac"
     audio_bitrate_kbps: int = 128
+    captions: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.target_width, int) or self.target_width < 1 or self.target_width > 4096 or self.target_width % 2 != 0:
@@ -44,6 +45,8 @@ class RenderConfiguration:
             raise ValueError("audio_codec must be one of: aac, libfdk_aac, copy")
         if not isinstance(self.audio_bitrate_kbps, int) or self.audio_bitrate_kbps < 32 or self.audio_bitrate_kbps > 320:
             raise ValueError("audio_bitrate_kbps must be an integer between 32 and 320")
+        if not isinstance(self.captions, dict):
+            raise ValueError("captions must be a dictionary")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RenderConfiguration:
@@ -55,10 +58,11 @@ class RenderConfiguration:
             video_bitrate_kbps=data.get("video_bitrate_kbps", 5000),
             audio_codec=data.get("audio_codec", "aac"),
             audio_bitrate_kbps=data.get("audio_bitrate_kbps", 128),
+            captions=data.get("captions", {}),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "target_width": self.target_width,
             "target_height": self.target_height,
             "target_fps": self.target_fps,
@@ -67,6 +71,9 @@ class RenderConfiguration:
             "audio_codec": self.audio_codec,
             "audio_bitrate_kbps": self.audio_bitrate_kbps,
         }
+        if self.captions:
+            result["captions"] = self.captions
+        return result
 
 
 # Fixed limits and policies (spec.md)

@@ -189,18 +189,20 @@ class RenderMediaClip implements ShouldQueue
             'audio_codec' => $probeData['audio_codec'] ?? null,
         ];
 
-        // Atomic claim transaction - inner try-catch handles all exceptions so transaction commits
-        DB::transaction(function () use (
-            $asset,
-            $recommendation,
-            $action,
-            $renderConfiguration,
-            $renderLockWaitSeconds,
-            $durationMs,
-            $sourceMedia,
-            $outputStorageKey,
-        ) {
-            try {
+        // Atomic claim transaction
+        try {
+            DB::transaction(function () use (
+                $asset,
+                $recommendation,
+                $action,
+                $renderConfiguration,
+                $renderLockWaitSeconds,
+                $durationMs,
+                $sourceMedia,
+                $outputStorageKey,
+                $transcriptState,
+                $transcriptContentHash,
+            ) {
                 if (DB::connection()->getDriverName() === 'pgsql') {
                     DB::select('SELECT set_config(\'lock_timeout\', ?, true)', [$renderLockWaitSeconds.'s']);
                 }
@@ -260,109 +262,101 @@ class RenderMediaClip implements ShouldQueue
                     'transcript_content_hash' => $transcriptContentHash,
                 ];
 
-                // Build render contract (singular format)
-                $renderContract = MediaProcessingContract::renderClipRequest(
-                    $asset->id,
-                    $durationMs,
-                    $recommendation->toArray(),
-                    $recommendation->id,
-                    $this->candidateIndex,
-                    $sourceMedia,
-                    $asset->project_id
-                );
+                try {
+                    // Build render contract (singular format)
+                    $renderContract = MediaProcessingContract::renderClipRequest(
+                        $asset->id,
+                        $durationMs,
+                        $recommendation->toArray(),
+                        $recommendation->id,
+                        $this->candidateIndex,
+                        $sourceMedia,
+                        $asset->project_id
+                    );
 
-                $renderContractObj = MediaProcessingContract::fromArray($renderContract);
+                    $renderContractObj = MediaProcessingContract::fromArray($renderContract);
 
-                // Invoke the worker
-                $result = $action->renderClips($renderContractObj);
+                    // Invoke the worker
+                    $result = $action->renderClips($renderContractObj);
 
-                // Validate result
-                $requestArray = $renderContractObj->toRenderClipMetadataArray();
-                $requestSha256 = hash('sha256', json_encode($requestArray, JSON_THROW_ON_ERROR));
-                RenderValidator::result($result, $requestArray, $requestSha256);
+                    // Validate result
+                    $requestArray = $renderContractObj->toRenderClipMetadataArray();
+                    $requestSha256 = hash('sha256', json_encode($requestArray, JSON_THROW_ON_ERROR));
+                    RenderValidator::result($result, $requestArray, $requestSha256);
 
-                // Mark completed
-                $clip = $result['render']['clips'][0];
-                $locked->render_status = DerivedAsset::RENDER_STATUS_COMPLETED;
-                $locked->render_completed_at = now();
-                $locked->storage_disk = $clip['output']['disk'];
-                $locked->storage_key = $clip['output']['key'];
-                $locked->mime_type = 'video/mp4';
-                $locked->size_bytes = $clip['output']['size_bytes'];
-                $locked->duration_ms = $clip['output']['duration_ms'];
-                $locked->width = $clip['output']['width'];
-                $locked->height = $clip['output']['height'];
-                $locked->codec = $clip['output']['video_codec'];
-                $locked->candidate_index = $clip['candidate_index'];
-                $locked->render_profile_version = RenderProfile::RENDER_PROFILE_VERSION;
-                $locked->render_configuration = $renderConfiguration;
+                    // Mark completed
+                    $clip = $result['render']['clips'][0];
+                    $locked->render_status = DerivedAsset::RENDER_STATUS_COMPLETED;
+                    $locked->render_completed_at = now();
+                    $locked->storage_disk = $clip['output']['disk'];
+                    $locked->storage_key = $clip['output']['key'];
+                    $locked->mime_type = 'video/mp4';
+                    $locked->size_bytes = $clip['output']['size_bytes'];
+                    $locked->duration_ms = $clip['output']['duration_ms'];
+                    $locked->width = $clip['output']['width'];
+                    $locked->height = $clip['output']['height'];
+                    $locked->codec = $clip['output']['video_codec'];
+                    $locked->candidate_index = $clip['candidate_index'];
+                    $locked->render_profile_version = RenderProfile::RENDER_PROFILE_VERSION;
+                    $locked->render_configuration = $renderConfiguration;
 
-                // Merge input_snapshot into render_parameters for idempotency verification
-                $renderParameters = $result['render']['parameters'];
-                $renderParameters['input_snapshot'] = $inputSnapshot;
-                $locked->render_parameters = $renderParameters;
+                    // Merge input_snapshot into render_parameters for idempotency verification
+                    $renderParameters = $result['render']['parameters'];
+                    $renderParameters['input_snapshot'] = $inputSnapshot;
+                    $locked->render_parameters = $renderParameters;
 
-                $locked->render_error = null;
-                $locked->save();
-            } catch (\Throwable $e) {
-                // All exceptions are caught here to ensure the transaction commits
-                // We only proceed if we have a locked row
-                if ($locked === null) {
-                    // Nothing to mark as failed - just return
-                    return;
-                }
-
-                // Handle ProcessMediaException with specific logic
-                if ($e instanceof ProcessMediaException) {
+                    $locked->render_error = null;
+                    $locked->save();
+                } catch (ProcessMediaException $e) {
                     if ($e->getMessage() === 'clip_render_aborted' && $e->getPrevious() === null) {
-                        $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
-                        $locked->render_completed_at = now();
-                        $locked->render_error = 'clip_render_aborted';
-                        try {
-                            $locked->save();
-                        } catch (\Throwable) {
-                            // Ignore save failure
-                        }
-                        return;
+                        throw new RenderAbortedException;
                     }
 
                     if ($e->getMessage() === 'invalid_configuration') {
-                        $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
-                        $locked->render_completed_at = now();
-                        $locked->render_error = 'invalid_configuration';
-                        try {
-                            $locked->save();
-                        } catch (\Throwable) {
-                            // Ignore save failure
-                        }
-                        return;
+                        throw $e;
                     }
 
                     if ($e->getMessage() === 'invalid_input') {
                         $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
                         $locked->render_completed_at = now();
                         $locked->render_error = 'invalid_input';
-                        try {
-                            $locked->save();
-                        } catch (\Throwable) {
-                            // Ignore save failure
-                        }
+                        $locked->save();
+
                         return;
                     }
-                }
 
-                // All other exceptions (including validation failures, JsonException, etc.)
-                // are treated as worker/validation failures - mark as failed and commit
-                $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
-                $locked->render_completed_at = now();
-                $locked->render_error = 'render_failed';
-                try {
+                    // Expected worker/validation failure: sanitized failed render only
+                    $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
+                    $locked->render_completed_at = now();
+                    $locked->render_error = 'render_failed';
                     $locked->save();
-                } catch (\Throwable) {
-                    // Ignore save failure
                 }
+            });
+        } catch (\Throwable $exception) {
+            if ($this->isLockTimeout($exception)) {
+                throw new RenderBusyException;
             }
-        });
+
+            if ($exception instanceof ProcessMediaException
+                && in_array($exception->getMessage(), ['clip_render_aborted', 'invalid_configuration'], true)
+                && $exception->getPrevious() === null) {
+                throw $exception;
+            }
+
+            if ($exception instanceof RenderAbortedException) {
+                throw $exception;
+            }
+
+            if ($exception instanceof RenderBusyException) {
+                throw $exception;
+            }
+
+            Log::error('RenderMediaClip: render aborted without resolution', [
+                'media_asset_id' => $asset->id,
+            ]);
+
+            throw new RenderAbortedException;
+        }
 
         // Fresh reread after transaction
         $completedRender = DerivedAsset::where('media_asset_id', $asset->id)

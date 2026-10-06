@@ -65,17 +65,19 @@ Completed slices:
 
 - Model-backed semantic clip recommendation stage (Issue #64, PR #66 — merged; issue closed; PR #65 superseded and closed unmerged)
 
-## M6 — Vertical Clip Rendering (M6.1 completed)
+## M6 — Vertical Clip Rendering (M6.1 completed, M6.2 in progress)
 
 Completed slices:
 
 - Durable baseline vertical clip render pipeline (Issue #69, PR #73 — merged; issue closed): `ffmpeg_vertical_baseline` v1.0.0, render profile `vertical_v1`, dedicated `RenderMediaClip` queue job, `DerivedAsset` persistence with `type=clip_rendered`, explicit candidate selection, render status/error/timestamp tracking. No automatic render stage in `ProcessMediaAsset`. Captions, batch rendering, and additional profiles are out of scope for M6.1.
 
+- Deterministic caption burn-in for explicit vertical clip rendering (Issue #76, PR #77 — in progress): Extends `ffmpeg_vertical_baseline` v1.0.0 with optional caption burn-in via FFmpeg `drawtext` filter chain. Captions derived from `MediaTranscript.segments`, mapped to candidate-local timebase, escaped for FFmpeg safety. Worker contract `render_clip` v1.0.0 extended additively with top-level `captions` object and `configuration.captions` styling. Graceful fallback when transcript unavailable (M6.1 behavior). Idempotent, deterministic, version-conflict-aware.
+
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
-| M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2+ planned) |
+| M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2 in progress; M6.3+ planned) |
 | M7 | Clip Review Experience |
 | M8 | AI Image Studio |
 | M9 | Social Connection Framework |

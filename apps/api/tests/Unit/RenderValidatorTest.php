@@ -2,9 +2,9 @@
 
 namespace Tests\Unit;
 
-use App\Services\RenderValidator;
-use App\Services\RenderProfile;
 use App\Exceptions\ProcessMediaException;
+use App\Services\RenderProfile;
+use App\Services\RenderValidator;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -47,6 +47,7 @@ function renderRequestWithCandidateIndex(int $index): array
 {
     $request = renderRequest();
     $request['candidate_index'] = $index;
+
     return $request;
 }
 
@@ -145,6 +146,7 @@ it('rejects missing version', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -158,6 +160,7 @@ it('rejects invalid version', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unsupported render contract version');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -171,6 +174,7 @@ it('rejects invalid action', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unsupported render action');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -184,6 +188,7 @@ it('rejects missing media.duration_ms', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an object');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -197,6 +202,7 @@ it('rejects invalid media.duration_ms (non-integer)', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -210,6 +216,7 @@ it('rejects media.duration_ms out of bounds (zero)', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -223,6 +230,7 @@ it('rejects media.duration_ms above maximum', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -236,6 +244,7 @@ it('rejects missing candidate_index', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -248,6 +257,7 @@ it('rejects candidate_index negative', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('candidate_index must be non-negative');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -261,6 +271,7 @@ it('rejects missing candidate object', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -274,6 +285,7 @@ it('rejects missing candidate.start_ms', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -287,6 +299,7 @@ it('rejects missing candidate.end_ms', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -300,6 +313,7 @@ it('rejects candidate.start_ms negative', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -313,6 +327,7 @@ it('rejects candidate.end_ms <= start_ms', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -326,6 +341,7 @@ it('rejects candidate.end_ms > media.duration_ms', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -339,6 +355,7 @@ it('rejects missing configuration', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -352,6 +369,7 @@ it('rejects invalid target_width (odd)', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -365,6 +383,7 @@ it('rejects invalid target_width (> 4096)', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -378,6 +397,7 @@ it('rejects invalid target_width (< 1)', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -391,6 +411,7 @@ it('rejects invalid target_height (odd)', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -404,6 +425,7 @@ it('rejects invalid target_fps out of bounds', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -417,6 +439,7 @@ it('rejects invalid video_codec not in enum', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -430,6 +453,7 @@ it('rejects invalid video_bitrate_kbps out of bounds', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -443,6 +467,7 @@ it('rejects invalid audio_codec not in enum', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -456,6 +481,7 @@ it('rejects invalid audio_bitrate_kbps out of bounds', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render configuration is not the selected profile');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -469,6 +495,7 @@ it('rejects missing source_media', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -482,6 +509,7 @@ it('rejects missing output_storage', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -495,6 +523,7 @@ it('rejects output_storage.mime_type not video/mp4', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('output_storage.mime_type must be video/mp4');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -508,6 +537,7 @@ it('rejects unknown field in request', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -522,6 +552,7 @@ it('rejects input size > 8MB', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -535,6 +566,7 @@ it('rejects recommendation in worker request', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -548,6 +580,7 @@ it('rejects recommendation_id in worker request', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -561,6 +594,7 @@ it('rejects media_asset_id in worker request', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -574,6 +608,7 @@ it('rejects project_id in worker request', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Unexpected key set');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -600,6 +635,7 @@ it('rejects missing algorithm', function () {
         RenderValidator::result($result, $request, requestDigest($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -613,6 +649,7 @@ it('rejects wrong algorithm value', function () {
         RenderValidator::result($result, $request, requestDigest($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -626,6 +663,7 @@ it('rejects wrong algorithm_version', function () {
         RenderValidator::result($result, $request, requestDigest($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -639,6 +677,7 @@ it('rejects clips array length != 1', function () {
         RenderValidator::result($result, $request, requestDigest($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -652,6 +691,7 @@ it('rejects clip candidate_index mismatch', function () {
         RenderValidator::result($result, $request, requestDigest($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -665,6 +705,7 @@ it('rejects clip bounds mismatch (start_ms)', function () {
         RenderValidator::result($result, $request, requestDigest($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -678,6 +719,7 @@ it('rejects clip bounds mismatch (end_ms)', function () {
         RenderValidator::result($result, $request, requestDigest($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -691,6 +733,7 @@ it('rejects missing output metadata fields', function () {
         RenderValidator::result($result, $request, requestDigest($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -705,6 +748,36 @@ it('rejects SHA256 binding mismatch', function () {
         RenderValidator::result($result, $request, $wrongDigest);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects worker result configuration that dropped the captions echo', function () {
+    $request = renderRequest();
+    $result = renderResult(['render.parameters.configuration.captions' => '__REMOVE__']);
+
+    try {
+        RenderValidator::result($result, $request, requestDigest($request));
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Render validation failed');
+
+        return;
+    }
+    throw new \Exception('Expected ProcessMediaException');
+});
+
+it('rejects worker result configuration whose captions differ from the request', function () {
+    $request = renderRequest();
+    $result = renderResult();
+    $result['render']['parameters']['configuration']['captions']['font_size'] = 48;
+
+    try {
+        RenderValidator::result($result, $request, requestDigest($request));
+    } catch (ProcessMediaException $e) {
+        expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -884,6 +957,7 @@ function renderRequestWithCaptions(array $captions = []): array
         ],
     ];
     $request['captions'] = array_merge($defaultCaptions, $captions);
+
     return $request;
 }
 
@@ -1054,6 +1128,7 @@ it('rejects captions object missing segments', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('captions.segments must be a list');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1065,6 +1140,7 @@ it('rejects captions.segments not an array', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('captions.segments must be a list');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1080,6 +1156,7 @@ it('rejects segment missing start_ms', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Caption segment missing start_ms');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1095,6 +1172,7 @@ it('rejects segment missing end_ms', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Caption segment missing end_ms');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1110,6 +1188,7 @@ it('rejects segment missing text', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Caption segment missing text');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1125,6 +1204,7 @@ it('rejects segment with start_ms < 0', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1140,6 +1220,7 @@ it('rejects segment with end_ms <= start_ms', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Expected an integer inside the allowed range');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1155,6 +1236,7 @@ it('rejects segment with text not a string', function () {
         RenderValidator::request($request);
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Caption segment text must be non-empty string');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1173,6 +1255,7 @@ it('result validation: filter_graph lacks drawtext when captions requested', fun
         RenderValidator::result($result, $request, hash('sha256', json_encode($request, JSON_THROW_ON_ERROR)));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
@@ -1185,6 +1268,7 @@ it('result validation: filter_graph contains drawtext when no captions requested
         RenderValidator::result($result, $request, hash('sha256', json_encode($request, JSON_THROW_ON_ERROR)));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
+
         return;
     }
     throw new \Exception('Expected ProcessMediaException');
