@@ -287,11 +287,12 @@ final class M5RecommendationFixture
     }
 
     /**
-     * SHA256 of the exact request bytes Laravel sends to the worker.
+     * SHA256 of the exact canonical request bytes Laravel sends to the worker.
+     * Uses canonical JSON (sorted keys, no whitespace) per spec.md Entry J.
      */
     public static function requestDigest(MediaProcessingContract $contract): string
     {
-        return hash('sha256', json_encode($contract->toRankClipsMetadataArray(), JSON_THROW_ON_ERROR));
+        return CanonicalJson::sha256($contract->toRankClipsMetadataArray());
     }
 
     /**

@@ -253,8 +253,11 @@ it('full job with real worker, FFmpeg, transcript produces DerivedAsset with cap
         $this->markTestSkipped('FFmpeg not available');
     }
 
-    // Font is installed via fonts-dejavu-core in CI workflow
-    // No need to check for it here
+    // Check if DejaVu Sans Bold font is available (required for caption burn-in)
+    $fontPath = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    if (! file_exists($fontPath)) {
+        $this->markTestSkipped("Font file not found: {$fontPath}");
+    }
 
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
@@ -300,6 +303,12 @@ it('output file exists at expected storage key', function () {
         $this->markTestSkipped('FFmpeg not available');
     }
 
+    // Check if DejaVu Sans Bold font is available (required for caption burn-in)
+    $fontPath = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    if (! file_exists($fontPath)) {
+        $this->markTestSkipped("Font file not found: {$fontPath}");
+    }
+
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
     $clipAnalysis = createCompletedClipAnalysisForRealWorker($asset);
@@ -327,6 +336,12 @@ it('DerivedAsset render_parameters includes caption config and filter_graph', fu
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
+    }
+
+    // Check if DejaVu Sans Bold font is available (required for caption burn-in)
+    $fontPath = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    if (! file_exists($fontPath)) {
+        $this->markTestSkipped("Font file not found: {$fontPath}");
     }
 
     $asset = createProbedAssetForRealWorker();
@@ -382,6 +397,12 @@ it('DerivedAsset output metadata matches probe within tolerance', function () {
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
+    }
+
+    // Check if DejaVu Sans Bold font is available (required for caption burn-in)
+    $fontPath = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    if (! file_exists($fontPath)) {
+        $this->markTestSkipped("Font file not found: {$fontPath}");
     }
 
     $asset = createProbedAssetForRealWorker();
@@ -447,6 +468,12 @@ it('different candidate_index produces distinct DerivedAsset row', function () {
         $this->markTestSkipped('FFmpeg not available');
     }
 
+    // Check if DejaVu Sans Bold font is available (required for caption burn-in)
+    $fontPath = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    if (! file_exists($fontPath)) {
+        $this->markTestSkipped("Font file not found: {$fontPath}");
+    }
+
     $asset = createProbedAssetForRealWorker();
     $sceneAnalysis = createCompletedSceneAnalysisForRealWorker($asset);
     $clipAnalysis = createCompletedClipAnalysisForRealWorker($asset);
@@ -486,6 +513,12 @@ it('without transcript: M6.1 regression still works (no captions)', function () 
     $ffmpegCheck = shell_exec('which ffmpeg');
     if (! $ffmpegCheck) {
         $this->markTestSkipped('FFmpeg not available');
+    }
+
+    // Check if DejaVu Sans Bold font is available (required for caption burn-in when transcript exists)
+    $fontPath = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    if (! file_exists($fontPath)) {
+        $this->markTestSkipped("Font file not found: {$fontPath}");
     }
 
     $asset = createProbedAssetForRealWorker();

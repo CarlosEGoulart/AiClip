@@ -347,13 +347,15 @@ it('runs the real python rank-clips CLI with the exact fake profile and persists
     expect($result['ranking']['algorithm_version'])->toBe('1.0.0');
 
     $parameters = $result['ranking']['parameters'];
-    expect(array_keys($parameters))->toBe([
-        'provider', 'projection_version', 'query_version', 'prototype_query', 'model_id',
-        'model_revision', 'runtime_profile', 'normalization', 'max_tokens', 'batch_size',
-        'truncation', 'provider_name', 'inference_performed', 'transcript_used',
-    ]);
+    // Parameter key order is not contractual (spec uses canonical JSON with sorted keys).
+    // Verify semantic content: all expected keys present with correct values.
     expect($parameters)->toHaveCount(14);
-    expect($parameters)->toBe(issue64FakeParameters());
+    expect(array_keys($parameters))->toHaveCount(14);
+    $expectedParams = issue64FakeParameters();
+    foreach ($expectedParams as $key => $value) {
+        expect($parameters)->toHaveKey($key);
+        expect($parameters[$key])->toBe($value);
+    }
     expect($parameters['provider'])->toBe('fake');
     expect($parameters['provider_name'])->toBe('fake_ranking_provider');
     expect($parameters['provider'])->not->toBe($parameters['provider_name']);
@@ -477,7 +479,14 @@ it('runs the real python rank-clips CLI with the exact fake profile and persists
     expect($persisted->m4_analysis_id)->toBe($scenario['m4']->id);
     expect($persisted->algorithm)->toBe('transcript_semantic_recommendation');
     expect($persisted->algorithm_version)->toBe('1.0.0');
-    expect($persisted->parameters)->toBe(issue64FakeParameters());
+    // Parameter key order is not contractual (spec uses canonical JSON with sorted keys).
+    // Verify semantic content: all expected keys present with correct values.
+    $expectedParams = issue64FakeParameters();
+    expect($persisted->parameters)->toHaveCount(count($expectedParams));
+    foreach ($expectedParams as $key => $value) {
+        expect($persisted->parameters)->toHaveKey($key);
+        expect($persisted->parameters[$key])->toBe($value);
+    }
     // Semantic comparison: check structure and numeric values with tolerance
     // for JSONB integer conversion (PHP may cast float 1.0 to int 1).
     $expected = $result['ranking']['recommendations'];
@@ -551,7 +560,14 @@ it('keeps a mixed candidate set at K entries with the unscored candidate null an
 
     expect($result['status'])->toBe('success');
     expect($result['ranking']['request_sha256'])->toBe($scenario['digest']);
-    expect($result['ranking']['parameters'])->toBe(issue64FakeParameters());
+    // Parameter key order is not contractual (spec uses canonical JSON with sorted keys).
+    // Verify semantic content: all expected keys present with correct values.
+    $expectedParams = issue64FakeParameters();
+    expect($result['ranking']['parameters'])->toHaveCount(count($expectedParams));
+    foreach ($expectedParams as $key => $value) {
+        expect($result['ranking']['parameters'])->toHaveKey($key);
+        expect($result['ranking']['parameters'][$key])->toBe($value);
+    }
 
     // K entries, never fewer: one scored reference first, then the unscored
     // reference with both semantic fields null and the fixed reason.
