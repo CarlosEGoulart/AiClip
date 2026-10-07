@@ -222,6 +222,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         config: RenderConfiguration,
         source_width: int,
         source_height: int,
+        caption_file: str | None = None,
     ) -> str:
         """Build the FFmpeg filter graph for vertical reframe."""
         # Center crop to 9:16 aspect ratio
@@ -238,6 +239,10 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             f"fps={config.target_fps}",
         ]
 
+        # Optional subtitles filter after fps, before encode
+        if caption_file is not None:
+            filter_parts.append(f"subtitles={caption_file}")
+
         return ",".join(filter_parts)
 
     def _build_filter_graph(
@@ -246,8 +251,9 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
         config: RenderConfiguration,
         source_width: int,
         source_height: int,
+        caption_file: str | None = None,
     ) -> str:
-        return self._build_filter_graph_core(config, source_width, source_height)
+        return self._build_filter_graph_core(config, source_width, source_height, caption_file)
 
     def _run_ffmpeg(
         self,
@@ -519,7 +525,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             except Exception:
                 pass
 
-    def render_singular(self, duration_ms: int, source_media: SourceMediaInfo, start_ms: int, end_ms: int, configuration: RenderConfiguration, output_key: str, output_disk: str, candidate_index: int) -> dict[str, Any]:
+    def render_singular(self, duration_ms: int, source_media: SourceMediaInfo, start_ms: int, end_ms: int, configuration: RenderConfiguration, output_key: str, output_disk: str, candidate_index: int, caption_file: str | None = None) -> dict[str, Any]:
         """Render a singular vertical clip given explicit timing parameters."""
         # Validate timing bounds
         if start_ms < 0 or start_ms > duration_ms:
@@ -561,14 +567,12 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                 raise RenderFailed(f"Source media expected no audio stream, but got audio codec: {probed_audio_codec}")
 
         # Build filter graph using source media dimensions (from source_media, which should match probed)
-        # For safety, we could log but we'll proceed with source_media dimensions for filter graph.
-
-        # Build filter graph using source media dimensions (from source_media, which should match probed)
         filter_graph = self._build_filter_graph(
             None,
             configuration,
             source_media.width,
             source_media.height,
+            caption_file=caption_file,
         )
 
         # Calculate timing

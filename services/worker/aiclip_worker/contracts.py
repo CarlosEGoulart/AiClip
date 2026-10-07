@@ -61,6 +61,8 @@ RENDER_CLIP_CONFIG_KEYS = ("target_width", "target_height", "target_fps", "video
 RENDER_CLIP_SOURCE_MEDIA_KEYS = ("disk", "key", "width", "height", "video_codec", "audio_codec")
 RENDER_CLIP_OUTPUT_STORAGE_KEYS = ("disk", "key", "mime_type")
 
+
+
 VALID_VIDEO_CODECS = ("libx264", "libx265", "h264_videotoolbox", "hevc_videotoolbox")
 VALID_AUDIO_CODECS = ("aac", "libfdk_aac", "copy")
 
@@ -610,6 +612,9 @@ def validate_render_clip_contract(contract: object) -> tuple[bool, str]:
 def _validate_render_clip(contract: dict[str, Any]) -> tuple[bool, str]:
     """Validate render_clip contract with strict checks."""
     return validate_render_clip_contract(contract)
+
+
+
 
 
 def validate_contract(contract: dict[str, Any]) -> tuple[bool, str]:

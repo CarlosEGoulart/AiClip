@@ -136,6 +136,7 @@ def render_clip(contract: dict) -> dict:
     output_key = contract["output_storage"]["key"]
     output_disk = contract["output_storage"]["disk"]
     candidate_index = contract["candidate_index"]
+    caption_file = contract.get("caption_file")  # optional, may be absent or null
 
     # Extract timing parameters
     duration_ms = contract["media"]["duration_ms"]
@@ -155,6 +156,7 @@ def render_clip(contract: dict) -> dict:
         output_key=output_key,
         output_disk=output_disk,
         candidate_index=candidate_index,
+        caption_file=caption_file,
     )
 
     # Convert to output format (same as render_clips function)

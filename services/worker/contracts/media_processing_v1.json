@@ -247,6 +247,7 @@
           }
         },
         "candidate_index": { "type": "integer", "minimum": 0 },
+        "caption_file": { "type": ["string", "null"], "description": "Optional caption file path for burn-in subtitles" },
         "configuration": {
           "type": "object",
           "additionalProperties": false,
