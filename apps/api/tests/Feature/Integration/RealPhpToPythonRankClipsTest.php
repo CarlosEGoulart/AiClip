@@ -17,6 +17,7 @@ use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Event;
 use Symfony\Component\Process\Process;
 use Tests\Support\M5RecommendationFixture;
+use Tests\Support\CanonicalJson;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
@@ -333,7 +334,7 @@ it('runs the real python rank-clips CLI with the exact fake profile and persists
     // Exact stdin digest bound to the returned ranking
     // ------------------------------------------------------------------
     expect($result['ranking']['request_sha256'])->toBe($scenario['digest']);
-    expect($scenario['digest'])->toBe(hash('sha256', json_encode($request, JSON_THROW_ON_ERROR)));
+    expect($scenario['digest'])->toBe(CanonicalJson::sha256($request));
 
     // ------------------------------------------------------------------
     // Exact fake identity end to end, selector distinct from provider name

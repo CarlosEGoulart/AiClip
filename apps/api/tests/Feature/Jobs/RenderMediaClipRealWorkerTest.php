@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use Tests\Support\CanonicalJson;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
@@ -204,7 +205,7 @@ function createCompletedRecommendationForRealWorker(MediaAsset $asset, MediaClip
                 ['index' => 0, 'sha256' => hash('sha256', 'First segment')],
                 ['index' => 1, 'sha256' => hash('sha256', 'Second segment')],
             ],
-            'request_sha256' => hash('sha256', json_encode([
+            'request_sha256' => CanonicalJson::sha256([
                 'version' => '1.0.0',
                 'action' => 'rank_clips',
                 'media' => ['duration_ms' => 30000],
@@ -213,7 +214,7 @@ function createCompletedRecommendationForRealWorker(MediaAsset $asset, MediaClip
                     ['index' => 1, 'start_ms' => 10000, 'end_ms' => 20000, 'm4_rank' => 2, 'm4_score' => 0.5, 'transcript_text' => 'Second segment'],
                 ],
                 'configuration' => ClipRankingProfile::configuration(),
-            ], JSON_THROW_ON_ERROR)),
+            ]),
         ],
         'execution_parameters' => $executionParameters,
     ]);

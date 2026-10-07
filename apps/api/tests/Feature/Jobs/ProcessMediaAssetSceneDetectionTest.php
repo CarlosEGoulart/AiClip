@@ -14,6 +14,7 @@ use App\Services\ClipRankingProfile;
 use App\Services\ProcessMediaAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
+use Tests\Support\CanonicalJson;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
@@ -89,10 +90,7 @@ function sceneRankClipsResult(MediaProcessingContract $contract): array
             'algorithm' => $configuration['algorithm'],
             'algorithm_version' => $configuration['algorithm_version'],
             'parameters' => ClipRankingProfile::parameters($configuration, false, true),
-            'request_sha256' => hash('sha256', json_encode(
-                $contract->toRankClipsMetadataArray(),
-                JSON_THROW_ON_ERROR
-            )),
+            'request_sha256' => CanonicalJson::sha256($contract->toRankClipsMetadataArray()),
             'recommendations' => $recommendations,
         ],
     ];
@@ -606,7 +604,7 @@ it('skips scene detection if analysis exists with completed status', function ()
         ['index' => 0, 'sha256' => hash('sha256', 'Already transcribed')],
     ]);
     expect($recommendation->input_snapshot['request_sha256'])
-        ->toBe(hash('sha256', json_encode($rankingCalls[0], JSON_THROW_ON_ERROR)));
+        ->toBe(CanonicalJson::sha256($rankingCalls[0]));
 });
 
 /*

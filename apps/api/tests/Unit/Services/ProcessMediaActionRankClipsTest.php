@@ -9,6 +9,7 @@ use App\Services\ClipRecommendationValidator;
 use App\Services\ProcessMediaAction;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
+use Tests\Support\CanonicalJson;
 
 uses(TestCase::class);
 
@@ -93,7 +94,7 @@ function rankClipsSuccessPayload(array $request): array
             'algorithm' => 'transcript_semantic_recommendation',
             'algorithm_version' => '1.0.0',
             'parameters' => $parameters,
-            'request_sha256' => hash('sha256', (string) json_encode($request, JSON_THROW_ON_ERROR)),
+            'request_sha256' => CanonicalJson::sha256($request),
             'recommendations' => [
                 [
                     'm4_candidate_index' => 0,
@@ -267,12 +268,14 @@ it('rank_clips sends the exact request bytes and binds the response digest', fun
     // project, storage or criteria metadata crosses the boundary.
     $decoded = json_decode((string) $process->sentInput, true);
 
-    expect($process->sentInput)->toBe(json_encode($request, JSON_THROW_ON_ERROR))
+    $canonicalRequest = CanonicalJson::encode($request);
+
+    expect($process->sentInput)->toBe($canonicalRequest)
         ->and(hash('sha256', (string) $process->sentInput))->toBe($response['ranking']['request_sha256'])
-        ->and(array_keys($decoded))->toBe(['version', 'action', 'media', 'candidates', 'configuration'])
+        ->and(array_keys($decoded))->toBe(['action', 'candidates', 'configuration', 'media', 'version'])
         ->and(array_keys($decoded['media']))->toBe(['duration_ms'])
         ->and(array_keys($decoded['candidates'][0]))->toBe([
-            'index', 'start_ms', 'end_ms', 'm4_rank', 'm4_score', 'transcript_text',
+            'end_ms', 'index', 'm4_rank', 'm4_score', 'start_ms', 'transcript_text',
         ])
         ->and($decoded)->not->toHaveKey('media_asset_id')
         ->and($decoded)->not->toHaveKey('project_id')

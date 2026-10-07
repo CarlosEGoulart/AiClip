@@ -9,6 +9,7 @@ use App\Services\ProcessMediaAction;
 use Illuminate\Support\Arr;
 use Symfony\Component\Process\Process;
 use Tests\TestCase;
+use Tests\Support\CanonicalJson;
 
 uses(TestCase::class);
 
@@ -76,7 +77,7 @@ function fakeRankClipsSuccessPayload(array $request): array
             'algorithm' => 'transcript_semantic_recommendation',
             'algorithm_version' => '1.0.0',
             'parameters' => $parameters,
-            'request_sha256' => hash('sha256', (string) json_encode($request, JSON_THROW_ON_ERROR)),
+            'request_sha256' => CanonicalJson::sha256($request),
             'recommendations' => [
                 [
                     'm4_candidate_index' => 0,

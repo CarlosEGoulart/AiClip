@@ -12,6 +12,7 @@ use App\Services\ProcessMediaAction;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
+use Tests\Support\CanonicalJson;
 use Tests\Support\M5RecommendationFixture as Fixture;
 use Tests\TestCase;
 
@@ -138,7 +139,7 @@ it('invokes ranking once with the exact request and records a completed recommen
     ]);
     // The recorded digest binds the snapshot to the exact bytes that were sent.
     expect($row->input_snapshot['request_sha256'])
-        ->toBe(hash('sha256', json_encode($request, JSON_THROW_ON_ERROR)));
+        ->toBe(CanonicalJson::sha256($request));
 
     // Raw transcript text is never persisted in the new snapshot.
     expect(json_encode($row->input_snapshot))->not->toContain('window text');

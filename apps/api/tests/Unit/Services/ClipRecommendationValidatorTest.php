@@ -6,6 +6,7 @@ use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
 use App\Services\ClipRecommendationValidator;
 use Tests\TestCase;
+use Tests\Support\CanonicalJson;
 
 uses(TestCase::class);
 
@@ -91,11 +92,6 @@ function specRequest(string $provider = 'fake'): array
     ];
 }
 
-function sentBytes(array $request): string
-{
-    return json_encode($request, JSON_THROW_ON_ERROR);
-}
-
 /**
  * A fully eligible two-candidate request whose M4 ranks are supplied so that
  * ranking-rule orderings (which must follow M4 rank, not candidate index) can
@@ -143,7 +139,7 @@ function specEligibleResponse(array $request, array $order): array
 
 function requestDigest(array $request): string
 {
-    return hash('sha256', sentBytes($request));
+    return CanonicalJson::sha256($request);
 }
 
 function specResponse(array $request, array $overrides = []): array
@@ -479,7 +475,8 @@ it('rejects a response whose digest does not match the exact sent bytes', functi
 
     // The bound digest must be the SHA256 of the exact bytes handed to the
     // worker, not of a reserialized approximation of the same structure.
-    $reserialized = json_encode(json_decode(sentBytes($request)));
+    $nonCanonicalJson = json_encode($request, JSON_THROW_ON_ERROR);
+    $reserialized = json_encode(json_decode($nonCanonicalJson));
     $response['ranking']['request_sha256'] = hash('sha256', $reserialized.' ');
 
     assertRankingRejected($response, $request);

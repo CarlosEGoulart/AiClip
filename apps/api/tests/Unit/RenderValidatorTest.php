@@ -6,6 +6,7 @@ use App\Exceptions\ProcessMediaException;
 use App\Services\RenderProfile;
 use App\Services\RenderValidator;
 use Tests\TestCase;
+use Tests\Support\CanonicalJson;
 
 uses(TestCase::class);
 
@@ -54,7 +55,7 @@ function renderRequestWithCandidateIndex(int $index): array
 function renderResult(array $overrides = []): array
 {
     $request = renderRequest();
-    $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+    $requestSha256 = CanonicalJson::sha256($request);
 
     $result = [
         'status' => 'success',
@@ -123,7 +124,7 @@ function renderResult(array $overrides = []): array
 
 function requestDigest(array $request): string
 {
-    return hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+    return CanonicalJson::sha256($request);
 }
 
 /*
@@ -792,7 +793,7 @@ it('rejects worker result configuration whose captions differ from the request',
 function renderCompletion(array $overrides = []): array
 {
     $request = renderRequest();
-    $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+    $requestSha256 = CanonicalJson::sha256($request);
 
     // Use configuration with captions disabled for M6.1 compatibility
     $configWithoutCaptions = RenderProfile::configuration();
@@ -969,7 +970,7 @@ function renderRequestWithoutCaptions(): array
 function renderResultWithCaptions(array $overrides = []): array
 {
     $request = renderRequestWithCaptions();
-    $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+    $requestSha256 = CanonicalJson::sha256($request);
 
     $result = [
         'status' => 'success',
@@ -1039,7 +1040,7 @@ function renderResultWithCaptions(array $overrides = []): array
 function renderCompletionWithCaptions(array $overrides = []): array
 {
     $request = renderRequestWithCaptions();
-    $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+    $requestSha256 = CanonicalJson::sha256($request);
 
     $result = [
         'algorithm' => RenderValidator::ALGORITHM,
@@ -1245,14 +1246,14 @@ it('rejects segment with text not a string', function () {
 it('result validation: filter_graph contains drawtext when captions requested', function () {
     $request = renderRequestWithCaptions();
     $result = renderResultWithCaptions();
-    expect(RenderValidator::result($result, $request, hash('sha256', json_encode($request, JSON_THROW_ON_ERROR))))->toBe($result);
+    expect(RenderValidator::result($result, $request, CanonicalJson::sha256($request)))->toBe($result);
 });
 
 it('result validation: filter_graph lacks drawtext when captions requested', function () {
     $request = renderRequestWithCaptions();
     $result = renderResultWithCaptions(['render.parameters.filter_graph' => 'crop=...,fps=30']); // No drawtext
     try {
-        RenderValidator::result($result, $request, hash('sha256', json_encode($request, JSON_THROW_ON_ERROR)));
+        RenderValidator::result($result, $request, CanonicalJson::sha256($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
 
@@ -1265,7 +1266,7 @@ it('result validation: filter_graph contains drawtext when no captions requested
     $request = renderRequestWithoutCaptions();
     $result = renderResultWithCaptions(); // Has drawtext
     try {
-        RenderValidator::result($result, $request, hash('sha256', json_encode($request, JSON_THROW_ON_ERROR)));
+        RenderValidator::result($result, $request, CanonicalJson::sha256($request));
     } catch (ProcessMediaException $e) {
         expect($e->getMessage())->toBe('Render validation failed');
 
