@@ -115,10 +115,21 @@ def _emit(result: dict[str, Any]) -> int:
     return 1
 
 
+def _sort_keys_recursive(value: Any) -> Any:
+    """Recursively sort dictionary keys for canonical JSON."""
+    if isinstance(value, dict):
+        return {k: _sort_keys_recursive(v) for k, v in sorted(value.items())}
+    elif isinstance(value, list):
+        return [_sort_keys_recursive(v) for v in value]
+    else:
+        return value
+
+
 def _canonical_json(value: Any) -> str:
-    """Serialize to canonical JSON: sorted keys, no whitespace, no ASCII escaping."""
+    """Serialize to canonical JSON: sorted keys (recursive), no whitespace, no ASCII escaping."""
+    sorted_value = _sort_keys_recursive(value)
     return json.dumps(
-        value,
+        sorted_value,
         allow_nan=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -235,7 +246,6 @@ def run_cli(argv: list[str]) -> int:
     The request is accepted from stdin only; argument-list
     and file transports are rejected without echoing their payload.
     """
-    import traceback
     try:
         parser = _Parser(prog="aiclip_worker render-clip", add_help=False)
         parser.parse_args(argv)  # any argument is rejected without echo
@@ -250,16 +260,17 @@ def run_cli(argv: list[str]) -> int:
             parse_float=_finite_float,
             object_pairs_hook=_unique_object,
         )
-        request_sha256 = hashlib.sha256(_canonical_json(contract).encode("utf-8")).hexdigest()
-    except (OSError, ValueError, TypeError, UnicodeError, RecursionError) as e:
-        return _emit(error("invalid_contract", traceback.format_exc()))
+        # Compute digest from raw request bytes for exact binding
+        request_sha256 = hashlib.sha256(raw).hexdigest()
+    except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
+        return _emit(error("invalid_contract"))
 
     try:
         # Validate contract
         try:
             is_valid, _reason = validate_contract(contract)
         except ContractSchemaUnavailable:
-            return _emit(error("render_failed", traceback.format_exc()))
+            return _emit(error("render_failed"))
         if not is_valid:
             return _emit(error("invalid_contract", "Contract validation failed"))
 
@@ -268,9 +279,9 @@ def run_cli(argv: list[str]) -> int:
 
         result = render_clip(contract, request_sha256)
 
-    except RenderFailed as e:
-        return _emit(error("render_failed", f"RenderFailed: {e}"))
-    except Exception as e:
-        return _emit(error("render_failed", traceback.format_exc()))
+    except RenderFailed:
+        return _emit(error("render_failed"))
+    except Exception:
+        return _emit(error("render_failed"))
 
     return _emit(result)

@@ -173,7 +173,7 @@ def test_real_ffmpeg_on_fixture_horizontal_video():
     assert output["size_bytes"] > 0
     assert output["width"] == 1080
     assert output["height"] == 1920
-    assert output["video_codec"] == "libx264"  # or h264 depending on FFmpeg
+    assert output["video_codec"] == "h264"
     assert output["audio_codec"] == "aac"
     assert output["video_bitrate_kbps"] > 0
     assert output["audio_bitrate_kbps"] > 0
@@ -240,8 +240,8 @@ def test_output_has_correct_codecs():
     result = renderer.render(input_data, config)
 
     clip = result.clips[0]
-    # Video codec should be libx264 (or h264 if FFmpeg uses that name)
-    assert clip.output["video_codec"] in ("libx264", "h264")
+    # Video codec should be h264 (probed value, not encoder name libx264)
+    assert clip.output["video_codec"] == "h264"
     assert clip.output["audio_codec"] == "aac"
 
 

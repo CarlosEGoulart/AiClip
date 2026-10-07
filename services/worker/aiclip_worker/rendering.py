@@ -358,11 +358,11 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             )
         except subprocess.TimeoutExpired:
             raise RenderFailed("FFmpeg timed out")
-        except Exception as e:
-            raise RenderFailed(f"FFmpeg execution failed: {e}")
+        except Exception:
+            raise RenderFailed("FFmpeg execution failed")
 
         if result.returncode != 0:
-            raise RenderFailed(f"FFmpeg failed: {result.stderr}")
+            raise RenderFailed("FFmpeg failed")
 
         # Probe output file for metadata
         try:
@@ -616,7 +616,7 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
             if not font_file:
                 raise RenderFailed("Caption font_file is required but missing in configuration")
             if not Path(font_file).is_file():
-                raise RenderFailed(f"Caption font file not found: {font_file}")
+                raise RenderFailed("Caption font file not found")
 
         # Probe source media to verify metadata and ensure compatibility
         probe_data = self._probe_source_media(source_media.key)

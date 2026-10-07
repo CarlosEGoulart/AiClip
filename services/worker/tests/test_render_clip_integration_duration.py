@@ -154,7 +154,7 @@ def test_render_clip_duration_accuracy_via_function(tmp_path):
     assert output["mime_type"] == "video/mp4"
     assert output["width"] == 1080
     assert output["height"] == 1920
-    assert output["video_codec"] == "libx264"
+    assert output["video_codec"] == "h264"
     assert output["audio_codec"] == "aac"
     assert output["size_bytes"] > 0
     assert output["duration_ms"] > 0
@@ -223,7 +223,7 @@ def test_render_clip_duration_accuracy_via_cli(tmp_path):
     assert output["mime_type"] == "video/mp4"
     assert output["width"] == 1080
     assert output["height"] == 1920
-    assert output["video_codec"] == "libx264"
+    assert output["video_codec"] == "h264"
     assert output["audio_codec"] == "aac"
     assert output["size_bytes"] > 0
     assert output["duration_ms"] > 0

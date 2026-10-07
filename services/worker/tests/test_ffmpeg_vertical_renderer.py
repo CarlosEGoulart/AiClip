@@ -71,7 +71,7 @@ def default_config() -> RenderConfiguration:
 
 
 def test_center_crop_filter_exact_string():
-    """Center-crop filter: crop=ih*9/16:ih:(iw-ih*9/16)/2:0"""
+    """Center-crop filter computes correct integer dimensions for 9:16 aspect ratio."""
     renderer = FFmpegVerticalClipRenderer()
     candidate = RenderCandidate(
         index=0,
@@ -84,8 +84,12 @@ def test_center_crop_filter_exact_string():
 
     filter_graph = renderer._build_filter_graph(candidate, config, 1920, 1080)
 
-    # Check center-crop part
-    assert "crop=ih*9/16:ih:(iw-ih*9/16)/2:0" in filter_graph
+    # Check center-crop part: computed integer values for 1920x1080 source
+    # crop_width = 1080 * 9 / 16 = 607.5 -> 608 (even)
+    # crop_height = 1080
+    # crop_x = (1920 - 608) / 2 = 656
+    # crop_y = 0
+    assert "crop=608:1080:656:0" in filter_graph
 
 
 def test_scale_pad_filter_for_1080x1920():

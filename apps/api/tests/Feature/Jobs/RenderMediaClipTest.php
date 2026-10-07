@@ -205,6 +205,40 @@ class RecordingRenderActionForRender extends ProcessMediaAction
         $this->renderResults = $renderResults;
     }
 
+    /**
+     * Compute canonical JSON for SHA256 binding (matches ProcessMediaAction::canonicalJson).
+     */
+    private static function canonicalJson(mixed $value): string
+    {
+        $sorted = self::sortKeysRecursive($value);
+        return json_encode(
+            $sorted,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+    }
+
+    /**
+     * Recursively sort array keys for canonical JSON.
+     *
+     * @param  mixed  $value
+     * @return mixed
+     */
+    private static function sortKeysRecursive(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        // Check if it's a list (sequential integer keys starting from 0)
+        if (array_is_list($value)) {
+            return array_map([self::class, 'sortKeysRecursive'], $value);
+        }
+
+        // It's an object (associative array) - sort keys and recurse
+        ksort($value);
+        return array_map([self::class, 'sortKeysRecursive'], $value);
+    }
+
     public function renderClips(MediaProcessingContract $contract): array
     {
         $request = $contract->toRenderClipMetadataArray();
@@ -216,11 +250,12 @@ class RecordingRenderActionForRender extends ProcessMediaAction
 
         if (empty($this->renderResults)) {
             // Return default success matching singular render_clip response format
-            $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+            $requestSha256 = hash('sha256', self::canonicalJson($request));
 
             // Build filter_graph - include drawtext when captions are requested
+            // Use computed integer values for crop filter (matches worker implementation)
             $hasCaptions = isset($request['captions']) && is_array($request['captions']) && isset($request['captions']['segments']) && count($request['captions']['segments']) > 0;
-            $baseFilterGraph = 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30';
+            $baseFilterGraph = 'crop=608:1080:656:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30';
             $filterGraph = $hasCaptions ? $baseFilterGraph.',drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text=\'Test\':fontsize=72:fontcolor=white:x=(w-text_w)/2:y=h-th-100' : $baseFilterGraph;
 
             return [
@@ -261,7 +296,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
                                 'duration_ms' => $request['candidate']['end_ms'] - $request['candidate']['start_ms'],
                                 'width' => 1080,
                                 'height' => 1920,
-                                'video_codec' => 'libx264',
+                                'video_codec' => 'h264',
                                 'audio_codec' => 'aac',
                                 'video_bitrate_kbps' => 5000,
                                 'audio_bitrate_kbps' => 128,

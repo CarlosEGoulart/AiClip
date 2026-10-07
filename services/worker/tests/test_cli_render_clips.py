@@ -92,7 +92,7 @@ def test_valid_stdin_json_stdout_json_exit_0():
                                 "configuration": contract["configuration"],
                                 "source_media": contract["source_media"],
                                 "ffmpeg_version": "ffmpeg version 6.0",
-                                "filter_graph": "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30",
+                                "filter_graph": "crop=608:1080:656:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30",
                                 "limits": {
                                     "max_recommendations": 1000,
                                     "max_input_bytes": 8388608,

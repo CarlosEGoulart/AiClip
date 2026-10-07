@@ -200,7 +200,7 @@ class DerivedAssetRenderedClipTest extends TestCase
                 'audio_codec' => 'aac',
             ],
             'ffmpeg_version' => 'ffmpeg version 6.0',
-            'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
+            'filter_graph' => 'crop=608:1080:656:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
             'limits' => [
                 'max_recommendations' => 1000,
                 'max_input_bytes' => 8388608,
@@ -221,7 +221,7 @@ class DerivedAssetRenderedClipTest extends TestCase
             'duration_ms' => 10000,
             'width' => 1080,
             'height' => 1920,
-            'codec' => 'libx264',
+            'codec' => 'h264',
             'render_configuration' => $renderConfig,
             'render_parameters' => $renderParams,
             'render_error' => null,
@@ -253,7 +253,7 @@ class DerivedAssetRenderedClipTest extends TestCase
             'duration_ms' => 10000,
             'width' => 1080,
             'height' => 1920,
-            'codec' => 'libx264',
+            'codec' => 'h264',
         ]);
 
         $mediaAsset->delete();
@@ -291,7 +291,7 @@ class DerivedAssetRenderedClipTest extends TestCase
             'duration_ms' => 10000,
             'width' => 1080,
             'height' => 1920,
-            'codec' => 'libx264',
+            'codec' => 'h264',
             'candidate_index' => 0,
             'render_profile_version' => 'vertical_v1',
             'render_configuration' => RenderProfile::configuration(),

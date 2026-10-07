@@ -250,7 +250,7 @@ class RecordingRenderAction extends ProcessMediaAction
                             'audio_codec' => 'aac',
                         ],
                         'ffmpeg_version' => 'ffmpeg version 6.0',
-                        'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
+                        'filter_graph' => 'crop=608:1080:656:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
                         'limits' => [
                             'max_recommendations' => 1000,
                             'max_input_bytes' => 8388608,
@@ -273,7 +273,7 @@ class RecordingRenderAction extends ProcessMediaAction
                                 'duration_ms' => $request['recommendation']['candidates'][$request['candidate_index']]['end_ms'] - $request['recommendation']['candidates'][$request['candidate_index']]['start_ms'],
                                 'width' => 1080,
                                 'height' => 1920,
-                                'video_codec' => 'libx264',
+                                'video_codec' => 'h264',
                                 'audio_codec' => 'aac',
                                 'video_bitrate_kbps' => 5000,
                                 'audio_bitrate_kbps' => 128,

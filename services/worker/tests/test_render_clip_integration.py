@@ -105,7 +105,7 @@ def test_render_clip_function_with_real_ffmpeg(tmp_path):
     assert output["mime_type"] == "video/mp4"  # from output_storage mime_type
     assert output["width"] == 1080
     assert output["height"] == 1920
-    assert output["video_codec"] == "libx264"
+    assert output["video_codec"] == "h264"
     assert output["audio_codec"] == "aac"
     assert output["size_bytes"] > 0
     assert output["duration_ms"] > 0
@@ -166,7 +166,7 @@ def test_render_clip_cli_with_real_ffmpeg(tmp_path):
     assert output["mime_type"] == "video/mp4"
     assert output["width"] == 1080
     assert output["height"] == 1920
-    assert output["video_codec"] == "libx264"
+    assert output["video_codec"] == "h264"
     assert output["audio_codec"] == "aac"
     assert output["size_bytes"] > 0
     assert output["duration_ms"] > 0
@@ -339,7 +339,7 @@ def test_e2e_cap_02_output_duration_matches_candidate_bounds_with_captions(tmp_p
 
 
 def test_e2e_cap_03_output_has_correct_codecs_with_captions(tmp_path):
-    """TC-E2E-CAP-03: Output has video codec libx264, audio codec aac with captions."""
+    """TC-E2E-CAP-03: Output has video codec h264, audio codec aac with captions."""
     fixture_path = Path(__file__).parent / "fixtures" / "valid_sample.mp4"
     assert fixture_path.exists(), f"Fixture not found: {fixture_path}"
     output_key = tmp_path / "rendered.mp4"
@@ -361,7 +361,7 @@ def test_e2e_cap_03_output_has_correct_codecs_with_captions(tmp_path):
 
     assert result.get("status") == "success"
     clip = result["render"]["clips"][0]
-    assert clip["output"]["video_codec"] == "libx264"
+    assert clip["output"]["video_codec"] == "h264"
     assert clip["output"]["audio_codec"] == "aac"
 
 

@@ -185,7 +185,7 @@ def renderer_returns(contract: dict) -> tuple[dict, dict]:
             "duration_ms": end_ms - start_ms,
             "width": configuration["target_width"],
             "height": configuration["target_height"],
-            "video_codec": configuration["video_codec"],
+            "video_codec": "h264",
             "audio_codec": configuration["audio_codec"],
             "video_bitrate_kbps": configuration["video_bitrate_kbps"],
             "audio_bitrate_kbps": configuration["audio_bitrate_kbps"],
@@ -205,7 +205,7 @@ def renderer_returns(contract: dict) -> tuple[dict, dict]:
         },
         "ffmpeg_version": "ffmpeg version 6.0",
         "filter_graph": (
-            "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,"
+            "crop=608:1080:656:0,"
             "scale=1080:1920:force_original_aspect_ratio=decrease,"
             "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30,"
             "drawtext=text='Caption text'"
