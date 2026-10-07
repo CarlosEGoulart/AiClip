@@ -449,7 +449,7 @@ final class RenderValidator
 
         if ($configuration !== null) {
             $expectedConfig = $configuration;
-            self::require($parameters['configuration'] === $expectedConfig, 'Configuration does not match request');
+            self::require(self::arraysEqualRecursive($parameters['configuration'], $expectedConfig), 'Configuration does not match request');
         }
 
         // Validate source_media
@@ -612,6 +612,33 @@ final class RenderValidator
     private static function validationFailed(): ProcessMediaException
     {
         return new ProcessMediaException('Render validation failed', 1, '');
+    }
+
+    private static function arraysEqualRecursive(array $a, array $b): bool
+    {
+        if (count($a) !== count($b)) {
+            return false;
+        }
+
+        foreach ($a as $key => $value) {
+            if (! array_key_exists($key, $b)) {
+                return false;
+            }
+
+            $bValue = $b[$key];
+
+            if (is_array($value) && is_array($bValue)) {
+                if (! self::arraysEqualRecursive($value, $bValue)) {
+                    return false;
+                }
+            } elseif (is_array($value) || is_array($bValue)) {
+                return false;
+            } elseif ($value !== $bValue) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static function toArrays(mixed $value): mixed
