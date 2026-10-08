@@ -875,6 +875,60 @@ def _validate_input(contract: dict[str, Any]) -> RenderInput:
     )
 
 
+def project_segments_to_clip_local(
+    segments: list[dict[str, Any]],
+    clip_start_ms: int,
+    clip_end_ms: int,
+) -> list[dict[str, Any]]:
+    """Project transcript segments from absolute source-media timestamps to clip-local time.
+
+    Pure function: same inputs always produce same outputs. No side effects, no FFmpeg,
+    no database access, no subprocess calls, no network access, no logging of content.
+
+    Args:
+        segments: List of dicts with {start_ms: int, end_ms: int, text: str}.
+                  Timestamps are absolute source-media milliseconds.
+                  start_ms < end_ms is guaranteed by upstream validation.
+        clip_start_ms: Selected candidate's start bound in source media coordinates.
+        clip_end_ms: Selected candidate's end bound in source media coordinates.
+
+    Returns:
+        List of dicts with {local_start_ms: int, local_end_ms: int, text: str}.
+        Timestamps are relative to clip local time: [0, clip_duration).
+        Segments entirely outside [clip_start_ms, clip_end_ms) are excluded.
+        Segments partially overlapping are clamped to clip bounds.
+        Empty input list returns empty output list.
+    """
+    if not segments:
+        return []
+
+    clip_duration_ms = clip_end_ms - clip_start_ms
+    if clip_duration_ms <= 0:
+        return []
+
+    result = []
+    for segment in segments:
+        # Compute local timestamps relative to clip start
+        local_start = segment["start_ms"] - clip_start_ms
+        local_end = segment["end_ms"] - clip_start_ms
+
+        # Clamp to clip bounds [0, clip_duration_ms]
+        local_start = max(0, local_start)
+        local_end = min(clip_duration_ms, local_end)
+
+        # Discard segments with zero or negative duration after clamping
+        if local_end <= local_start:
+            continue
+
+        result.append({
+            "local_start_ms": local_start,
+            "local_end_ms": local_end,
+            "text": segment["text"],
+        })
+
+    return result
+
+
 def render_clips(contract: dict[str, Any], configuration: RenderConfiguration, ffmpeg_timeout: int) -> dict[str, Any]:
     """Main render_clips entry point."""
     validated_input = _validate_input(contract)
