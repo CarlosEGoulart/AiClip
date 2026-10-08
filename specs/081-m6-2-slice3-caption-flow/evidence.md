@@ -80,7 +80,7 @@
 
 ## Tester Decision
 
-Decision: **APPROVE** (Slice 3A only)
+Decision: APPROVE (Slice 3A only)
 
 ### Justification
 
@@ -88,13 +88,13 @@ All 12 TP-02 acceptance criteria independently verified. Implementation is a pur
 
 **Note: This APPROVE decision applies only to Slice 3A (CaptionProjection). Slices 3B-3E remain PLANNED.**
 
-Tester Decision: **APPROVE** — 2026-10-08
+Tester Decision: APPROVE — 2026-10-08
 
 ## CI
 
-Status: **GREEN** (Slice 3A)
+Status: GREEN (Slice 3A)
 
-GitHub Actions workflow run: https://github.com/CarlosEGoulart/AiClip/actions/runs/37810465879
+GitHub Actions workflow run: https://github.com/CarlosEGoulart/AiClip/actions/runs/37813830361
 
 Required checks:
 - [x] `cd apps/api && php artisan test --filter=CaptionProjectionTest` — PASS
