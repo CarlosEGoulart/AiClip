@@ -36,6 +36,8 @@ All 16 corrections implemented:
 ### README.md
 - Updated technology stack to match pinned versions
 
+TDD: N/A — documentation-only changes; no executable behavior was added or modified.
+
 ## Verification
 
 All 16 acceptance criteria verified:

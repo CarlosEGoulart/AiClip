@@ -22,6 +22,8 @@
 
 ## Approval
 
+TDD: N/A — documentation-only changes; no executable behavior was added or modified.
+
 Independent read-only Tester review: **APPROVED**
 
 No blocking defects found. Implementation satisfies the specification.
