@@ -2,6 +2,8 @@
 
 This is the evidence file for the Tester approval decision.
 
+TDD: N/A — tester governance evidence documents independent validation and does not introduce executable behavior.
+
 ## Tester Decision
 
 Decision: APPROVE
