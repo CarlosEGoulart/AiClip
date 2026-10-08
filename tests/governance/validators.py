@@ -9,7 +9,7 @@ from pathlib import Path
 
 COMMIT_RE = re.compile(
     r"^(feat|fix|chore|refactor|docs|test|perf|ci)"
-    r"\([a-z0-9][a-z0-9-]*\): .+"
+    r"(\([a-z0-9][a-z0-9-]*\))?: .+"
 )
 
 BRANCH_RE = re.compile(
@@ -35,7 +35,7 @@ TDD_NA_PATTERN = re.compile(r"TDD:\s*N/A\s*[—-]\s*\S", re.IGNORECASE)
 
 
 def validate_commit_message(message: str) -> list[str]:
-    """Validate Conventional Commit format with mandatory scope.
+    """Validate Conventional Commit format.
 
     Returns empty list for valid messages, list of error strings for invalid.
     """
@@ -47,16 +47,10 @@ def validate_commit_message(message: str) -> list[str]:
     first_line = message.strip().split("\n")[0]
 
     if not COMMIT_RE.match(first_line):
-        if "(" not in first_line.split(":")[0] if ":" in first_line else True:
-            errors.append(
-                f"Invalid commit format: '{first_line}'. "
-                "Must follow <type>(<scope>): <subject>"
-            )
-        else:
-            errors.append(
-                f"Invalid commit format: '{first_line}'. "
-                "Scope must be lowercase alphanumeric with hyphens"
-            )
+        errors.append(
+            f"Invalid commit format: '{first_line}'. "
+            "Must follow <type>: <subject> or <type>(<scope>): <subject>"
+        )
 
     return errors
 

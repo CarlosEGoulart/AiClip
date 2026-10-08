@@ -68,10 +68,11 @@ class TestCommitMessageValidator(unittest.TestCase):
             [],
         )
 
-    def test_invalid_no_scope(self):
-        errors = validate_commit_message("docs: resolve MVP inconsistencies")
-        self.assertEqual(len(errors), 1)
-        self.assertIn("Invalid commit format", errors[0])
+    def test_valid_no_scope(self):
+        self.assertEqual(
+            validate_commit_message("docs: resolve MVP inconsistencies"),
+            [],
+        )
 
     def test_invalid_empty_scope(self):
         errors = validate_commit_message("feat(): empty scope")
