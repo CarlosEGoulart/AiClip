@@ -29,4 +29,16 @@ All 5 authorized Slice 1 changes have been verified as correctly implemented:
 Independent Tester Determination:
 The implementation correctly satisfies all Slice 1 acceptance criteria for M6.2 Caption Burn-in. The independent tester (this agent) finds no blocking defects, no regressions, and no scope drift. All acceptance criteria are satisfied.
 
+### RED
+
+caption_file extracted but never passed to renderer
+
+### GREEN
+
+caption_file now passed to renderer.render_singular()
+
+### REFACTOR
+
+burn_in constants removed, cli cleaned up
+
 Decision: APPROVE
