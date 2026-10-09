@@ -282,6 +282,24 @@ class TestPrEnforcementIntegration(unittest.TestCase):
             result = find_evidence_file(99, specs_dir)
             self.assertIsNone(result)
 
+    def test_find_evidence_ignores_alphanumeric_suffix_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            specs_dir = Path(tmp) / "specs"
+            specs_dir.mkdir()
+
+            exact_issue_dir = specs_dir / "081-caption-flow"
+            exact_issue_dir.mkdir()
+            (exact_issue_dir / "evidence.md").write_text("Evidence for issue 81")
+
+            prefixed_other_issue_dir = specs_dir / "081B-srt-generator"
+            prefixed_other_issue_dir.mkdir()
+            (prefixed_other_issue_dir / "evidence.md").write_text("Evidence for issue 81B")
+
+            from pr_enforcement import find_evidence_file
+
+            result = find_evidence_file(81, specs_dir)
+            self.assertEqual(result, exact_issue_dir / "evidence.md")
+
 
 def _create_incomplete_bundle(tmp: Path, issue_number: int, files: dict[str, str]) -> Path:
     """Create temporary specs directory with specified files (may be incomplete)."""
