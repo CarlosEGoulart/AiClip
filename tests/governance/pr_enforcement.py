@@ -78,9 +78,10 @@ def find_evidence_file(issue_number: int, specs_dir: Path | None = None) -> Path
     if not specs_dir.exists():
         return None
     prefix = f"{issue_number:03d}"
+    issue_dir_prefix = f"{prefix}-"
     matches = []
     for d in sorted(specs_dir.iterdir()):
-        if d.is_dir() and d.name.startswith(prefix):
+        if d.is_dir() and (d.name == prefix or d.name.startswith(issue_dir_prefix)):
             evidence = d / "evidence.md"
             if evidence.exists():
                 matches.append(evidence)
