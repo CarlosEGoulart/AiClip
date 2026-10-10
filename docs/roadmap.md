@@ -65,24 +65,36 @@ Completed slices:
 
 - Model-backed semantic clip recommendation stage (Issue #64, PR #66 — merged; issue closed; PR #65 superseded and closed unmerged)
 
-## M6 — Vertical Clip Rendering (M6.1 completed)
+## M6 — Vertical Clip Rendering (M6.1 completed; M6.2 Slices 3A–3D completed)
 
 Completed slices:
 
 - Durable baseline vertical clip render pipeline (Issue #69, PR #73 — merged; issue closed): `ffmpeg_vertical_baseline` v1.0.0, render profile `vertical_v1`, dedicated `RenderMediaClip` queue job, `DerivedAsset` persistence with `type=clip_rendered`, explicit candidate selection, render status/error/timestamp tracking. No automatic render stage in `ProcessMediaAsset`. Captions, batch rendering, and additional profiles are out of scope for M6.1.
 
+- **Slice 3A (Issue #81, PR #83 — merged; issue closed)**: Caption projection (`CaptionProjection`) and SRT generation (`SrtGenerator`) services. Pure PHP, deterministic, integer-only functions matching Slice 2 algorithm and SRT specification. 18 unit tests (12 CaptionProjection + 6 SrtGenerator).
+
+- **Slice 3B (Issue #81B, PR #85 — merged; issue closed)**: Dedicated `SrtGenerator` implementation extracted from Slice 3A scope for atomic delivery. 6 unit tests covering all SRT format requirements.
+
+- **Slice 3C (Issue #87, PR #88 — merged; issue closed)**: `StorageKeyBuilder::captionFile()` for deterministic S3 key generation; `MediaProcessingContract::renderClipRequest()` extended with optional `caption_file`; worker schema `media_processing_v1.json` updated with `caption_file` in `render_clip_request`. 15 new unit tests, zero regression in 986 existing tests.
+
+- **Slice 3D (Issue #89, PR #90 — merged; issue closed)**: `RenderMediaClip` job integrates caption flow — fetches completed transcripts, projects segments via `CaptionProjection`, generates SRT via `SrtGenerator`, stores via `StorageKeyBuilder::captionFile()`, includes `caption_file` in worker contract only when projection non-empty. 6 new integration tests, zero regression in 14 existing RenderMediaClip tests.
+
+Planned slices (not authorized, not implemented):
+
+- **Slice 3E**: End-to-end caption flow integration test (full pipeline: upload → transcribe → detect scenes → recommend → render with captions).
+
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
-| M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2+ planned) |
+| M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2 Slices 3A–3D completed) |
 | M7 | Clip Review Experience |
 | M8 | AI Image Studio |
 | M9 | Social Connection Framework |
 | M10 | YouTube Publishing |
 | M11 | Instagram Publishing |
 | M12 | TikTok Publishing |
-| M13 | Unified One-Click Publishing |
+| M14 | Unified One-Click Publishing |
 | M14 | Production Hardening |
 
 Only one implementation issue is active at a time.
