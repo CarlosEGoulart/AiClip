@@ -249,10 +249,11 @@ final class RenderValidator
      * the recorded authority, so no projection or inference is rerun here.
      *
      * @param  array<string, mixed>  $completion
+     * @param  array<string, mixed>|null  $configuration  The expected configuration for config match validation
      *
      * @throws ProcessMediaException
      */
-    public static function validateCompletion(mixed $completion): void
+    public static function validateCompletion(mixed $completion, ?array $configuration = null): void
     {
         try {
             $completion = self::toArrays($completion);
@@ -263,9 +264,13 @@ final class RenderValidator
                 'execution_parameters',
             ]);
 
+            // Validate algorithm and version
+            self::require($payload['algorithm'] === self::ALGORITHM, 'Invalid algorithm');
+            self::require($payload['algorithm_version'] === self::ALGORITHM_VERSION, 'Invalid algorithm version');
+
             self::require(is_array($payload['parameters']), 'Parameters must be an object');
             $parameters = self::fields($payload['parameters'], self::PARAMETERS_KEYS);
-            self::validateParameters($parameters);
+            self::validateParameters($parameters, $configuration);
 
             self::require(is_array($payload['clips']) && array_is_list($payload['clips']),
                 'Clips must be a list');
@@ -318,6 +323,17 @@ final class RenderValidator
         self::require($clip['end_ms'] === $request['candidate']['end_ms'], 'Clip end_ms mismatch');
         self::require($clip['duration_ms'] === ($request['candidate']['end_ms'] - $request['candidate']['start_ms']), 'Clip duration_ms mismatch');
 
+        // Validate parameters.source_media matches request.source_media (worker boundary)
+        $requestSourceMedia = $request['source_media'];
+        $paramsSourceMedia = $parameters['source_media'];
+        self::require($paramsSourceMedia['disk'] === $requestSourceMedia['disk'], 'parameters.source_media.disk mismatch');
+        self::require($paramsSourceMedia['key'] === $requestSourceMedia['key'], 'parameters.source_media.key mismatch');
+        self::require($paramsSourceMedia['width'] === $requestSourceMedia['width'], 'parameters.source_media.width mismatch');
+        self::require($paramsSourceMedia['height'] === $requestSourceMedia['height'], 'parameters.source_media.height mismatch');
+        self::require($paramsSourceMedia['video_codec'] === $requestSourceMedia['video_codec'], 'parameters.source_media.video_codec mismatch');
+        // audio_codec can be null
+        self::require($paramsSourceMedia['audio_codec'] === $requestSourceMedia['audio_codec'], 'parameters.source_media.audio_codec mismatch');
+
         // Validate output metadata
         self::validateOutput($clip['output'], $parameters);
     }
@@ -350,7 +366,7 @@ final class RenderValidator
 
     /**
      * @param  array<string, mixed>  $parameters
-     * @param  array<string, mixed>  $configuration
+     * @param  array<string, mixed>|null  $configuration
      */
     private static function validateParameters(array $parameters, ?array $configuration = null): void
     {
@@ -376,6 +392,12 @@ final class RenderValidator
         self::require($limits['max_recommendations'] === self::MAX_RECOMMENDATIONS, 'Limits max_recommendations mismatch');
         self::require($limits['max_input_bytes'] === self::MAX_INPUT_BYTES, 'Limits max_input_bytes mismatch');
         self::require($limits['max_duration_ms'] === self::MAX_DURATION_MS, 'Limits max_duration_ms mismatch');
+
+        // Validate request_sha256 format (64-char lowercase hex)
+        self::require(
+            is_string($parameters['request_sha256']) && preg_match('/^[0-9a-f]{64}$/', $parameters['request_sha256']) === 1,
+            'request_sha256 must be valid 64-char lowercase hex'
+        );
     }
 
     /**
