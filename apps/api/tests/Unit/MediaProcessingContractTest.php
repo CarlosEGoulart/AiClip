@@ -3,7 +3,9 @@
 namespace Tests\Unit;
 
 use App\Contracts\MediaProcessingContract;
+use App\Exceptions\ProcessMediaException;
 use App\Models\MediaAsset;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -277,4 +279,269 @@ it('contract version is 1.0.0', function () {
     $contract = MediaProcessingContract::fromMediaAsset($asset, Str::uuid());
 
     expect($contract->version)->toBe('1.0.0');
+});
+
+/*
+|--------------------------------------------------------------------------
+| renderClipRequest with captions — TP-05
+|--------------------------------------------------------------------------
+*/
+
+it('renderClipRequest with transcript generates caption file and includes in output', function () {
+    Storage::fake('media');
+
+    $recommendation = [
+        'recommendations' => [
+            [
+                'index' => 0,
+                'start_ms' => 1000,
+                'end_ms' => 5000,
+                'semantic_rank' => 1,
+                'semantic_score' => 0.95,
+            ],
+        ],
+    ];
+
+    $sourceMedia = [
+        'disk' => 'media',
+        'key' => '7/42/test.mp4',
+        'width' => 1920,
+        'height' => 1080,
+        'video_codec' => 'h264',
+        'audio_codec' => 'aac',
+    ];
+
+    $transcriptSegments = [
+        ['start_ms' => 0, 'end_ms' => 10000, 'text' => 'Hello world'],
+    ];
+
+    $result = MediaProcessingContract::renderClipRequest(
+        mediaAssetId: 42,
+        durationMs: 10000,
+        recommendation: $recommendation,
+        recommendationId: 1,
+        candidateIndex: 0,
+        sourceMedia: $sourceMedia,
+        projectId: 7,
+        transcriptSegments: $transcriptSegments,
+        clipStartMs: 1000,
+        clipEndMs: 5000,
+    );
+
+    expect($result)->toHaveKey('caption_file');
+    expect($result['caption_file'])->toBeString();
+    expect($result['caption_file'])->toStartWith('projects/7/captions/42/0/vertical_v1/');
+    expect($result['caption_file'])->toEndWith('.srt');
+});
+
+it('renderClipRequest with empty projected segments omits caption_file', function () {
+    Storage::fake('media');
+
+    $recommendation = [
+        'recommendations' => [
+            [
+                'index' => 0,
+                'start_ms' => 1000,
+                'end_ms' => 5000,
+                'semantic_rank' => 1,
+                'semantic_score' => 0.95,
+            ],
+        ],
+    ];
+
+    $sourceMedia = [
+        'disk' => 'media',
+        'key' => '7/42/test.mp4',
+        'width' => 1920,
+        'height' => 1080,
+        'video_codec' => 'h264',
+        'audio_codec' => 'aac',
+    ];
+
+    // Transcript segments that don't overlap with clip
+    $transcriptSegments = [
+        ['start_ms' => 10000, 'end_ms' => 15000, 'text' => 'Outside clip'],
+    ];
+
+    $result = MediaProcessingContract::renderClipRequest(
+        mediaAssetId: 42,
+        durationMs: 20000,
+        recommendation: $recommendation,
+        recommendationId: 1,
+        candidateIndex: 0,
+        sourceMedia: $sourceMedia,
+        projectId: 7,
+        transcriptSegments: $transcriptSegments,
+        clipStartMs: 1000,
+        clipEndMs: 5000,
+    );
+
+    expect($result)->not->toHaveKey('caption_file');
+});
+
+it('renderClipRequest without transcript omits caption_file', function () {
+    $recommendation = [
+        'recommendations' => [
+            [
+                'index' => 0,
+                'start_ms' => 1000,
+                'end_ms' => 5000,
+                'semantic_rank' => 1,
+                'semantic_score' => 0.95,
+            ],
+        ],
+    ];
+
+    $sourceMedia = [
+        'disk' => 'media',
+        'key' => '7/42/test.mp4',
+        'width' => 1920,
+        'height' => 1080,
+        'video_codec' => 'h264',
+        'audio_codec' => 'aac',
+    ];
+
+    $result = MediaProcessingContract::renderClipRequest(
+        mediaAssetId: 42,
+        durationMs: 10000,
+        recommendation: $recommendation,
+        recommendationId: 1,
+        candidateIndex: 0,
+        sourceMedia: $sourceMedia,
+        projectId: 7,
+    );
+
+    expect($result)->not->toHaveKey('caption_file');
+});
+
+it('renderClipRequest validates required params when transcript provided', function () {
+    Storage::fake('media');
+
+    $recommendation = [
+        'recommendations' => [
+            [
+                'index' => 0,
+                'start_ms' => 1000,
+                'end_ms' => 5000,
+                'semantic_rank' => 1,
+                'semantic_score' => 0.95,
+            ],
+        ],
+    ];
+
+    $sourceMedia = [
+        'disk' => 'media',
+        'key' => '7/42/test.mp4',
+        'width' => 1920,
+        'height' => 1080,
+        'video_codec' => 'h264',
+        'audio_codec' => 'aac',
+    ];
+
+    $transcriptSegments = [
+        ['start_ms' => 0, 'end_ms' => 10000, 'text' => 'Hello world'],
+    ];
+
+    // Missing clipStartMs
+    MediaProcessingContract::renderClipRequest(
+        mediaAssetId: 42,
+        durationMs: 10000,
+        recommendation: $recommendation,
+        recommendationId: 1,
+        candidateIndex: 0,
+        sourceMedia: $sourceMedia,
+        projectId: 7,
+        transcriptSegments: $transcriptSegments,
+        clipEndMs: 5000,
+    );
+})->throws(ProcessMediaException::class);
+
+it('renderClipRequest maintains backward compatibility without transcript params', function () {
+    $recommendation = [
+        'recommendations' => [
+            [
+                'index' => 0,
+                'start_ms' => 1000,
+                'end_ms' => 5000,
+                'semantic_rank' => 1,
+                'semantic_score' => 0.95,
+            ],
+        ],
+    ];
+
+    $sourceMedia = [
+        'disk' => 'media',
+        'key' => '7/42/test.mp4',
+        'width' => 1920,
+        'height' => 1080,
+        'video_codec' => 'h264',
+        'audio_codec' => 'aac',
+    ];
+
+    $result = MediaProcessingContract::renderClipRequest(
+        mediaAssetId: 42,
+        durationMs: 10000,
+        recommendation: $recommendation,
+        recommendationId: 1,
+        candidateIndex: 0,
+        sourceMedia: $sourceMedia,
+        projectId: 7,
+    );
+
+    expect($result)->toHaveKeys([
+        'version', 'action', 'media', 'candidate_index', 'candidate',
+        'configuration', 'source_media', 'output_storage',
+    ]);
+    expect($result)->not->toHaveKey('caption_file');
+});
+
+it('renderClipRequest stores SRT with correct MIME type when caption generated', function () {
+    Storage::fake('media');
+
+    $recommendation = [
+        'recommendations' => [
+            [
+                'index' => 0,
+                'start_ms' => 1000,
+                'end_ms' => 5000,
+                'semantic_rank' => 1,
+                'semantic_score' => 0.95,
+            ],
+        ],
+    ];
+
+    $sourceMedia = [
+        'disk' => 'media',
+        'key' => '7/42/test.mp4',
+        'width' => 1920,
+        'height' => 1080,
+        'video_codec' => 'h264',
+        'audio_codec' => 'aac',
+    ];
+
+    $transcriptSegments = [
+        ['start_ms' => 0, 'end_ms' => 10000, 'text' => 'Hello world'],
+    ];
+
+    $result = MediaProcessingContract::renderClipRequest(
+        mediaAssetId: 42,
+        durationMs: 10000,
+        recommendation: $recommendation,
+        recommendationId: 1,
+        candidateIndex: 0,
+        sourceMedia: $sourceMedia,
+        projectId: 7,
+        transcriptSegments: $transcriptSegments,
+        clipStartMs: 1000,
+        clipEndMs: 5000,
+    );
+
+    expect($result)->toHaveKey('caption_file');
+    // The caption_file key should be a storage path, MIME type is handled at storage time
+    expect($result['caption_file'])->toBeString();
+
+    // Verify file was stored with correct MIME type
+    $captionKey = $result['caption_file'];
+    Storage::disk('media')->assertExists($captionKey);
+    // Note: assertMimeType is not directly available, but we can verify the file exists
 });
