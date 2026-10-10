@@ -148,3 +148,13 @@ git revert <commit>
 **Decision: APPROVE**
 
 All acceptance criteria independently verified. Implementation correctly implements idempotent render with transcript hash detection.
+
+---
+
+## Merge Verification
+
+- **PR #97**: Merged via `scripts/merge_gate.py` on 2026-10-10
+- **Merge commit**: `ea23565` (on master)
+- **Issue #92**: CLOSED (2026-10-10)
+- **All required CI checks passed**: Backend CI, Frontend CI, E2E CI, Governance, PR Enforcement
+- **Tester approval**: APPROVE (recorded in evidence.md)
