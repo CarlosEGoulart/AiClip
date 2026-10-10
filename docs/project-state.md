@@ -89,6 +89,8 @@ render timestamps, and error capture.
 
 M6.2 Slices 3A–3D — Caption Flow Integration (Issues #81, #81B, #87, #89 / PRs #83, #85, #88, #90) are completed, merged, and closed. No implementation issue is active. Slice 3E (end-to-end integration test) remains planned but not authorized.
 
+REC-04 (Issue #94): E2E caption flow integration test gap documented as risk; Slice 3E implementation not authorized.
+
 # Next Architectural Goal
 
 M6.2 Slice 3E — End-to-end caption flow integration test (planned, not authorized).
