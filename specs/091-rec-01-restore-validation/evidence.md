@@ -209,3 +209,13 @@ All acceptance criteria are independently verified and satisfied:
 8. **Root cause fixed**: The `ErrorException` ("Undefined variable $executionParameters") was caused by missing `$executionParameters` in the transaction closure's `use` clause. One-line fix at line 209 resolves the misclassification of validation failures as `render_failed`.
 
 The implementation is production-ready and meets all REC-01 requirements.
+
+---
+
+## Merge Verification
+
+- **PR #96**: Merged via `scripts/merge_gate.py` on 2026-10-10
+- **Merge commit**: `b71e11e` (on master)
+- **Issue #91**: CLOSED
+- **All required CI checks passed**: Backend CI, Frontend CI, E2E CI, governance, pr-enforcement
+- **Tester approval**: APPROVE (recorded in evidence.md)
