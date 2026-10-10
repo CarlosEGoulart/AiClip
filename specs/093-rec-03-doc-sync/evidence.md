@@ -101,4 +101,4 @@ Current: `MERGED` (all 7 files updated; all acceptance criteria satisfied)
 - **Merge Commit**: `f195901` (on master)
 - **Issue #93**: CLOSED
 - **All required CI checks passed**: Backend CI, Frontend CI, E2E CI, Governance, PR Enforcement
-- **Tester approval**: APPROVE (recorded in evidence.md)
+- **Tester approval**: **Decision: APPROVE** (recorded in evidence.md)
