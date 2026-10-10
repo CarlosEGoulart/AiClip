@@ -112,3 +112,21 @@ pr-enforcement: PENDING (this evidence update)
 `NO_ACTIVE_ISSUE` → `ISSUE_CREATED` → `BRANCH_CREATED` → `SPEC_READY` → `RED_VERIFIED` → `GREEN_VERIFIED` → `TESTER_APPROVED` → `PR_OPEN` → `CI_GREEN` → `MERGE_GATE_READY` → `MERGED` → `ISSUE_CLOSED` → `NO_ACTIVE_ISSUE`
 
 Current: `TESTER_APPROVED` (Slices 3A and 3B)
+
+## Final Lifecycle State
+
+The issue was merged and closed following Tester approval.
+
+- **PR**: #83
+- **Merge Commit**: b71e11e
+- **Merge Date**: 2026-10-08
+- **GitHub PR URL**: https://github.com/CarlosEGoulart/AiClip/pull/83
+- **GitHub Issue URL**: https://github.com/CarlosEGoulart/AiClip/issues/81
+
+### Lifecycle Transition
+
+`TESTER_APPROVED` → `PR_OPEN` → `CI_GREEN` → `MERGE_GATE_READY` → `MERGED` → `ISSUE_CLOSED` → `NO_ACTIVE_ISSUE`
+
+### Historical Preservation
+
+The original `TESTER_APPROVED` decision (2026-10-08) for Slices 3A and 3B is preserved above. This section records the final GitHub lifecycle completion without altering historical evidence.
