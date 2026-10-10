@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -134,6 +135,7 @@ class RenderParameters:
         "max_input_bytes": MAX_INPUT_BYTES,
         "max_duration_ms": MAX_DURATION_MS,
     })
+    request_sha256: str | None = None
 
 
 @dataclass
@@ -826,6 +828,41 @@ class FFmpegVerticalClipRenderer(VerticalClipRenderer):
                 },
             }
 
+            # Compute request_sha256 using canonicalization matching PHP
+            # Build the request metadata exactly as PHP's toRenderClipMetadataArray()
+            request_metadata = {
+                "version": "1.0.0",
+                "action": "render_clip",
+                "media": {"duration_ms": duration_ms},
+                "candidate_index": candidate_index,
+                "candidate": {"start_ms": start_ms, "end_ms": end_ms},
+                "configuration": configuration.to_dict(),
+                "source_media": {
+                    "disk": source_media.disk,
+                    "key": source_media.key,
+                    "width": source_media.width,
+                    "height": source_media.height,
+                    "video_codec": source_media.video_codec,
+                    "audio_codec": source_media.audio_codec,
+                },
+                "output_storage": {
+                    "disk": output_disk,
+                    "key": output_key,
+                    "mime_type": "video/mp4",
+                },
+            }
+
+            if caption_file is not None:
+                request_metadata["caption_file"] = caption_file
+
+            # Canonicalize: sort_keys=True, separators=(',', ':')
+            request_sha256 = hashlib.sha256(
+                json.dumps(request_metadata, separators=(',', ':'), sort_keys=True).encode()
+            ).hexdigest()
+
+            # Add to parameters
+            parameters["request_sha256"] = request_sha256
+
             return (clip_info, parameters)
 
         except Exception as e:
@@ -936,6 +973,42 @@ def render_clips(contract: dict[str, Any], configuration: RenderConfiguration, f
     renderer = FFmpegVerticalClipRenderer(ffmpeg_timeout=ffmpeg_timeout)
     result = renderer.render(validated_input, configuration)
 
+    # Compute request_sha256 using canonicalization matching PHP
+    # Build the request metadata exactly as PHP's toRenderClipMetadataArray()
+    request_metadata = {
+        "version": contract.get("version", "1.0.0"),
+        "action": contract.get("action", "render_clips"),
+        "media": {"duration_ms": validated_input.duration_ms},
+        "candidate_index": validated_input.candidate_index,
+        "candidate": {
+            "start_ms": contract["recommendation"]["candidates"][validated_input.candidate_index]["start_ms"],
+            "end_ms": contract["recommendation"]["candidates"][validated_input.candidate_index]["end_ms"],
+        },
+        "configuration": configuration.to_dict(),
+        "source_media": {
+            "disk": validated_input.source_media.disk,
+            "key": validated_input.source_media.key,
+            "width": validated_input.source_media.width,
+            "height": validated_input.source_media.height,
+            "video_codec": validated_input.source_media.video_codec,
+            "audio_codec": validated_input.source_media.audio_codec,
+        },
+        "output_storage": contract.get("output_storage", {
+            "disk": "media",
+            "key": "",
+            "mime_type": "video/mp4",
+        }),
+    }
+
+    # caption_file is not in render_clips contract (only in singular render_clip)
+    # if "caption_file" in contract:
+    #     request_metadata["caption_file"] = contract["caption_file"]
+
+    # Canonicalize: sort_keys=True, separators=(',', ':')
+    request_sha256 = hashlib.sha256(
+        json.dumps(request_metadata, separators=(',', ':'), sort_keys=True).encode()
+    ).hexdigest()
+
     # Convert to output format
     return {
         "status": "success",
@@ -948,6 +1021,7 @@ def render_clips(contract: dict[str, Any], configuration: RenderConfiguration, f
                 "ffmpeg_version": result.parameters.ffmpeg_version,
                 "filter_graph": result.parameters.filter_graph,
                 "limits": result.parameters.limits,
+                "request_sha256": request_sha256,
             },
             "clips": [
                 {
@@ -963,3 +1037,46 @@ def render_clips(contract: dict[str, Any], configuration: RenderConfiguration, f
             ],
         },
     }
+
+
+def render_singular(
+    duration_ms: int,
+    source_media: SourceMediaInfo,
+    start_ms: int,
+    end_ms: int,
+    configuration: RenderConfiguration,
+    output_key: str,
+    output_disk: str,
+    candidate_index: int,
+    caption_file: str | None = None,
+    ffmpeg_timeout: int = DEFAULT_FFMPEG_TIMEOUT,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Convenience wrapper to call FFmpegVerticalClipRenderer.render_singular.
+
+    Args:
+        duration_ms: Total source media duration in milliseconds.
+        source_media: Source media information.
+        start_ms: Clip start time in milliseconds.
+        end_ms: Clip end time in milliseconds.
+        configuration: Render configuration.
+        output_key: Output storage key.
+        output_disk: Output storage disk.
+        candidate_index: Selected candidate index.
+        caption_file: Optional caption file path.
+        ffmpeg_timeout: FFmpeg timeout in seconds.
+
+    Returns:
+        Tuple of (clip_info, parameters) as returned by render_singular method.
+    """
+    renderer = FFmpegVerticalClipRenderer(ffmpeg_timeout=ffmpeg_timeout)
+    return renderer.render_singular(
+        duration_ms=duration_ms,
+        source_media=source_media,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        configuration=configuration,
+        output_key=output_key,
+        output_disk=output_disk,
+        candidate_index=candidate_index,
+        caption_file=caption_file,
+    )

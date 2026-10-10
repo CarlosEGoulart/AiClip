@@ -15,6 +15,7 @@ use App\Services\ClipRankingProfile;
 use App\Services\ProcessMediaAction;
 use App\Services\RenderProfile;
 use App\Services\RenderValidator;
+use App\Services\StorageKeyBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -23,6 +24,15 @@ uses(TestCase::class, RefreshDatabase::class);
 
 beforeEach(function () {
     Storage::fake('media');
+    // Ensure render config is set for validation
+    config(['media.render_timeout_seconds' => '300']);
+    config(['media.render_target_width' => 1080]);
+    config(['media.render_target_height' => 1920]);
+    config(['media.render_target_fps' => 30]);
+    config(['media.render_video_codec' => 'libx264']);
+    config(['media.render_video_bitrate_kbps' => 5000]);
+    config(['media.render_audio_codec' => 'aac']);
+    config(['media.render_audio_bitrate_kbps' => 128]);
 });
 
 /*
@@ -1025,4 +1035,476 @@ it('generates distinct caption files on re-dispatch', function () {
     expect($result1->id)->toBe($result2->id);
     expect($result1->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
     expect($result2->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+});
+
+/*
+|--------------------------------------------------------------------------
+| VALIDATION FAILURE PATH TESTS (REC-01)
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Create a mock action that returns a custom response with overrides (for validation failure testing)
+ */
+class CustomRenderAction extends ProcessMediaAction
+{
+    public array $overrides = [];
+
+    public function __construct(array $overrides = [])
+    {
+        $this->overrides = $overrides;
+    }
+
+    public function renderClips(MediaProcessingContract $contract): array
+    {
+        $request = $contract->toRenderClipMetadataArray();
+        $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+
+        $response = [
+            'status' => 'success',
+            'render' => [
+                'algorithm' => RenderValidator::ALGORITHM,
+                'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
+                'parameters' => [
+                    'configuration' => RenderProfile::configuration(),
+                    'source_media' => [
+                        'disk' => $request['source_media']['disk'],
+                        'key' => $request['source_media']['key'],
+                        'duration_ms' => $request['media']['duration_ms'],
+                        'width' => $request['source_media']['width'],
+                        'height' => $request['source_media']['height'],
+                        'video_codec' => $request['source_media']['video_codec'],
+                        'audio_codec' => $request['source_media']['audio_codec'],
+                    ],
+                    'ffmpeg_version' => 'ffmpeg version 6.0',
+                    'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
+                    'limits' => [
+                        'max_recommendations' => 1000,
+                        'max_input_bytes' => 8388608,
+                        'max_duration_ms' => 2147483647,
+                    ],
+                    'request_sha256' => $requestSha256,
+                ],
+                'clips' => [
+                    [
+                        'candidate_index' => $request['candidate_index'],
+                        'start_ms' => $request['candidate']['start_ms'],
+                        'end_ms' => $request['candidate']['end_ms'],
+                        'duration_ms' => $request['candidate']['end_ms'] - $request['candidate']['start_ms'],
+                        'output' => [
+                            'disk' => $request['output_storage']['disk'],
+                            'key' => $request['output_storage']['key'],
+                            'size_bytes' => 1024000,
+                            'duration_ms' => $request['candidate']['end_ms'] - $request['candidate']['start_ms'],
+                            'width' => 1080,
+                            'height' => 1920,
+                            'video_codec' => 'libx264',
+                            'audio_codec' => 'aac',
+                            'video_bitrate_kbps' => 5000,
+                            'audio_bitrate_kbps' => 128,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        foreach ($this->overrides as $path => $value) {
+            $segments = explode('.', (string) $path);
+            $target = &$response;
+            foreach (array_slice($segments, 0, -1) as $segment) {
+                $target = &$target[$segment];
+            }
+            if ($value === '__REMOVE__') {
+                unset($target[array_pop($segments)]);
+            } else {
+                $target[array_pop($segments)] = $value;
+            }
+            unset($target);
+        }
+
+        return $response;
+    }
+}
+
+function buildValidWorkerResponse(array $requestMetadata, array $overrides = []): array
+{
+    $requestSha256 = hash('sha256', json_encode($requestMetadata, JSON_THROW_ON_ERROR));
+
+    $response = [
+        'status' => 'success',
+        'render' => [
+            'algorithm' => RenderValidator::ALGORITHM,
+            'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
+            'parameters' => [
+                'configuration' => RenderProfile::configuration(),
+                'source_media' => [
+                    'disk' => 'media',
+                    'key' => 'projects/1/assets/1/source.mp4',
+                    'duration_ms' => 30000,
+                    'width' => 1920,
+                    'height' => 1080,
+                    'video_codec' => 'h264',
+                    'audio_codec' => 'aac',
+                ],
+                'ffmpeg_version' => 'ffmpeg version 6.0',
+                'filter_graph' => 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30',
+                'limits' => [
+                    'max_recommendations' => 1000,
+                    'max_input_bytes' => 8388608,
+                    'max_duration_ms' => 2147483647,
+                ],
+                'request_sha256' => $requestSha256,
+            ],
+            'clips' => [
+                [
+                    'candidate_index' => 0,
+                    'start_ms' => 0,
+                    'end_ms' => 10000,
+                    'duration_ms' => 10000,
+                    'output' => [
+                        'disk' => 'media',
+                        'key' => 'renders/1/1/0_20260101T000000Z.mp4',
+                        'size_bytes' => 1024000,
+                        'duration_ms' => 10000,
+                        'width' => 1080,
+                        'height' => 1920,
+                        'video_codec' => 'libx264',
+                        'audio_codec' => 'aac',
+                        'video_bitrate_kbps' => 5000,
+                        'audio_bitrate_kbps' => 128,
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    foreach ($overrides as $path => $value) {
+        $segments = explode('.', (string) $path);
+        $target = &$response;
+        foreach (array_slice($segments, 0, -1) as $segment) {
+            $target = &$target[$segment];
+        }
+        if ($value === '__REMOVE__') {
+            unset($target[array_pop($segments)]);
+        } else {
+            $target[array_pop($segments)] = $value;
+        }
+        unset($target);
+    }
+}
+
+function setupRenderTest(): array
+{
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    return [$asset, $recommendation];
+}
+
+it('FV-01: Happy path - valid worker response with correct request_sha256 -> COMPLETED', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $action = new CustomRenderAction([]);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $result = $job->handle();
+
+    expect($result->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+    expect($result->render_error)->toBeNull();
+});
+
+it('FV-02: Worker response missing request_sha256 -> FAILED with validation_failed', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $action = new CustomRenderAction(['render.parameters.request_sha256' => '__REMOVE__']);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: validation_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('validation_failed');
+});
+
+it('FV-03: Worker response with wrong request_sha256 (tampered) -> FAILED with validation_failed', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $wrongHash = hash('sha256', 'tampered data');
+    $action = new CustomRenderAction(['render.parameters.request_sha256' => $wrongHash]);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: validation_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('validation_failed');
+});
+
+it('FV-04: Worker response with wrong algorithm -> FAILED with validation_failed', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $action = new CustomRenderAction(['render.algorithm' => 'wrong_algorithm']);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: validation_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('validation_failed');
+});
+
+it('FV-05: Worker response with wrong algorithm_version -> FAILED with validation_failed', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $action = new CustomRenderAction(['render.algorithm_version' => '2.0.0']);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: validation_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('validation_failed');
+});
+
+it('FV-06: Worker response with wrong configuration in parameters -> FAILED with validation_failed', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $wrongConfig = RenderProfile::configuration();
+    $wrongConfig['target_width'] = 720;
+    $action = new CustomRenderAction(['render.parameters.configuration' => $wrongConfig]);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: validation_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('validation_failed');
+});
+
+it('FV-07: Worker response with malformed clip output (missing keys) -> FAILED with validation_failed', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $action = new CustomRenderAction(['render.clips.0.output.width' => '__REMOVE__']);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: validation_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('validation_failed');
+});
+
+it('FV-08: Worker response with missing required parameters keys -> FAILED with validation_failed', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $action = new CustomRenderAction(['render.parameters.configuration' => '__REMOVE__']);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: validation_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('validation_failed');
+});
+
+it('FV-09: Worker throws exception (render failure) -> FAILED with render_failed (unchanged)', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $action = new RecordingRenderActionForRender;
+    $action->shouldFail = true;
+    $action->failCode = 'render_failed';
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: render_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('render_failed');
+});
+
+it('FV-10: Retry after validation_failed -> first FAILED, second COMPLETED', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    // First attempt: validation failure (wrong request_sha256)
+    $wrongHash = hash('sha256', 'tampered data');
+    $action1 = new CustomRenderAction(['render.parameters.request_sha256' => $wrongHash]);
+    $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action1);
+
+    $thrown = null;
+    try {
+        $job1->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toBe('Render failed: validation_failed');
+
+    $render = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->first();
+
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_FAILED);
+    expect($render->render_error)->toBe('validation_failed');
+
+    // Second attempt: valid response
+    $action2 = new CustomRenderAction([]);
+    $job2 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action2);
+    $result2 = $job2->handle();
+
+    $render->refresh();
+    expect($render->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+    expect($render->render_error)->toBeNull();
+    expect($result2->id)->toBe($render->id);
+});
+
+it('FV-11: validateCompletion called with correct payload including execution_parameters', function () {
+    [$asset, $recommendation] = setupRenderTest();
+
+    $action = new CustomRenderAction([]);
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $result = $job->handle();
+
+    expect($result->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+    expect($result->render_parameters)->not->toBeNull();
+    expect($result->render_parameters)->toHaveKey('request_sha256');
+    expect($result->render_parameters['request_sha256'])->toBeString();
+    expect(strlen($result->render_parameters['request_sha256']))->toBe(64);
+});
+
+it('FV-12: Existing completed render reused (idempotency) - no worker call, no validation', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    // Pre-create completed render
+    DerivedAsset::create([
+        'media_asset_id' => $asset->id,
+        'type' => DerivedAsset::TYPE_RENDERED_CLIP,
+        'candidate_index' => 0,
+        'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
+        'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
+        'render_completed_at' => now(),
+        'storage_disk' => 'media',
+        'storage_key' => 'renders/1/1/0_20260101T000000Z.mp4',
+        'mime_type' => 'video/mp4',
+        'size_bytes' => 1024000,
+        'duration_ms' => 10000,
+        'width' => 1080,
+        'height' => 1920,
+        'codec' => 'libx264',
+        'render_configuration' => RenderProfile::configuration(),
+        'render_parameters' => ['test' => 'data'],
+    ]);
+
+    $action = new RecordingRenderActionForRender;
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $result = $job->handle();
+
+    expect(count($action->renderCalls))->toBe(0);
+    expect($result->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
 });

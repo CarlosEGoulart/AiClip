@@ -206,6 +206,7 @@ class RenderMediaClip implements ShouldQueue
                 $transcript,
                 $clipStartMs,
                 $clipEndMs,
+                $executionParameters,
             ) {
                 if (DB::connection()->getDriverName() === 'pgsql') {
                     DB::select('SELECT set_config(\'lock_timeout\', ?, true)', [$renderLockWaitSeconds.'s']);
@@ -285,16 +286,22 @@ class RenderMediaClip implements ShouldQueue
                     // Invoke the worker
                     $result = $action->renderClips($renderContractObj);
 
-                    // Validate result - use metadata array for requestSha256 to match worker
+                    // Worker boundary validation - validate result immediately after worker returns
                     $requestMetadata = $renderContractObj->toRenderClipMetadataArray();
                     $requestSha256 = hash('sha256', json_encode($requestMetadata, JSON_THROW_ON_ERROR));
-                    // TEMPORARILY DISABLED: RenderValidator::validateCompletion([
-                    //     'algorithm' => $result['render']['algorithm'],
-                    //     'algorithm_version' => $result['render']['algorithm_version'],
-                    //     'parameters' => $result['render']['parameters'],
-                    //     'clips' => $result['render']['clips'],
-                    //     'execution_parameters' => $executionParameters,
-                    // ]);
+
+                    RenderValidator::result($result, $requestMetadata, $requestSha256);
+
+                    // Model boundary validation - build completion payload from result
+                    $completionPayload = [
+                        'algorithm' => $result['render']['algorithm'],
+                        'algorithm_version' => $result['render']['algorithm_version'],
+                        'parameters' => $result['render']['parameters'],
+                        'clips' => $result['render']['clips'],
+                        'execution_parameters' => $executionParameters,
+                    ];
+
+                    RenderValidator::validateCompletion($completionPayload, $renderConfiguration);
 
                     // Mark completed
                     $clip = $result['render']['clips'][0];
@@ -340,7 +347,13 @@ class RenderMediaClip implements ShouldQueue
                     // Expected worker/validation failure: sanitized failed render only
                     $locked->render_status = DerivedAsset::RENDER_STATUS_FAILED;
                     $locked->render_completed_at = now();
-                    $locked->render_error = 'render_failed';
+
+                    // Distinguish validation failure from render failure
+                    if ($e instanceof ProcessMediaException && $e->getMessage() === 'Render validation failed') {
+                        $locked->render_error = 'validation_failed';
+                    } else {
+                        $locked->render_error = 'render_failed';
+                    }
                     $locked->save();
                 }
             });
