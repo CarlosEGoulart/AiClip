@@ -60,6 +60,7 @@ class DerivedAssetRenderedClipTest extends TestCase
             'storage_key' => "projects/{$mediaAsset->project_id}/renders/{$mediaAsset->id}/test/renders/fixture-1.mp4",
             'mime_type' => 'video/mp4',
             'size_bytes' => 0,
+            'transcript_hash' => 'abc123',
         ]);
 
         DerivedAsset::create([
@@ -72,6 +73,7 @@ class DerivedAssetRenderedClipTest extends TestCase
             'storage_key' => "projects/{$mediaAsset->project_id}/renders/{$mediaAsset->id}/test/renders/fixture-2.mp4",
             'mime_type' => 'video/mp4',
             'size_bytes' => 0,
+            'transcript_hash' => 'abc123',
         ]);
     }
 
