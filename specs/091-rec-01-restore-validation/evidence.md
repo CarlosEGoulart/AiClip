@@ -1,5 +1,7 @@
 # REC-01: Restore Render Completion Validation Contract — Evidence
 
+### RED
+
 ## RED Phase: Write Failing Tests
 
 ### 1. Unit Tests — RenderValidator::result() and validateCompletion()
@@ -31,6 +33,8 @@
 - PHP unit tests include CL-01 through CL-04 verification
 
 ---
+
+### GREEN
 
 ## GREEN Phase: Minimal Implementation
 
@@ -66,6 +70,8 @@
 - Total: 154/154 tests passing
 
 ---
+
+### REFACTOR
 
 ## REFACTOR Phase: Clean Up
 
