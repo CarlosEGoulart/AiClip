@@ -34,6 +34,8 @@ class MediaProcessingContract
     /** @var array{disk: string, key: string, mime_type: string}|null */
     public ?array $outputStorage = null;
 
+    public ?string $captionFile = null;
+
     public ?int $derivedAssetId = null;
 
     public ?int $durationMs = null;
@@ -176,6 +178,16 @@ class MediaProcessingContract
                 throw new ProcessMediaException('clipStartMs and clipEndMs are required when transcriptSegments provided');
             }
 
+            // Validate transcript segment structure
+            foreach ($transcriptSegments as $segment) {
+                if (! isset($segment['start_ms'], $segment['end_ms'], $segment['text'])) {
+                    throw new ProcessMediaException('invalid_input');
+                }
+                if (! is_int($segment['start_ms']) || ! is_int($segment['end_ms']) || ! is_string($segment['text'])) {
+                    throw new ProcessMediaException('invalid_input');
+                }
+            }
+
             // Project transcript segments to clip-local coordinates
             $projectedSegments = CaptionProjection::project($transcriptSegments, $clipStartMs, $clipEndMs);
 
@@ -313,6 +325,8 @@ class MediaProcessingContract
             $contract->configuration = $data['configuration'];
             $contract->sourceMedia = $data['source_media'];
             $contract->outputStorage = $data['output_storage'];
+            // Optional caption file for burned-in subtitles
+            $contract->captionFile = $data['caption_file'] ?? null;
 
             return $contract;
         }
@@ -455,9 +469,9 @@ class MediaProcessingContract
      *
      * Produces a privacy-safe payload with singular format:
      * version, action, media.duration_ms, candidate_index, candidate{start_ms,end_ms},
-     * configuration, source_media, output_storage.
+     * configuration, source_media, output_storage, caption_file (optional).
      *
-     * @return array{version: string, action: string, media: array{duration_ms: int}, candidate_index: int, candidate: array{start_ms: int, end_ms: int}, configuration: array, source_media: array, output_storage: array{disk: string, key: string, mime_type: string}}
+     * @return array{version: string, action: string, media: array{duration_ms: int}, candidate_index: int, candidate: array{start_ms: int, end_ms: int}, configuration: array, source_media: array, output_storage: array{disk: string, key: string, mime_type: string}, caption_file?: string}
      */
     public function toRenderClipMetadataArray(): array
     {
@@ -474,6 +488,10 @@ class MediaProcessingContract
             'source_media' => $this->sourceMedia,
             'output_storage' => $this->outputStorage,
         ];
+
+        if ($this->captionFile !== null) {
+            $data['caption_file'] = $this->captionFile;
+        }
 
         return $data;
     }

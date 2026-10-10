@@ -15,13 +15,19 @@ use stdClass;
 final class RenderValidator
 {
     public const MAX_DURATION_MS = RenderProfile::MAX_DURATION_MS;
+
     public const MAX_RECOMMENDATIONS = RenderProfile::MAX_RECOMMENDATIONS;
+
     public const MAX_INPUT_BYTES = RenderProfile::MAX_INPUT_BYTES;
 
     public const CONTRACT_VERSION = '1.0.0';
+
     public const ACTION = 'render_clip';
+
     public const ALGORITHM = RenderProfile::ALGORITHM;
+
     public const ALGORITHM_VERSION = RenderProfile::ALGORITHM_VERSION;
+
     public const RENDER_PROFILE_VERSION = RenderProfile::RENDER_PROFILE_VERSION;
 
     /**
@@ -30,7 +36,7 @@ final class RenderValidator
      * @var list<string>
      */
     private const REQUEST_KEYS = [
-        'version', 'action', 'media', 'candidate_index', 'candidate', 'configuration', 'source_media', 'output_storage',
+        'version', 'action', 'media', 'candidate_index', 'candidate', 'configuration', 'source_media', 'output_storage', 'caption_file',
     ];
 
     /**
@@ -142,7 +148,24 @@ final class RenderValidator
      */
     public static function request(mixed $request): array
     {
-        $data = self::fields($request, self::REQUEST_KEYS);
+        // Extract optional caption_file first
+        $captionFile = null;
+        if (isset($request['caption_file'])) {
+            self::require(is_string($request['caption_file']), 'caption_file must be string');
+            $captionFile = $request['caption_file'];
+        }
+
+        // Remove caption_file from request for exact key validation
+        $requestForValidation = $request;
+        unset($requestForValidation['caption_file']);
+
+        // Extract required keys (caption_file handled separately)
+        $requiredKeys = ['version', 'action', 'media', 'candidate_index', 'candidate', 'configuration', 'source_media', 'output_storage'];
+        $data = self::fields($requestForValidation, $requiredKeys);
+
+        if ($captionFile !== null) {
+            $data['caption_file'] = $captionFile;
+        }
 
         self::require($data['version'] === self::CONTRACT_VERSION, 'Unsupported render contract version');
         self::require($data['action'] === self::ACTION, 'Unsupported render action');

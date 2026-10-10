@@ -2,21 +2,28 @@
 
 namespace Tests\Feature\Jobs;
 
+use App\Contracts\MediaProcessingContract;
 use App\Exceptions\ProcessMediaException;
+use App\Jobs\RenderMediaClip;
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
-use App\Models\MediaClipRecommendation;
 use App\Models\MediaClipAnalysis;
+use App\Models\MediaClipRecommendation;
 use App\Models\MediaSceneAnalysis;
 use App\Models\MediaTranscript;
-use App\Services\ProcessMediaAction;
 use App\Services\ClipRankingProfile;
-use App\Jobs\RenderMediaClip;
+use App\Services\ProcessMediaAction;
+use App\Services\RenderProfile;
+use App\Services\RenderValidator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
+
+beforeEach(function () {
+    Storage::fake('media');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -90,9 +97,9 @@ function createCompletedClipAnalysisForRender(MediaAsset $asset): MediaClipAnaly
 
 function createCompletedTranscriptForRender(MediaAsset $asset, MediaSceneAnalysis $sceneAnalysis): MediaTranscript
 {
-    $derivedAsset = \App\Models\DerivedAsset::create([
+    $derivedAsset = DerivedAsset::create([
         'media_asset_id' => $asset->id,
-        'type' => \App\Models\DerivedAsset::TYPE_AUDIO_NORMALIZED,
+        'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
         'storage_disk' => 'media',
         'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
         'mime_type' => 'audio/wav',
@@ -118,7 +125,7 @@ function createCompletedTranscriptForRender(MediaAsset $asset, MediaSceneAnalysi
     ]);
 }
 
-function createCompletedRecommendationForRender(MediaAsset $asset, MediaClipAnalysis $clipAnalysis, MediaTranscript $transcript): MediaClipRecommendation
+function createCompletedRecommendationForRender(MediaAsset $asset, MediaClipAnalysis $clipAnalysis, ?MediaTranscript $transcript): MediaClipRecommendation
 {
     $executionParameters = [
         'timeout_seconds' => ClipRankingProfile::timeoutSeconds(),
@@ -191,8 +198,11 @@ function createCompletedRecommendationForRender(MediaAsset $asset, MediaClipAnal
 class RecordingRenderActionForRender extends ProcessMediaAction
 {
     public array $renderCalls = [];
+
     public array $renderResults = [];
+
     public bool $shouldFail = false;
+
     public string $failCode = 'render_failed';
 
     public function __construct(array $renderResults = [])
@@ -200,7 +210,7 @@ class RecordingRenderActionForRender extends ProcessMediaAction
         $this->renderResults = $renderResults;
     }
 
-    public function renderClips(\App\Contracts\MediaProcessingContract $contract): array
+    public function renderClips(MediaProcessingContract $contract): array
     {
         $request = $contract->toRenderClipMetadataArray();
         $this->renderCalls[] = $request;
@@ -212,13 +222,14 @@ class RecordingRenderActionForRender extends ProcessMediaAction
         if (empty($this->renderResults)) {
             // Return default success matching singular render_clip response format
             $requestSha256 = hash('sha256', json_encode($request, JSON_THROW_ON_ERROR));
+
             return [
                 'status' => 'success',
                 'render' => [
-                    'algorithm' => \App\Services\RenderValidator::ALGORITHM,
-                    'algorithm_version' => \App\Services\RenderValidator::ALGORITHM_VERSION,
+                    'algorithm' => RenderValidator::ALGORITHM,
+                    'algorithm_version' => RenderValidator::ALGORITHM_VERSION,
                     'parameters' => [
-                        'configuration' => \App\Services\RenderProfile::configuration(),
+                        'configuration' => RenderProfile::configuration(),
                         'source_media' => [
                             'disk' => $request['source_media']['disk'],
                             'key' => $request['source_media']['key'],
@@ -284,7 +295,7 @@ it('renders clip when explicitly dispatched with valid candidate_index', functio
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $result = $job->handle();
@@ -314,7 +325,7 @@ it('fails when candidate_index out of bounds', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 5, $action); // Out of bounds (only 2 candidates)
 
     $thrown = null;
@@ -391,7 +402,7 @@ it('fails when selected candidate has null semantic_score', function () {
         ],
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -423,7 +434,7 @@ it('throws when M5 recommendation is pending', function () {
         'status' => MediaClipRecommendation::STATUS_PENDING,
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -456,7 +467,7 @@ it('throws when M5 recommendation failed', function () {
         'error' => 'ranking_failed',
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -489,7 +500,7 @@ it('throws when M5 recommendation unavailable', function () {
         'reason' => 'no_candidate_text',
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -518,7 +529,7 @@ it('throws when M5 recommendation missing', function () {
     // No MediaClipRecommendation row at all
     $fakeRecommendationId = 99999;
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $fakeRecommendationId, 0, $action);
 
     $thrown = null;
@@ -550,7 +561,7 @@ it('reuses existing completed render, no worker call', function () {
         'media_asset_id' => $asset->id,
         'type' => DerivedAsset::TYPE_RENDERED_CLIP,
         'candidate_index' => 0,
-        'render_profile_version' => \App\Services\RenderProfile::RENDER_PROFILE_VERSION,
+        'render_profile_version' => RenderProfile::RENDER_PROFILE_VERSION,
         'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
         'render_completed_at' => now(),
         'storage_disk' => 'media',
@@ -561,11 +572,11 @@ it('reuses existing completed render, no worker call', function () {
         'width' => 1080,
         'height' => 1920,
         'codec' => 'libx264',
-        'render_configuration' => \App\Services\RenderProfile::configuration(),
+        'render_configuration' => RenderProfile::configuration(),
         'render_parameters' => ['test' => 'data'],
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $result = $job->handle();
@@ -612,7 +623,7 @@ it('throws version_conflict when existing render has different M5 authority', fu
         'codec' => 'libx264',
     ]);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -639,7 +650,7 @@ it('produces different output for different candidate_index', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
 
     // Render candidate 0
     $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
@@ -682,7 +693,7 @@ it('rejects negative candidate_index', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, -1, $action);
 
     $thrown = null;
@@ -709,7 +720,7 @@ it('is idempotent - re-dispatch returns same DerivedAsset', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
 
     $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
     $result1 = $job1->handle();
@@ -734,7 +745,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $action->shouldFail = true;
     $action->failCode = 'render_failed';
 
@@ -759,7 +770,7 @@ it('retries failed attempt - re-dispatch after failure clears error and re-attem
     expect($render->render_error)->toBe('render_failed');
 
     // Now retry with success
-    $action2 = new RecordingRenderActionForRender();
+    $action2 = new RecordingRenderActionForRender;
     $job2 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action2);
     $result2 = $job2->handle();
 
@@ -782,7 +793,7 @@ it('throws when asset has invalid probe data', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
-    $action = new RecordingRenderActionForRender();
+    $action = new RecordingRenderActionForRender;
     $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
 
     $thrown = null;
@@ -794,4 +805,224 @@ it('throws when asset has invalid probe data', function () {
 
     expect($thrown)->not->toBeNull();
     expect($thrown->getMessage())->toBe('invalid_input');
+});
+
+/*
+|--------------------------------------------------------------------------
+| CAPTION INTEGRATION TESTS (Slice 3D)
+|--------------------------------------------------------------------------
+*/
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-CAP-01: Happy path with caption_file
+|--------------------------------------------------------------------------
+*/
+
+it('includes caption_file in render contract when completed transcript with in-range segments exists', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender;
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $result = $job->handle();
+
+    expect(count($action->renderCalls))->toBe(1);
+    expect($action->renderCalls[0])->toHaveKey('caption_file');
+    $captionFile = $action->renderCalls[0]['caption_file'];
+    expect($captionFile)->toMatch('/^projects\/\d+\/captions\/\d+\/\d+\/[a-zA-Z0-9._-]+\/[a-f0-9-]+\.srt$/');
+
+    expect(Storage::disk('media')->exists($captionFile))->toBeTrue();
+    $srtContent = Storage::disk('media')->get($captionFile);
+    expect($srtContent)->toContain('00:00:00,000 -->');
+    expect($srtContent)->toContain('First segment');
+
+    expect($result->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-CAP-02: No transcript
+|--------------------------------------------------------------------------
+*/
+
+it('omits caption_file when no transcript exists', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    // Create recommendation WITHOUT transcript (pass null)
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, null);
+
+    $action = new RecordingRenderActionForRender;
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $result = $job->handle();
+
+    expect(count($action->renderCalls))->toBe(1);
+    expect($action->renderCalls[0])->not->toHaveKey('caption_file');
+    expect($result->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-CAP-03: Transcript status not completed
+|--------------------------------------------------------------------------
+*/
+
+it('omits caption_file when transcript status is not completed', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $transcript->update(['status' => MediaTranscript::STATUS_FAILED]);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender;
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $result = $job->handle();
+
+    expect($action->renderCalls[0])->not->toHaveKey('caption_file');
+    expect($result->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-CAP-04: Empty projection (segments outside clip range)
+|--------------------------------------------------------------------------
+*/
+
+it('omits caption_file when transcript segments are outside clip range', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+
+    $derivedAsset = DerivedAsset::create([
+        'media_asset_id' => $asset->id,
+        'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
+        'storage_disk' => 'media',
+        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
+        'mime_type' => 'audio/wav',
+        'size_bytes' => 1024000,
+        'duration_ms' => 30000,
+        'sample_rate' => 16000,
+        'channels' => 1,
+        'codec' => 'pcm_s16le',
+    ]);
+
+    $transcript = MediaTranscript::create([
+        'media_asset_id' => $asset->id,
+        'derived_asset_id' => $derivedAsset->id,
+        'status' => MediaTranscript::STATUS_COMPLETED,
+        'language' => 'en',
+        'full_text' => 'Late transcript',
+        'segments' => [
+            ['start_ms' => 20000, 'end_ms' => 30000, 'text' => 'Outside clip range'],
+        ],
+        'engine' => 'whisper',
+        'model' => 'base',
+    ]);
+
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender;
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $result = $job->handle();
+
+    expect($action->renderCalls[0])->not->toHaveKey('caption_file');
+    expect($result->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-CAP-05: Malformed transcript segments
+|--------------------------------------------------------------------------
+*/
+
+it('fails with invalid_input when transcript segments are malformed', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+
+    $derivedAsset = DerivedAsset::create([
+        'media_asset_id' => $asset->id,
+        'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
+        'storage_disk' => 'media',
+        'storage_key' => "projects/{$asset->project_id}/assets/{$asset->id}/derivatives/audio/test.wav",
+        'mime_type' => 'audio/wav',
+        'size_bytes' => 1024000,
+        'duration_ms' => 30000,
+        'sample_rate' => 16000,
+        'channels' => 1,
+        'codec' => 'pcm_s16le',
+    ]);
+
+    $transcript = MediaTranscript::create([
+        'media_asset_id' => $asset->id,
+        'derived_asset_id' => $derivedAsset->id,
+        'status' => MediaTranscript::STATUS_COMPLETED,
+        'language' => 'en',
+        'full_text' => 'Bad transcript',
+        'segments' => [
+            ['end_ms' => 5000, 'text' => 'Missing start_ms'],
+        ],
+        'engine' => 'whisper',
+        'model' => 'base',
+    ]);
+
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action = new RecordingRenderActionForRender;
+    $job = new RenderMediaClip($asset->id, $recommendation->id, 0, $action);
+
+    $thrown = null;
+    try {
+        $job->handle();
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->getMessage())->toContain('invalid_input');
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-CAP-06: Idempotency — distinct caption files
+|--------------------------------------------------------------------------
+*/
+
+it('generates distinct caption files on re-dispatch', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action1 = new RecordingRenderActionForRender;
+    $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action1);
+    $result1 = $job1->handle();
+
+    $action2 = new RecordingRenderActionForRender;
+    $job2 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action2);
+    $result2 = $job2->handle();
+
+    // First dispatch generates caption file and calls worker
+    expect(count($action1->renderCalls))->toBe(1);
+    expect($action1->renderCalls[0])->toHaveKey('caption_file');
+    $captionFile1 = $action1->renderCalls[0]['caption_file'];
+    expect(Storage::disk('media')->exists($captionFile1))->toBeTrue();
+
+    // Second dispatch reuses existing render (idempotent) - no worker call
+    expect(count($action2->renderCalls))->toBe(0);
+
+    // Same DerivedAsset returned
+    expect($result1->id)->toBe($result2->id);
+    expect($result1->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+    expect($result2->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
 });
