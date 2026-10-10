@@ -31,4 +31,29 @@ final class StorageKeyBuilder
             Str::uuid()->toString(),
         );
     }
+
+    public static function captionFile(
+        int $projectId,
+        int $mediaAssetId,
+        int $candidateIndex,
+        string $renderProfileVersion,
+    ): string {
+        if ($projectId < 1 || $mediaAssetId < 1 || $candidateIndex < 0) {
+            throw new InvalidArgumentException('Invalid render storage identity.');
+        }
+
+        if ($renderProfileVersion === ''
+            || preg_match('/\A[A-Za-z0-9._-]+\z/', $renderProfileVersion) !== 1) {
+            throw new InvalidArgumentException('Invalid render profile version.');
+        }
+
+        return sprintf(
+            'projects/%d/captions/%d/%d/%s/%s.srt',
+            $projectId,
+            $mediaAssetId,
+            $candidateIndex,
+            $renderProfileVersion,
+            Str::uuid()->toString(),
+        );
+    }
 }

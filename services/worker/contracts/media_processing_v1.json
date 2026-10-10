@@ -348,7 +348,8 @@
             "key": { "type": "string", "minLength": 1 },
             "mime_type": { "type": "string", "const": "video/mp4" }
           }
-        }
+        },
+        "caption_file": { "type": ["string", "null"], "description": "Optional caption file path for burn-in subtitles. Relative to worker's media root." }
       }
     },
     "render_clips_response": {

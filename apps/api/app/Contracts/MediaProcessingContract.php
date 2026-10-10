@@ -4,13 +4,15 @@ namespace App\Contracts;
 
 use App\Exceptions\ProcessMediaException;
 use App\Models\MediaAsset;
+use App\Services\CaptionProjection;
 use App\Services\ClipAnalysisValidator;
 use App\Services\ClipRankingProfile;
-use App\Services\ClipRecommendationProjection;
 use App\Services\ClipRecommendationValidator;
 use App\Services\RenderProfile;
 use App\Services\RenderValidator;
+use App\Services\SrtGenerator;
 use App\Services\StorageKeyBuilder;
+use Illuminate\Support\Facades\Storage;
 
 class MediaProcessingContract
 {
@@ -89,12 +91,15 @@ class MediaProcessingContract
      * Validation happens strictly before any process is created.
      *
      * @param  int  $mediaAssetId  The media asset ID
-     * @param  int  $durationMs
      * @param  array<string, mixed>  $recommendation  Completed M5 recommendation with candidates
      * @param  int  $recommendationId  The recommendation ID
      * @param  int  $candidateIndex  Explicitly selected candidate index
      * @param  array{disk: string, key: string, width: int, height: int, video_codec: string, audio_codec: string|null}  $sourceMedia
      * @param  int  $projectId  The project ID for output storage key
+     * @param  array<int, array{start_ms: int, end_ms: int, text: string}>|null  $transcriptSegments  Optional transcript segments for caption generation
+     * @param  int|null  $clipStartMs  Optional clip start time in milliseconds (required if transcriptSegments provided)
+     * @param  int|null  $clipEndMs  Optional clip end time in milliseconds (required if transcriptSegments provided)
+     * @param  string|null  $disk  Optional storage disk (defaults to sourceMedia disk)
      * @return array<string, mixed>
      *
      * @throws ProcessMediaException
@@ -106,7 +111,11 @@ class MediaProcessingContract
         int $recommendationId,
         int $candidateIndex,
         array $sourceMedia,
-        int $projectId
+        int $projectId,
+        ?array $transcriptSegments = null,
+        ?int $clipStartMs = null,
+        ?int $clipEndMs = null,
+        ?string $disk = null,
     ): array {
         // Validate recommendation has candidates and candidate_index is valid
         if (! isset($recommendation['recommendations']) || ! is_array($recommendation['recommendations'])) {
@@ -149,7 +158,7 @@ class MediaProcessingContract
             'mime_type' => 'video/mp4',
         ];
 
-        return [
+        $result = [
             'version' => RenderValidator::CONTRACT_VERSION,
             'action' => RenderValidator::ACTION,
             'media' => ['duration_ms' => $durationMs],
@@ -159,6 +168,38 @@ class MediaProcessingContract
             'source_media' => $sourceMedia,
             'output_storage' => $outputStorage,
         ];
+
+        // Handle optional caption generation
+        if ($transcriptSegments !== null && ! empty($transcriptSegments)) {
+            // Validate required params when transcript provided
+            if ($clipStartMs === null || $clipEndMs === null) {
+                throw new ProcessMediaException('clipStartMs and clipEndMs are required when transcriptSegments provided');
+            }
+
+            // Project transcript segments to clip-local coordinates
+            $projectedSegments = CaptionProjection::project($transcriptSegments, $clipStartMs, $clipEndMs);
+
+            // Only generate caption file if there are projected segments
+            if (! empty($projectedSegments)) {
+                $srtContent = SrtGenerator::generate($projectedSegments);
+
+                if ($srtContent !== '') {
+                    $captionStorageKey = StorageKeyBuilder::captionFile(
+                        $projectId,
+                        $mediaAssetId,
+                        $candidateIndex,
+                        RenderProfile::RENDER_PROFILE_VERSION,
+                    );
+
+                    $storageDisk = $disk ?? $sourceMedia['disk'];
+                    Storage::disk($storageDisk)->put($captionStorageKey, $srtContent);
+
+                    $result['caption_file'] = $captionStorageKey;
+                }
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -168,7 +209,6 @@ class MediaProcessingContract
      * the worker request. The configuration is validated against the
      * currently selected ranking profile.
      *
-     * @param  int  $durationMs
      * @param  array<int, array{index: int, start_ms: int, end_ms: int, rank: int, score: float|int}>  $m4Candidates
      * @param  array<int, string>  $canonicalTexts
      * @return array<string, mixed>
