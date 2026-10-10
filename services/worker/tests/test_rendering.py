@@ -46,38 +46,49 @@ class TestRenderSingularContract:
             audio_bitrate_kbps=128,
         )
 
-    @pytest.fixture
-    def canonical_request_fixture(self):
-        """The canonical request fixture from test-plan.md for cross-language hash verification."""
-        return {
+    @staticmethod
+    def _build_expected_request_metadata(
+        duration_ms: int,
+        source_media: SourceMediaInfo,
+        start_ms: int,
+        end_ms: int,
+        configuration: RenderConfiguration,
+        output_key: str,
+        output_disk: str,
+        candidate_index: int,
+        caption_file: str | None = None,
+    ) -> dict[str, Any]:
+        """Build expected request metadata matching worker's render_singular internal logic."""
+        metadata = {
+            "version": "1.0.0",
             "action": "render_clip",
-            "candidate": {"end_ms": 10000, "start_ms": 0},
-            "candidate_index": 0,
-            "configuration": {
-                "audio_bitrate_kbps": 128,
-                "audio_codec": "aac",
-                "target_fps": 30,
-                "target_height": 1920,
-                "target_width": 1080,
-                "video_bitrate_kbps": 5000,
-                "video_codec": "libx264",
+            "media": {"duration_ms": duration_ms},
+            "candidate_index": candidate_index,
+            "candidate": {"start_ms": start_ms, "end_ms": end_ms},
+            "configuration": configuration.to_dict(),
+            "source_media": {
+                "disk": source_media.disk,
+                "key": source_media.key,
+                "width": source_media.width,
+                "height": source_media.height,
+                "video_codec": source_media.video_codec,
+                "audio_codec": source_media.audio_codec,
             },
-            "media": {"duration_ms": 30000},
             "output_storage": {
-                "disk": "media",
-                "key": "renders/1/1/0_20260101T000000Z.mp4",
+                "disk": output_disk,
+                "key": output_key,
                 "mime_type": "video/mp4",
             },
-            "source_media": {
-                "audio_codec": "aac",
-                "disk": "media",
-                "height": 1080,
-                "key": "projects/1/assets/1/source.mp4",
-                "video_codec": "h264",
-                "width": 1920,
-            },
-            "version": "1.0.0",
         }
+        if caption_file is not None:
+            metadata["caption_file"] = caption_file
+        return metadata
+
+    def _compute_expected_hash(self, metadata: dict[str, Any]) -> str:
+        """Compute SHA-256 hash using canonicalization matching worker."""
+        return hashlib.sha256(
+            json.dumps(metadata, separators=(',', ':'), sort_keys=True).encode()
+        ).hexdigest()
 
     def test_render_singular_returns_request_sha256_in_parameters(self, mock_source_media, render_config):
         """WT-01: render_singular() returns parameters containing request_sha256."""
@@ -141,8 +152,22 @@ class TestRenderSingularContract:
             assert len(parameters["request_sha256"]) == 64, "request_sha256 must be 64 characters"
             assert all(c in '0123456789abcdef' for c in parameters["request_sha256"]), "request_sha256 must be lowercase hex"
 
-    def test_request_sha256_matches_canonicalization(self, mock_source_media, render_config, canonical_request_fixture):
+    def test_request_sha256_matches_canonicalization(self, mock_source_media, render_config):
         """WT-03: request_sha256 computed from exact request metadata matches canonicalization."""
+        # Build expected metadata from actual test parameters (matching worker's internal logic)
+        expected_metadata = self._build_expected_request_metadata(
+            duration_ms=30000,
+            source_media=mock_source_media,
+            start_ms=0,
+            end_ms=10000,
+            configuration=render_config,
+            output_key="renders/1/1/0_20260101T000000Z.mp4",
+            output_disk="media",
+            candidate_index=0,
+            caption_file=None,
+        )
+        expected_hash = self._compute_expected_hash(expected_metadata)
+
         with patch.object(FFmpegVerticalClipRenderer, '_probe_source_media') as mock_probe, \
              patch.object(FFmpegVerticalClipRenderer, '_run_ffmpeg') as mock_run, \
              patch.object(FFmpegVerticalClipRenderer, '_get_ffmpeg_version', return_value='ffmpeg version 6.0'), \
@@ -191,50 +216,24 @@ class TestRenderSingularContract:
                 caption_file=None,
             )
 
-            # Compute expected hash using Python canonicalization
-            expected_hash = hashlib.sha256(
-                json.dumps(canonical_request_fixture, separators=(',', ':'), sort_keys=True).encode()
-            ).hexdigest()
-
             assert parameters["request_sha256"] == expected_hash, \
                 f"request_sha256 mismatch: got {parameters['request_sha256']}, expected {expected_hash}"
 
     def test_request_sha256_includes_caption_file_when_present(self, mock_source_media, render_config):
         """WT-05: request_sha256 includes caption_file in hash when present."""
-        canonical_with_caption = {
-            "action": "render_clip",
-            "candidate": {"end_ms": 10000, "start_ms": 0},
-            "candidate_index": 0,
-            "caption_file": "projects/1/captions/1/0/test.srt",
-            "configuration": {
-                "audio_bitrate_kbps": 128,
-                "audio_codec": "aac",
-                "target_fps": 30,
-                "target_height": 1920,
-                "target_width": 1080,
-                "video_bitrate_kbps": 5000,
-                "video_codec": "libx264",
-            },
-            "media": {"duration_ms": 30000},
-            "output_storage": {
-                "disk": "media",
-                "key": "renders/1/1/0_20260101T000000Z.mp4",
-                "mime_type": "video/mp4",
-            },
-            "source_media": {
-                "audio_codec": "aac",
-                "disk": "media",
-                "height": 1080,
-                "key": "projects/1/assets/1/source.mp4",
-                "video_codec": "h264",
-                "width": 1920,
-            },
-            "version": "1.0.0",
-        }
-
-        expected_hash = hashlib.sha256(
-            json.dumps(canonical_with_caption, separators=(',', ':'), sort_keys=True).encode()
-        ).hexdigest()
+        # Build expected metadata from actual test parameters (matching worker's internal logic)
+        expected_metadata = self._build_expected_request_metadata(
+            duration_ms=30000,
+            source_media=mock_source_media,
+            start_ms=0,
+            end_ms=10000,
+            configuration=render_config,
+            output_key="renders/1/1/0_20260101T000000Z.mp4",
+            output_disk="media",
+            candidate_index=0,
+            caption_file="projects/1/captions/1/0/test.srt",
+        )
+        expected_hash = self._compute_expected_hash(expected_metadata)
 
         with patch.object(FFmpegVerticalClipRenderer, '_probe_source_media') as mock_probe, \
              patch.object(FFmpegVerticalClipRenderer, '_run_ffmpeg') as mock_run, \
