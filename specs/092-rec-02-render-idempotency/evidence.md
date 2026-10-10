@@ -1,5 +1,11 @@
 # Evidence: Render Idempotency Semantics (REC-02)
 
+### RED
+
+## RED Phase
+
+## RED Phase
+
 ## Implementation Summary
 
 This implementation adds transcript hash-based idempotency to the `RenderMediaClip` job, ensuring that:
@@ -44,13 +50,15 @@ This implementation adds transcript hash-based idempotency to the `RenderMediaCl
 - **Added TC-RMJ-17**: "creates new render when transcript added after initial render" - verifies new render when transcript added after initial render without transcript
 - **Fixed**: TC-RMJ-08 and FV-12 to include `transcript_hash` in pre-created DerivedAssets
 
-## Test Results
+### RED
 
-### RED Phase (Before Implementation)
+## RED Phase (Before Implementation)
 - 3 new tests failed as expected (TC-RMJ-15, TC-RMJ-16, TC-RMJ-17)
 - TC-RMJ-CAP-06 renamed and passed (existing behavior preserved)
 
-### GREEN Phase (After Implementation)
+#### GREEN
+
+## GREEN Phase (After Implementation)
 ```
 php artisan test --compact --filter=RenderMediaClip
 Tests:    35 passed
@@ -63,6 +71,10 @@ All 35 tests pass:
 - 6 caption integration tests (TC-RMJ-CAP-01 to TC-RMJ-CAP-06)
 - ~10 validation failure tests (FV-01 to FV-12+)
 - **3 new idempotency tests (TC-RMJ-15 to TC-RMJ-17)**
+
+### REFACTOR
+
+## REFACTOR Phase
 
 ### Code Style
 ```
