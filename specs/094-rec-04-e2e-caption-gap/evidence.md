@@ -8,6 +8,8 @@
 
 ---
 
+## TDD: N/A — Documentation-only issue; no code behavior changes.
+
 ## 2. Spec Package Location
 
 ```
@@ -95,12 +97,15 @@ All test-plan scenarios verified:
 
 ---
 
-## 5. Commands Executed
+## 4. Commands Executed
 
 ```bash
 # Verification commands from test-plan.md
 grep -A 2 "M6" README.md
-grep -A 15 "M6.2 Slices" docs/project-state.md
+grep -A 10 "caption flow integration" README.md
+grep -A 15 "M6.2 Slices 3A" docs/project-state.md
+grep -A 5 "Current Milestone" docs/project-state.md
+grep -A 5 "Next Architectural Goal" docs/project-state.md
 grep -A 25 "## M6" docs/roadmap.md
 grep -A 15 "Final Lifecycle State" specs/081-m6-2-slice3-caption-flow/evidence.md
 grep -A 15 "Final Lifecycle State" specs/081B-m6-2-slice3b-srt-generator/evidence.md
@@ -115,7 +120,7 @@ echo "=== roadmap ===" && grep -A 2 "M6.2 Slices" docs/roadmap.md
 
 ---
 
-## 6. Lifecycle State
+## 5. Lifecycle State
 
 ```
 NO_ACTIVE_ISSUE
@@ -137,6 +142,6 @@ NO_ACTIVE_ISSUE
 
 ---
 
-## 6. Blocker Summary
+## 5. Blocker Summary
 
 No blockers. All spec package files created, dependencies verified, coverage gaps documented, out-of-scope declared. Ready for Tester review.
