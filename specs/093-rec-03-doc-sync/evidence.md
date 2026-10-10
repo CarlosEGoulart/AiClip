@@ -98,7 +98,7 @@ Current: `MERGED` (all 7 files updated; all acceptance criteria satisfied)
 ## Merge Verification
 
 - **PR #98**: Merged via `scripts/merge_gate.py` on 2026-10-10
-- **Merge Commit**: `f195901` (on master)
+- **Merge Commit**: `f78f3c0` (on master)
 - **Issue #93**: CLOSED
 - **All required CI checks passed**: Backend CI, Frontend CI, E2E CI, Governance, PR Enforcement
 - **Tester approval**: **Decision: APPROVE** (recorded in evidence.md)
