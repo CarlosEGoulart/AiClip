@@ -1,0 +1,29 @@
+{
+  "action": "render_clip",
+  "candidate": { "end_ms": 10000, "start_ms": 0 },
+  "candidate_index": 0,
+  "configuration": {
+    "audio_bitrate_kbps": 128,
+    "audio_codec": "aac",
+    "target_fps": 30,
+    "target_height": 1920,
+    "target_width": 1080,
+    "video_bitrate_kbps": 5000,
+    "video_codec": "libx264"
+  },
+  "media": { "duration_ms": 30000 },
+  "output_storage": {
+    "disk": "media",
+    "key": "renders/1/1/0_20260101T000000Z.mp4",
+    "mime_type": "video/mp4"
+  },
+  "source_media": {
+    "audio_codec": "aac",
+    "disk": "media",
+    "height": 1080,
+    "key": "projects/1/assets/1/source.mp4",
+    "video_codec": "h264",
+    "width": 1920
+  },
+  "version": "1.0.0"
+}
