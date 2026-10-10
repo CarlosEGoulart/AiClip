@@ -15,7 +15,6 @@ use App\Services\ClipRankingProfile;
 use App\Services\ProcessMediaAction;
 use App\Services\RenderProfile;
 use App\Services\RenderValidator;
-use App\Services\StorageKeyBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -566,6 +565,26 @@ it('reuses existing completed render, no worker call', function () {
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
+    // Compute transcript hash for the pre-created DerivedAsset
+    $clipStartMs = (int) ($recommendation->recommendations[0]['start_ms'] ?? 0);
+    $clipEndMs = (int) ($recommendation->recommendations[0]['end_ms'] ?? 0);
+    $segments = $transcript->segments ?? [];
+    $inRangeSegments = array_filter($segments, function (array $segment) use ($clipStartMs, $clipEndMs): bool {
+        $segStart = $segment['start_ms'] ?? 0;
+        $segEnd = $segment['end_ms'] ?? 0;
+
+        return $segStart < $clipEndMs && $segEnd > $clipStartMs;
+    });
+    $normalized = array_values(array_map(function (array $segment): array {
+        return [
+            's' => (int) ($segment['start_ms'] ?? 0),
+            'e' => (int) ($segment['end_ms'] ?? 0),
+            't' => (string) ($segment['text'] ?? ''),
+        ];
+    }, $inRangeSegments));
+    usort($normalized, fn (array $a, array $b) => $a['s'] <=> $b['s']);
+    $transcriptHash = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
+
     // Pre-create completed render with render_status and lifecycle fields
     DerivedAsset::create([
         'media_asset_id' => $asset->id,
@@ -584,6 +603,7 @@ it('reuses existing completed render, no worker call', function () {
         'codec' => 'libx264',
         'render_configuration' => RenderProfile::configuration(),
         'render_parameters' => ['test' => 'data'],
+        'transcript_hash' => $transcriptHash,
     ]);
 
     $action = new RecordingRenderActionForRender;
@@ -1003,11 +1023,11 @@ it('fails with invalid_input when transcript segments are malformed', function (
 
 /*
 |--------------------------------------------------------------------------
-| TC-RMJ-CAP-06: Idempotency — distinct caption files
+| TC-RMJ-CAP-06: Idempotency — reuses completed render with same transcript
 |--------------------------------------------------------------------------
 */
 
-it('generates distinct caption files on re-dispatch', function () {
+it('reuses completed render with same transcript - idempotent', function () {
     $asset = createProbedAssetForRender();
     $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
     $clipAnalysis = createCompletedClipAnalysisForRender($asset);
@@ -1035,6 +1055,111 @@ it('generates distinct caption files on re-dispatch', function () {
     expect($result1->id)->toBe($result2->id);
     expect($result1->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
     expect($result2->render_status)->toBe(DerivedAsset::RENDER_STATUS_COMPLETED);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-15: Transcript content changed → new render (not reused)
+|--------------------------------------------------------------------------
+*/
+
+it('creates new render when transcript segments change', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
+
+    $action1 = new RecordingRenderActionForRender;
+    $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action1);
+    $result1 = $job1->handle();
+
+    expect(count($action1->renderCalls))->toBe(1);
+    $captionFile1 = $action1->renderCalls[0]['caption_file'] ?? null;
+
+    // Modify transcript segments (simulate user edit)
+    $transcript->update([
+        'segments' => [
+            ['start_ms' => 0, 'end_ms' => 10000, 'text' => 'First segment MODIFIED'],
+            ['start_ms' => 10000, 'end_ms' => 20000, 'text' => 'Second segment MODIFIED'],
+        ],
+    ]);
+
+    $action2 = new RecordingRenderActionForRender;
+    $job2 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action2);
+    $result2 = $job2->handle();
+
+    // New render triggered
+    expect(count($action2->renderCalls))->toBe(1);
+    expect($result1->id)->not->toBe($result2->id);
+
+    // Two DerivedAsset rows exist (old completed, new completed)
+    $renders = DerivedAsset::where('media_asset_id', $asset->id)
+        ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
+        ->where('candidate_index', 0)
+        ->get();
+
+    expect($renders->count())->toBe(2);
+    expect($renders->where('render_status', DerivedAsset::RENDER_STATUS_COMPLETED)->count())->toBe(2);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-16: No transcript on both dispatches → idempotent reuse
+|--------------------------------------------------------------------------
+*/
+
+it('reuses render when both dispatches have no transcript', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    // No transcript
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, null);
+
+    $action1 = new RecordingRenderActionForRender;
+    $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action1);
+    $result1 = $job1->handle();
+
+    $action2 = new RecordingRenderActionForRender;
+    $job2 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action2);
+    $result2 = $job2->handle();
+
+    expect(count($action1->renderCalls))->toBe(1);
+    expect(count($action2->renderCalls))->toBe(0);
+    expect($result1->id)->toBe($result2->id);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TC-RMJ-17: Transcript added after initial render → new render
+|--------------------------------------------------------------------------
+*/
+
+it('creates new render when transcript added after initial render', function () {
+    $asset = createProbedAssetForRender();
+    $sceneAnalysis = createCompletedSceneAnalysisForRender($asset);
+    $clipAnalysis = createCompletedClipAnalysisForRender($asset);
+    // Initial: no transcript
+    $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, null);
+
+    $action1 = new RecordingRenderActionForRender;
+    $job1 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action1);
+    $result1 = $job1->handle();
+
+    expect(count($action1->renderCalls))->toBe(1);
+    expect($action1->renderCalls[0])->not->toHaveKey('caption_file');
+
+    // Add transcript
+    $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
+    $recommendation->refresh(); // Not strictly needed but ensures consistency
+
+    $action2 = new RecordingRenderActionForRender;
+    $job2 = new RenderMediaClip($asset->id, $recommendation->id, 0, $action2);
+    $result2 = $job2->handle();
+
+    expect(count($action2->renderCalls))->toBe(1);
+    expect($action2->renderCalls[0])->toHaveKey('caption_file');
+    expect($result1->id)->not->toBe($result2->id);
 });
 
 /*
@@ -1480,6 +1605,26 @@ it('FV-12: Existing completed render reused (idempotency) - no worker call, no v
     $transcript = createCompletedTranscriptForRender($asset, $sceneAnalysis);
     $recommendation = createCompletedRecommendationForRender($asset, $clipAnalysis, $transcript);
 
+    // Compute transcript hash for the pre-created DerivedAsset
+    $clipStartMs = (int) ($recommendation->recommendations[0]['start_ms'] ?? 0);
+    $clipEndMs = (int) ($recommendation->recommendations[0]['end_ms'] ?? 0);
+    $segments = $transcript->segments ?? [];
+    $inRangeSegments = array_filter($segments, function (array $segment) use ($clipStartMs, $clipEndMs): bool {
+        $segStart = $segment['start_ms'] ?? 0;
+        $segEnd = $segment['end_ms'] ?? 0;
+
+        return $segStart < $clipEndMs && $segEnd > $clipStartMs;
+    });
+    $normalized = array_values(array_map(function (array $segment): array {
+        return [
+            's' => (int) ($segment['start_ms'] ?? 0),
+            'e' => (int) ($segment['end_ms'] ?? 0),
+            't' => (string) ($segment['text'] ?? ''),
+        ];
+    }, $inRangeSegments));
+    usort($normalized, fn (array $a, array $b) => $a['s'] <=> $b['s']);
+    $transcriptHash = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
+
     // Pre-create completed render
     DerivedAsset::create([
         'media_asset_id' => $asset->id,
@@ -1498,6 +1643,7 @@ it('FV-12: Existing completed render reused (idempotency) - no worker call, no v
         'codec' => 'libx264',
         'render_configuration' => RenderProfile::configuration(),
         'render_parameters' => ['test' => 'data'],
+        'transcript_hash' => $transcriptHash,
     ]);
 
     $action = new RecordingRenderActionForRender;

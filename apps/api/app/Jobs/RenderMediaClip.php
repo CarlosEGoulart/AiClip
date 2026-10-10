@@ -110,6 +110,9 @@ class RenderMediaClip implements ShouldQueue
         $clipStartMs = (int) $selectedCandidate['start_ms'];
         $clipEndMs = (int) $selectedCandidate['end_ms'];
 
+        // Compute transcript hash for idempotency check
+        $transcriptHash = $this->computeTranscriptHash($transcript, $clipStartMs, $clipEndMs);
+
         // Validate transcript segments early (before transaction) to avoid rollback on invalid_input
         $transcriptSegments = $transcript?->segments;
         if ($transcriptSegments !== null && ! empty($transcriptSegments)) {
@@ -143,11 +146,18 @@ class RenderMediaClip implements ShouldQueue
             throw new RenderVersionConflictException('render_version_conflict');
         }
 
-        // Check existing DerivedAsset for idempotency (current profile version only)
+        // Check existing DerivedAsset for idempotency (includes transcript_hash)
         $existingRender = DerivedAsset::where('media_asset_id', $asset->id)
             ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
             ->where('candidate_index', $this->candidateIndex)
             ->where('render_profile_version', RenderProfile::RENDER_PROFILE_VERSION)
+            ->where(function ($query) use ($transcriptHash) {
+                if ($transcriptHash !== null) {
+                    $query->where('transcript_hash', $transcriptHash);
+                } else {
+                    $query->whereNull('transcript_hash');
+                }
+            })
             ->first();
 
         if ($existingRender !== null) {
@@ -157,6 +167,7 @@ class RenderMediaClip implements ShouldQueue
                     'media_asset_id' => $asset->id,
                     'candidate_index' => $this->candidateIndex,
                     'derived_asset_id' => $existingRender->id,
+                    'transcript_hash' => $transcriptHash,
                 ]);
 
                 return $existingRender;
@@ -207,6 +218,7 @@ class RenderMediaClip implements ShouldQueue
                 $clipStartMs,
                 $clipEndMs,
                 $executionParameters,
+                $transcriptHash,
             ) {
                 if (DB::connection()->getDriverName() === 'pgsql') {
                     DB::select('SELECT set_config(\'lock_timeout\', ?, true)', [$renderLockWaitSeconds.'s']);
@@ -223,6 +235,7 @@ class RenderMediaClip implements ShouldQueue
                     'storage_key' => $outputStorageKey,
                     'mime_type' => 'video/mp4',
                     'size_bytes' => 0,
+                    'transcript_hash' => $transcriptHash,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -231,6 +244,13 @@ class RenderMediaClip implements ShouldQueue
                     ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
                     ->where('render_profile_version', RenderProfile::RENDER_PROFILE_VERSION)
                     ->where('candidate_index', $this->candidateIndex)
+                    ->where(function ($query) use ($transcriptHash) {
+                        if ($transcriptHash !== null) {
+                            $query->where('transcript_hash', $transcriptHash);
+                        } else {
+                            $query->whereNull('transcript_hash');
+                        }
+                    })
                     ->lockForUpdate()
                     ->first();
 
@@ -320,6 +340,7 @@ class RenderMediaClip implements ShouldQueue
                     $locked->render_configuration = $renderConfiguration;
                     $locked->render_parameters = $result['render']['parameters'];
                     $locked->render_error = null;
+                    $locked->transcript_hash = $transcriptHash;
                     $locked->save();
                 } catch (\Throwable $e) {
                     // Wrap non-ProcessMediaException to ensure failed render is persisted
@@ -388,6 +409,13 @@ class RenderMediaClip implements ShouldQueue
             ->where('type', DerivedAsset::TYPE_RENDERED_CLIP)
             ->where('render_profile_version', RenderProfile::RENDER_PROFILE_VERSION)
             ->where('candidate_index', $this->candidateIndex)
+            ->where(function ($query) use ($transcriptHash) {
+                if ($transcriptHash !== null) {
+                    $query->where('transcript_hash', $transcriptHash);
+                } else {
+                    $query->whereNull('transcript_hash');
+                }
+            })
             ->first();
 
         if ($completedRender === null) {
@@ -415,6 +443,47 @@ class RenderMediaClip implements ShouldQueue
         }
 
         return false;
+    }
+
+    /**
+     * Compute SHA-256 hash of transcript segments that project to the clip range.
+     * Returns null if no transcript, no segments, or no in-range segments.
+     */
+    private function computeTranscriptHash(?MediaTranscript $transcript, int $clipStartMs, int $clipEndMs): ?string
+    {
+        if ($transcript === null) {
+            return null;
+        }
+
+        $segments = $transcript->segments ?? [];
+        if (empty($segments)) {
+            return null;
+        }
+
+        // Filter segments that intersect with clip range
+        $inRangeSegments = array_filter($segments, function (array $segment) use ($clipStartMs, $clipEndMs): bool {
+            $segStart = $segment['start_ms'] ?? 0;
+            $segEnd = $segment['end_ms'] ?? 0;
+
+            return $segStart < $clipEndMs && $segEnd > $clipStartMs;
+        });
+
+        if (empty($inRangeSegments)) {
+            return null;
+        }
+
+        // Normalize: sort by start_ms, then encode minimal content for hash
+        $normalized = array_values(array_map(function (array $segment): array {
+            return [
+                's' => (int) ($segment['start_ms'] ?? 0),
+                'e' => (int) ($segment['end_ms'] ?? 0),
+                't' => (string) ($segment['text'] ?? ''),
+            ];
+        }, $inRangeSegments));
+
+        usort($normalized, fn (array $a, array $b) => $a['s'] <=> $b['s']);
+
+        return hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
     }
 
     /**

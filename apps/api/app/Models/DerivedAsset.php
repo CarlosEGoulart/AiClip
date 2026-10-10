@@ -8,11 +8,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DerivedAsset extends Model
 {
     const TYPE_AUDIO_NORMALIZED = 'audio_normalized';
+
     const TYPE_RENDERED_CLIP = 'clip_rendered';
 
     const RENDER_STATUS_PENDING = 'pending';
+
     const RENDER_STATUS_RENDERING = 'rendering';
+
     const RENDER_STATUS_COMPLETED = 'completed';
+
     const RENDER_STATUS_FAILED = 'failed';
 
     private const RENDER_TRANSITIONS = [
@@ -46,6 +50,7 @@ class DerivedAsset extends Model
         'render_error',
         'render_started_at',
         'render_completed_at',
+        'transcript_hash',
     ];
 
     protected function casts(): array
@@ -62,6 +67,7 @@ class DerivedAsset extends Model
             'render_parameters' => 'array',
             'render_started_at' => 'datetime',
             'render_completed_at' => 'datetime',
+            'transcript_hash' => 'string',
         ];
     }
 
@@ -92,7 +98,7 @@ class DerivedAsset extends Model
             self::RENDER_STATUS_PENDING,
         )) {
             throw new \InvalidArgumentException(
-                "Invalid transition from {$this->render_status} to " . self::RENDER_STATUS_PENDING
+                "Invalid transition from {$this->render_status} to ".self::RENDER_STATUS_PENDING
             );
         }
 
@@ -111,7 +117,7 @@ class DerivedAsset extends Model
             self::RENDER_STATUS_RENDERING,
         )) {
             throw new \InvalidArgumentException(
-                "Invalid transition from {$this->render_status} to " . self::RENDER_STATUS_RENDERING
+                "Invalid transition from {$this->render_status} to ".self::RENDER_STATUS_RENDERING
             );
         }
 
@@ -124,7 +130,7 @@ class DerivedAsset extends Model
     }
 
     /**
-     * @param array<string, mixed> $result
+     * @param  array<string, mixed>  $result
      */
     public function markRenderCompleted(array $result): void
     {
@@ -133,7 +139,7 @@ class DerivedAsset extends Model
             self::RENDER_STATUS_COMPLETED,
         )) {
             throw new \InvalidArgumentException(
-                "Invalid transition from {$this->render_status} to " . self::RENDER_STATUS_COMPLETED
+                "Invalid transition from {$this->render_status} to ".self::RENDER_STATUS_COMPLETED
             );
         }
 
@@ -163,7 +169,7 @@ class DerivedAsset extends Model
             self::RENDER_STATUS_FAILED,
         )) {
             throw new \InvalidArgumentException(
-                "Invalid transition from {$this->render_status} to " . self::RENDER_STATUS_FAILED
+                "Invalid transition from {$this->render_status} to ".self::RENDER_STATUS_FAILED
             );
         }
 
