@@ -1036,3 +1036,46 @@ def render_clips(contract: dict[str, Any], configuration: RenderConfiguration, f
             ],
         },
     }
+
+
+def render_singular(
+    duration_ms: int,
+    source_media: SourceMediaInfo,
+    start_ms: int,
+    end_ms: int,
+    configuration: RenderConfiguration,
+    output_key: str,
+    output_disk: str,
+    candidate_index: int,
+    caption_file: str | None = None,
+    ffmpeg_timeout: int = DEFAULT_FFMPEG_TIMEOUT,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Convenience wrapper to call FFmpegVerticalClipRenderer.render_singular.
+
+    Args:
+        duration_ms: Total source media duration in milliseconds.
+        source_media: Source media information.
+        start_ms: Clip start time in milliseconds.
+        end_ms: Clip end time in milliseconds.
+        configuration: Render configuration.
+        output_key: Output storage key.
+        output_disk: Output storage disk.
+        candidate_index: Selected candidate index.
+        caption_file: Optional caption file path.
+        ffmpeg_timeout: FFmpeg timeout in seconds.
+
+    Returns:
+        Tuple of (clip_info, parameters) as returned by render_singular method.
+    """
+    renderer = FFmpegVerticalClipRenderer(ffmpeg_timeout=ffmpeg_timeout)
+    return renderer.render_singular(
+        duration_ms=duration_ms,
+        source_media=source_media,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        configuration=configuration,
+        output_key=output_key,
+        output_disk=output_disk,
+        candidate_index=candidate_index,
+        caption_file=caption_file,
+    )
