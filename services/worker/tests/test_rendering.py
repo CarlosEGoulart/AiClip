@@ -458,4 +458,4 @@ class TestWorkerErrorPaths:
             )
 
         assert exc_info.value.code == "render_failed"
-        assert "error" in str(exc_info.value).lower()
+        assert "failed" in str(exc_info.value).lower()
