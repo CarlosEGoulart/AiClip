@@ -142,3 +142,9 @@ Ensures no duplicate renders for the same `(media_asset_id, type, candidate_inde
 php artisan migrate:rollback --step=2
 git revert <commit>
 ```
+
+### Tester Decision
+
+**Decision: APPROVE**
+
+All acceptance criteria independently verified. Implementation correctly implements idempotent render with transcript hash detection.
