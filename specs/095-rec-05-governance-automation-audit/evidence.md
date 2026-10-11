@@ -1,16 +1,16 @@
 # Evidence for REC-05: Governance Automation Audit
 
-## 1. Audit Scope
+## 1. Issue Reference
 
-This audit covers the governance automation inventory for the AiClip repository as of 2026-10-11.
+- **Issue**: #95 — REC-05: Evaluate governance automation gaps
+- **GitHub URL**: https://github.com/CarlosEGoulart/AiClip/issues/95
+- **Spec Package**: `specs/095-rec-05-governance-automation-audit/`
 
-**Audit Scope:**
-- Inventory of current governance automation (CI workflows, validators, merge gate, PR enforcement)
-- Identification of 4 gaps: Diff Gate, Preflight Hooks, Evidence Freshness, Spec/Plan Quality
-- Definition of 4 follow-up issues (GOV-01 through GOV-04)
+---
 
-**Audit Date:** 2026-10-11
-**Auditor:** Orchestrator (via Planner and Builder agents)
+## TDD: N/A — Documentation-only issue; no code behavior changes.
+
+## Implementation Summary
 
 ---
 
