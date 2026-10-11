@@ -91,6 +91,8 @@ M6.2 Slices 3A–3D — Caption Flow Integration (Issues #81, #81B, #87, #89 / P
 
 REC-04 (Issue #94): E2E caption flow integration test gap documented as risk; Slice 3E implementation not authorized.
 
+REC-05 (Issue #95): Governance automation audit completed; GOV-01 through GOV-04 follow-up issues defined.
+
 # Next Architectural Goal
 
 M6.2 Slice 3E — End-to-end caption flow integration test (planned, not authorized).
