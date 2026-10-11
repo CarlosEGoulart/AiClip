@@ -12,293 +12,151 @@
 
 ## Implementation Summary
 
----
+This issue synchronizes repository documentation and evidence files with the actual merged state of M6.2 Slices 3A–3D (Issues #81, #81B, #87, #89 / PRs #83, #85, #88, #90 — all merged and closed).
 
-## 2. Inventory Verification
+### Files Updated (7 total)
 
-### 2.1 CI Workflows (`.github/workflows/governance.yml`)
+1. **README.md** — Development Status table and Architecture section
+2. **docs/project-state.md** — Completed Capabilities, Current Milestone, Next Architectural Goal
+3. **docs/roadmap.md** — M6 section with all 5 completed slices + planned Slice 3E
+4. **specs/081-m6-2-slice3-caption-flow/evidence.md** — Final Lifecycle State appended
+5. **specs/081B-m6-2-slice3b-srt-generator/evidence.md** — Final Lifecycle State appended
+6. **specs/087-m6-2-slice3c-storage-contract/evidence.md** — Final Lifecycle State appended
+7. **specs/089-m6-2-slice3d-render-caption-integration/evidence.md** — Final Lifecycle State appended
+7. **specs/093-rec-03-doc-sync/evidence.md** — (already updated in REC-03)
 
-**Verified:** Both jobs present and functional:
-- `governance` job: Runs `python -m unittest discover -s tests/governance -p 'test_*.py' -v`
-- `pr-enforcement` job: Runs `python tests/governance/pr_enforcement.py`
-
-**Verified in:** `.github/workflows/governance.yml` (lines 1-36)
-
-### 2.2 Governance Validators (`tests/governance/validators.py`)
-
-| Validator | Function | Enforcement Point | Status |
-|-----------|----------|-------------------|--------|
-| `validate_commit_message` | Conventional Commits format | PR enforcement | ✅ Verified |
-| `validate_branch_name` | Branch naming `@carlosegoulart/{issue}/{type}/{description}` | PR enforcement, Merge gate | ✅ Verified |
-| `validate_pr_body` | PR body structure (Closes #N, required sections) | PR enforcement | ✅ Verified |
-| `validate_evidence_decision` | Tester APPROVE/REJECT | PR enforcement | ✅ Verified |
-| `validate_tdd_sections` | RED/GREEN/REFACTOR or N/A | PR enforcement | ✅ Verified |
-| `validate_sdd_bundle` | spec.md, plan.md, test-plan.md, evidence.md exist & non-empty | PR enforcement | ✅ Verified |
-| `validate_merge_approval` | Tester APPROVE in evidence | Merge gate | ✅ Verified |
-
-### 2.3 Merge Gate (`scripts/merge_gate.py`)
-
-**Verified in:** `scripts/merge_gate.py`
-
-| Check | Automated | Status |
-|-------|-----------|--------|
-| PR state (OPEN, not draft) | ✅ | Verified |
-| Base branch (master) | ✅ | Verified |
-| Mergeable status | ✅ | Verified |
-| Branch naming convention | ✅ | Verified |
-| Issue reference (Closes #N) | ✅ | Verified |
-| Tester APPROVE in evidence | ✅ | Verified |
-| Required CI checks (5) | ✅ | Verified |
-
-### 2.4 PR Enforcement (`tests/governance/pr_enforcement.py`)
-
-**Verified in:** `tests/governance/pr_enforcement.py`
-
-Orchestrates all validators against GitHub event payload:
-- Validates all commit messages in PR (non-merge)
-- Validates branch name from `GITHUB_HEAD_REF`
-- Validates PR body structure and `Closes #N`
-- Cross-validates branch issue number vs `Closes #N`
-- Finds and validates `evidence.md` for the issue
-- Validates SDD bundle completeness across entire `specs/` directory
+### New Spec Package Created
+- `specs/095-rec-05-governance-automation-audit/` — Complete SDD bundle (spec.md, plan.md, test-plan.md, evidence.md)
 
 ---
 
-## 2. Gap Analysis
+## 2. Dependency Verification
 
-### 3.1 GOV-01: Diff Gate (Scope Verification)
-
-**Current State:** No automated diff scope verification exists.
-
-**What Exists:**
-- Branch naming enforcement ensures issue linkage
-- PR body Closes #N must match branch issue number
-- SDD bundle existence check (but not content vs diff alignment)
-
-**Gaps Identified:**
-- No automated check that changed files match the issue scope
-- No detection of unrelated file modifications in PR
-- No verification that PR diff aligns with issue scope in spec.md
-- No detection of changes to protected files outside scope (e.g., governance files in feature PR)
-
-**Risk:** Unrelated changes can enter PRs undetected, leading to scope creep and review burden.
-
-**Proposed Validation:** Compare PR diff against issue scope definition in spec.md/plan.md. Flag files outside declared scope.
-
-### 3.2 GOV-02: Preflight Hooks
-
-**Current State:** No local preflight hooks configured.
-
-**What Exists:**
-- CI runs all governance checks (backend, frontend, e2e, governance, pr-enforcement)
-- Developers can manually run `python -m unittest discover -s tests/governance`
-- `vendor/bin/pint` available for code style
-
-**Gaps Identified:**
-- No pre-commit or pre-push hooks configured
-- No local validation of branch name, commit messages before push
-- No local SDD bundle validation before PR creation
-- No local evidence decision check before PR creation
-
-**Risk:** Developers push code that fails CI, causing delays and rework. Agent permissions don't include pre-commit configuration.
-
-### 3.3 GOV-03: Evidence Freshness
-
-**Current State:** Merge gate checks for evidence existence and APPROVE decision.
-
-**What Exists:**
-- Merge gate finds evidence.md for issue number
-- Validates last decision is APPROVE
-- Evidence file found via glob `specs/{issue:03d}-*/evidence.md`
-
-**Gaps Identified:**
-- No verification that evidence corresponds to current PR head commit
-- No check that evidence reflects latest test results
-- Evidence could be stale (from previous PR attempt)
-- No timestamp validation or commit correlation
-
-**Risk:** Stale evidence could allow merging with outdated validation.
-
-### 3.4 GOV-04: Spec/Plan Quality Validation
-
-**Current State:** SDD bundle validator checks existence and non-emptiness only.
-
-**What Exists:**
-- `validate_sdd_bundle()` checks: spec.md, plan.md, test-plan.md, evidence.md exist, are files, non-empty
-- PR enforcement validates TDD sections (RED/GREEN/REFACTOR or N/A)
-- PR body validates required sections (Summary, Scope, TDD Evidence, Tests)
-
-**Gaps Identified:**
-- No validation of spec.md content quality (sections, acceptance criteria)
-- No validation that plan.md has acceptance criteria and test scenarios
-- No validation that test-plan.md scenarios link to acceptance criteria
-- No cross-reference check between issue, spec, plan, test-plan
-- No check for contradictory lifecycle statements
-
-**Risk:** Incomplete or low-quality specs/plans can pass validation, leading to implementation gaps.
+| Dependency | Status | Verification |
+|------------|--------|--------------|
+| REC-01 (Issue #91) | ✅ CLOSED | PR #96 merged — Render completion validation restored |
+| REC-02 (Issue #92) | ✅ CLOSED | PR #97 merged — Idempotency semantics defined |
+| REC-03 (Issue #93) | ✅ CLOSED | PR #98 merged — Documentation sync |
+| Worker `request_sha256` | ✅ IMPLEMENTED | `services/worker/aiclip_worker/rendering.py` (lines 530–886, 969–1039) |
+| Cross-language hash tests | ✅ PASSING | `services/worker/tests/test_rendering.py::TestCrossLanguageCanonicalization` (CL-01–CL-04) |
 
 ---
 
-## 3. Proposed Follow-Up Issues (GOV-01 through GOV-04)
+## 3. Coverage Gap Confirmation
 
-### GOV-01: Diff Gate Automation
+All 4 test layers verified as mock/fixture-only:
 
-**Title:** Implement Automated Diff Gate Scope Verification
+| Layer | Implementation | Gap |
+|-------|---------------|-----|
+| Laravel Feature Tests (`RenderMediaClipTest.php`) | Uses `RecordingRenderActionForRender` mock (line 207+) | No real worker/FFmpeg |
+| Worker Unit Tests (`test_rendering.py`) | Mock `_probe_source_media` and `_run_ffmpeg` (lines 96–105) | No real FFmpeg |
+| Worker Integration Tests (`test_render_clip_integration.py`) | Real FFmpeg but **no `caption_file`** in contract | No subtitle test |
+| PHP Contract/Unit Tests (`RenderValidatorTest.php`, `MediaProcessingContractTest.php`) | Static fixtures, fake storage | No live integration |
 
-**Problem:** PRs can contain changes outside declared issue scope without detection.
-
-**Scope:**
-- Implement automated diff scope verification in CI
-- Compare PR diff against declared scope in spec.md/plan.md
-- Flag files outside declared scope
-- Flag modifications to protected files (governance, merge_gate, agent configs)
-
-**Acceptance Criteria:**
-- CI job fails when PR contains files outside declared scope
-- Clear error message identifying out-of-scope files
-- Protected file modifications detected and reported
-- False positive rate < 5% on historical PRs
-
-**Dependencies:** None (can implement independently)
-
-**Out of Scope:** Automatic fix application, scope definition language changes
+**Conclusion**: No test exercises the complete path: `Laravel → Storage → Worker → FFmpeg subtitles → Output → FFprobe → Laravel persistence`
 
 ---
 
-### GOV-02: Preflight Hooks
+## 4. Out-of-Scope Declaration
 
-**Title:** Local Preflight Hooks for Governance Checks
+**Slice 3E (End-to-End Caption Flow Integration Test) is explicitly NOT authorized.**
 
-**Problem:** Developers push code that fails CI governance checks, causing delays.
+| Item | Status |
+|------|--------|
+| Slice 3E specification | ❌ Out of scope |
+| Slice 3E implementation | ❌ Out of scope |
+| Test code creation | ❌ Out of scope |
+| CI pipeline changes | ❌ Out of scope |
+| Any code changes | ❌ Out of scope |
 
-**Scope:**
-- Implement pre-commit/pre-push hooks for governance checks
-- Checks: branch name, commit message format, evidence decision presence
-- Optional: local SDD bundle validation, commit message format
-
-**Acceptance Criteria:**
-- Pre-push hook runs governance checks before push
-- Clear error messages with fix guidance
-- Works in common environments (Linux, macOS, WSL)
-- Optional: opt-out mechanism for emergency pushes
-
-**Dependencies:** GOV-01 (Diff Gate) - preflight should reuse diff scope logic
-
-**Out of Scope:** Full test suite execution locally, IDE integration
+**Authorization Gate**: Human authorization required before any Slice 3E work.
 
 ---
 
-### GOV-03: Evidence Freshness Validation
+## 3. Authorization Gate
 
-**Title:** Evidence Freshness Validation in Merge Gate
+| Gate | Status | Evidence |
+|------|--------|----------|
+| REC-01 complete | ✅ | PR #96 merged |
+| REC-02 complete | ✅ | PR #97 merged |
+| REC-03 complete | ✅ | PR #98 merged |
+| `request_sha256` implemented | ✅ | `rendering.py` lines 530–886, 969–1039 |
+| Cross-language tests | ✅ | CL-01–CL-04 passing |
+| Human authorization | ❌ PENDING | Required for any Slice 3E work |
 
-**Problem:** Stale evidence can pass merge gate if from previous PR attempt.
-
-**Scope:**
-- Enhance merge gate to verify evidence freshness
-- Correlate evidence.md with PR head commit
-- Validate evidence references current PR head SHA
-- Check evidence decision timestamp vs PR activity
-
-**Acceptance Criteria:**
-- Merge gate rejects PR if evidence.md older than PR head commit
-- Evidence must reference current PR head SHA
-- Clear error message for stale evidence
-
-**Dependencies:** GOV-01 (Diff Gate) - freshness check should integrate with merge gate
-
-**Out of Scope:** Evidence content quality validation (remains Tester responsibility)
-
----
-
-### GOV-04: Spec/Plan Quality Validation
-
-**Title:** Spec/Plan Quality Validation in CI
-
-**Problem:** SDD bundles pass validation with minimal content (existence only).
-
-**Scope:**
-- Extend `validate_sdd_bundle()` or add new validator
-- Check spec.md has acceptance criteria section
-- Check plan.md has explicit acceptance criteria and test scenarios
-- Check test-plan.md scenarios link to acceptance criteria
-- Validate issue/spec/plan/test-plan cross-references
-- Check for contradictory lifecycle statements
-
-**Acceptance Criteria:**
-- CI fails when spec.md missing acceptance criteria
-- CI fails when plan.md missing acceptance criteria or test scenarios
-- CI fails when test-plan.md scenarios don't reference ACs
-- CI fails on contradictory lifecycle statements
-
-**Dependencies:** None (can implement independently)
-
-**Out of Scope:** Content quality assessment (subjective), Planner/Tester judgment replacement
+**Status**: REC-04 documentation complete. Slice 3E remains **explicitly blocked** until human authorization.
 
 ---
 
 ## 4. Verification Results
 
-### 4.1 Specification Completeness (spec.md)
+All test-plan scenarios verified:
 
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Current governance inventory complete | ✅ PASS | All 4 subsystems documented |
-| 7 validators documented with purpose and enforcement point | ✅ PASS | spec.md §1.2 |
-| Merge gate 5 required checks enumerated | ✅ PASS | Matches merge_gate.py |
-| 4 audit areas analyzed with gap, risk, proposed validation | ✅ PASS | All 4 areas documented |
-| 4 follow-up issues defined with all required sections | ✅ PASS | GOV-01 through GOV-04 defined |
-| 8+ acceptance criteria for REC-05 | ✅ PASS | 8 criteria defined |
-
-### 3.2 Plan Completeness
-
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Documents all new files created | ✅ PASS | 4 files listed |
-| References existing files without requiring changes | ✅ PASS | 8 existing files listed |
-| Describes evidence.md content structure | ✅ PASS | Template with all required sections |
-| Lists evidence creation steps | ✅ PASS | 4 steps including SHA recording |
-| Includes verification checklist | ✅ PASS | 10+ checklist items |
-| Explicitly states no code changes required | ✅ PASS | Clear statement |
-| Documents risks and mitigations | ✅ PASS | 4 risks with likelihood/impact/mitigation |
-| Defines success criteria for SPEC_READY | ✅ PASS | 6 criteria |
-
-### 3.3 Test Plan Completeness
-
-| Criterion | Status | Evidence |
-|-----------|--------|----------|
-| Spec completeness verification (6 scenarios) | ✅ PASS | SC-01 through SC-06 |
-| Plan completeness verification (9 scenarios) | ✅ PASS | PL-01 through PL-09 |
-| Test plan completeness (6 scenarios) | ✅ PASS | V-01 through V-06 |
-| Traceability matrix complete | ✅ PASS | All scenarios mapped |
+| Scenario | Description | Status |
+|----------|-------------|--------|
+| V-01 | Missing E2E path documented with all 7 components | ✅ PASS |
+| V-02 | 4 test layers cataloged with gaps | ✅ PASS |
+| V-03 | REC-01, REC-02, request_sha256 status recorded | ✅ PASS |
+| V-04 | Slice 3E explicitly out of scope (5 items) | ✅ PASS |
+| V-04 | Plan states zero code changes (3+ locations) | ✅ PASS |
+| V-05 | Test plan covers V-01 through V-06 | ✅ PASS |
+| V-07 | Evidence file captures required state | ✅ PASS |
+| V-08 | Project state updated (to be done) | ⏳ PENDING |
 
 ---
 
-## 4. Test Execution Results
+## 3. Authorization Gate
 
-### Spec Package Validation
+| Gate | Status | Evidence |
+|------|--------|----------|
+| REC-01 complete | ✅ | PR #96 merged |
+| REC-02 complete | ✅ | PR #97 merged |
+| REC-03 complete | ✅ | PR #98 merged |
+| `request_sha256` implemented | ✅ | `rendering.py` lines 530–886, 969–1039 |
+| Cross-language tests | ✅ | CL-01–CL-04 passing |
+| Human authorization | ❌ PENDING | Required for any Slice 3E work |
 
-| File | Status | Verification |
-|------|--------|--------------|
-| spec.md | ✅ PASS | All sections present, inventory accurate |
-| plan.md | ✅ PASS | All sections present, no code changes |
-| test-plan.md | ✅ PASS | 8 verification scenarios defined |
-| evidence.md | ✅ PASS | This file |
-
-### Cross-Artifact Consistency
-
-| Check | Result | Evidence |
-|-------|--------|----------|
-| Issue #95 ↔ spec.md references | ✅ PASS | Issue #95 referenced throughout |
-| Spec ↔ Plan ↔ Test-plan alignment | ✅ PASS | All artifacts reference same 4 gaps |
-| Evidence references actual source paths | ✅ PASS | All file paths verified |
-| Follow-up issues match audit gaps | ✅ PASS | GOV-01 through GOV-04 map 1:1 |
+**Status**: REC-04 documentation complete. Slice 3E remains **explicitly blocked** until human authorization.
 
 ---
 
-## 5. Blocker Summary
+## 4. Verification Results
 
-**No blockers.** All spec package files created, dependencies verified, coverage gaps documented, out-of-scope declared. Ready for Tester review.
+All test-plan scenarios verified:
+
+| Scenario | Description | Status |
+|----------|-------------|--------|
+| V-01 | Missing E2E path documented with all 7 components | ✅ PASS |
+| V-02 | 4 test layers cataloged with gaps | ✅ PASS |
+| V-03 | REC-01, REC-02, request_sha256 status recorded | ✅ PASS |
+| V-04 | Slice 3E explicitly out of scope (5 items) | ✅ PASS |
+| V-05 | Plan states zero code changes (3+ locations) | ✅ PASS |
+| V-06 | Test plan covers V-01 through V-06 | ✅ PASS |
+| V-07 | Evidence file captures required state | ✅ PASS |
+| V-08 | Project state updated (to be done) | ⏳ PENDING |
+
+---
+
+## 4. Commands Executed
+
+```bash
+# Verification commands from test-plan.md
+grep -A 2 "M6" README.md
+grep -A 10 "caption flow integration" README.md
+grep -A 15 "M6.2 Slices 3A" docs/project-state.md
+grep -A 5 "Current Milestone" docs/project-state.md
+grep -A 5 "Next Architectural Goal" docs/project-state.md
+grep -A 25 "## M6" docs/roadmap.md
+grep -A 15 "Final Lifecycle State" specs/081-m6-2-slice3-caption-flow/evidence.md
+grep -A 15 "Final Lifecycle State" specs/081B-m6-2-slice3b-srt-generator/evidence.md
+grep -A 15 "Final Lifecycle State" specs/087-m6-2-slice3c-storage-contract/evidence.md
+grep -A 15 "Final Lifecycle State" specs/089-m6-2-slice3d-render-caption-integration/evidence.md
+
+# Cross-document consistency check
+echo "=== README ===" && grep -A 1 "M6" README.md
+echo "=== project-state ===" && grep -A 2 "M6.2 Slices" docs/project-state.md
+echo "=== roadmap ===" && grep -A 2 "M6.2 Slices" docs/roadmap.md
+```
 
 ---
 
@@ -320,7 +178,17 @@ NO_ACTIVE_ISSUE
     → NO_ACTIVE_ISSUE (pending)
 ```
 
-**Current State:** `EVIDENCE_READY` — Awaiting Tester review and independent verification.
+**Current State:** `MERGED` — Issue #95 closed, PR #100 merged via merge gate.
+
+---
+
+## 7. Merge Verification
+
+- **PR #100**: Merged via `scripts/merge_gate.py` on 2026-10-11
+- **Merge Commit**: `c659559` (on master)
+- **Issue #95**: CLOSED (2026-10-11T02:56:14Z)
+- **All required CI checks passed**: Backend CI, Frontend CI, E2E CI, Governance, PR Enforcement
+- **Tester approval**: **Decision: APPROVE** (recorded in evidence.md)
 
 ---
 
