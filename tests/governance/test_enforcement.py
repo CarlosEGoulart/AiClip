@@ -74,6 +74,12 @@ class TestCommitMessageValidator(unittest.TestCase):
             [],
         )
 
+    def test_valid_evidence_no_scope(self):
+        self.assertEqual(
+            validate_commit_message("evidence: ensure Decision: APPROVE is plain text for merge gate"),
+            [],
+        )
+
     def test_invalid_empty_scope(self):
         errors = validate_commit_message("feat(): empty scope")
         self.assertEqual(len(errors), 1)
