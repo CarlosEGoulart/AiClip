@@ -87,15 +87,19 @@ Render Pipeline (Issue #69, PR #73) is completed and merged. M6.1 delivers
 persisted `DerivedAsset` records with `type=clip_rendered`, candidate index,
 render timestamps, and error capture.
 
-M6.2 Slices 3A–3D — Caption Flow Integration (Issues #81, #81B, #87, #89 / PRs #83, #85, #88, #90) are completed, merged, and closed. No implementation issue is active. Slice 3E (end-to-end integration test) remains planned but not authorized.
+M6.2 Slices 3A–3E — Caption Flow Integration (Issues #81, #81B, #87, #89, #101 / PRs #83, #85, #88, #90, #103 — all merged and closed):
+- **Slice 3A (Issue #81 / PR #83)**: `CaptionProjection` — pure PHP segment projection matching Slice 2 algorithm; `SrtGenerator` — SRT format generation from projected segments.
+- **Slice 3B (Issue #81B / PR #85)**: Dedicated `SrtGenerator` implementation with 6 unit tests covering single/multiple segments, empty text, multi-line text, timestamp format, and empty input.
+- **Slice 3C (Issue #87 / PR #88)**: `StorageKeyBuilder::captionFile()` for deterministic S3 key generation; `MediaProcessingContract::renderClipRequest()` extended with optional `caption_file` parameter; worker schema `media_processing_v1.json` updated with `caption_file` in `render_clip_request`.
+- **Slice 3D (Issue #89 / PR #90)**: `RenderMediaClip` job integrates caption flow — fetches `STATUS_COMPLETED` transcripts, projects segments, generates SRT, stores caption file, includes `caption_file` in contract only when projection yields content. Backward compatible: caption_file omitted when no transcript, status not completed, or empty projection.
+- **Slice 3E (Issue #101 / PR #103)**: End-to-end caption flow integration test — validates complete pipeline: upload → transcribe → detect scenes → recommend → render with captions → validate output → persist. Uses real MinIO, FFmpeg, Python worker, FFprobe. No mocks for storage, worker, or FFmpeg.
 
-REC-04 (Issue #94): E2E caption flow integration test gap documented as risk; Slice 3E implementation not authorized.
+REC-04 (Issue #94): E2E caption flow integration test gap resolved; Slice 3E implemented and tested.
 
 REC-05 (Issue #95): Governance automation audit completed; GOV-01 through GOV-04 follow-up issues defined.
 
 # Next Architectural Goal
 
-M6.2 Slice 3E — End-to-end caption flow integration test (planned, not authorized).
 M6.2+ remaining — Vertical Clip Rendering enhancements (multi-candidate batch
 rendering, render profiles beyond `vertical_v1`) and M7 — Clip Review
 Experience are the next architectural goals. They are not active, not

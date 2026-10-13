@@ -79,15 +79,13 @@ Completed slices:
 
 - **Slice 3D (Issue #89, PR #90 — merged; issue closed)**: `RenderMediaClip` job integrates caption flow — fetches completed transcripts, projects segments via `CaptionProjection`, generates SRT via `SrtGenerator`, stores via `StorageKeyBuilder::captionFile()`, includes `caption_file` in worker contract only when projection non-empty. 6 new integration tests, zero regression in 14 existing RenderMediaClip tests.
 
-Planned slices (not authorized, not implemented):
-
-- **Slice 3E**: End-to-end caption flow integration test (full pipeline: upload → transcribe → detect scenes → recommend → render with captions).
+- **Slice 3E (Issue #101, PR #103 — merged; issue closed)**: End-to-end caption flow integration test — validates complete pipeline: upload → transcribe → detect scenes → recommend → render with captions → validate output → persist. Uses real MinIO, FFmpeg, Python worker, FFprobe. No mocks for storage, worker, or FFmpeg. 7 E2E test scenarios covering happy path, no transcript, pending transcript, empty projection, malformed segments, idempotency, and transcript change triggering new render.
 
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
-| M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2 Slices 3A–3D completed) |
+| M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2 Slices 3A–3E completed) |
 | M7 | Clip Review Experience |
 | M8 | AI Image Studio |
 | M9 | Social Connection Framework |

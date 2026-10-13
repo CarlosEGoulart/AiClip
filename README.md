@@ -60,13 +60,7 @@ via dedicated `RenderMediaClip` queue job invoking `ffmpeg_vertical_baseline`
 v1.0.0 profile `vertical_v1`, producing persisted `DerivedAsset` records with
 `type=clip_rendered`.
 
-M6.2 Slices 3A–3D add caption flow integration: `RenderMediaClip` job fetches
-completed transcripts, projects segments to clip-local coordinates via
-`CaptionProjection`, generates SRT via `SrtGenerator`, stores caption files
-via `StorageKeyBuilder::captionFile()`, and includes `caption_file` in the
-worker contract (`media_processing_v1.json`) when projection yields content.
-Caption files are optional and omitted when no transcript exists, transcript
-status is not completed, or projection yields no in-range segments. Image generation remains a future capability.
+M6.2 Slices 3A–3E add caption flow integration and end-to-end testing: `RenderMediaClip` job fetches completed transcripts, projects segments to clip-local coordinates via `CaptionProjection`, generates SRT via `SrtGenerator`, stores caption files via `StorageKeyBuilder::captionFile()`, and includes `caption_file` in the worker contract (`media_processing_v1.json`) when projection yields content. Caption files are optional and omitted when no transcript exists, transcript status is not completed, or projection yields no in-range segments. Slice 3E adds end-to-end integration testing of the complete caption flow pipeline with real infrastructure (MinIO, FFmpeg, Python worker, FFprobe), validating 7 E2E scenarios including happy path, missing transcript, pending transcript, empty projection, malformed segments, idempotency, and transcript change detection. Image generation remains a future capability.
 
 ## Technology Stack
 
