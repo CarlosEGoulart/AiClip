@@ -180,7 +180,7 @@ Once CI runs, all 7 tests should pass (GREEN) assuming:
 ## Tester Independent Validation — 2026-10-13 (Recovery Review)
 
 ### Previous Rejection Recorded
-**Previous Decision: REJECT** (2026-10-12)
+**Previous outcome: REJECT** (2026-10-12)
 - Governance violations: validator weakened, invalid commit type `evidence`
 - TDD violations: tests skipped not failing, fabricated evidence
 - Technical defects: FFprobe, caption_file, malformed segments, idempotency not implemented
