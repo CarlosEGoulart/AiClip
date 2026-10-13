@@ -8,13 +8,13 @@ on:
     branches:
       - '@carlosegoulart/101/**'
   pull_request:
-    branches:
-      - '@carlosegoulart/101/**'
+    types: [opened, synchronize, reopened]
 
 jobs:
   e2e-caption-test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: github.event_name == 'push' || startsWith(github.head_ref, '@carlosegoulart/101/')
 
     services:
       postgres:
@@ -41,7 +41,7 @@ jobs:
           --health-cmd "curl -f http://localhost:9000/minio/health/live"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
 
     steps:
       - name: Checkout code
@@ -60,6 +60,11 @@ jobs:
           sudo apt-get install -y ffmpeg
           ffmpeg -filters | grep subtitles
 
+      - name: Install MinIO Client (mc)
+        run: |
+          curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+          chmod +x /usr/local/bin/mc
+
       - name: Start MinIO bucket
         run: |
           mc alias set local http://localhost:9000 minioadmin minioadmin
@@ -68,7 +73,11 @@ jobs:
       - name: Install Python worker
         run: |
           cd services/worker
-          pip install -e .[dev,transcription,scene_detection]
+          pip install -e .[dev,scene_detection]
+
+      - name: Install PHP dependencies
+        working-directory: ./apps/api
+        run: composer install --no-interaction --prefer-dist
 
       - name: Generate test video fixture
         run: |
@@ -82,10 +91,6 @@ jobs:
           if (!\$p->isSuccessful()) { echo 'FAILED: ' . \$p->getErrorOutput(); exit(1); }
           echo 'Generated: ' . filesize('tests/fixtures/caption_test_video.mp4') . ' bytes';
           "
-
-      - name: Install PHP dependencies
-        working-directory: ./apps/api
-        run: composer install --no-interaction --prefer-dist
 
       - name: Run database migrations
         working-directory: ./apps/api
