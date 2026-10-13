@@ -1,4 +1,4 @@
-# M6.2 Slice 3E: End-to-End Caption Flow Integration Test — Implementation Plan
+# M6.2 Slice 3E: End-to-End Caption Flow Integration Test — Corrected Recovery Plan
 
 ## Issue
 **#101** — test(e2e): end-to-end caption flow integration test (M6.2 Slice 3E)
@@ -6,234 +6,325 @@
 ## Branch
 `@carlosegoulart/101/test/e2e-caption-flow`
 
-## Prerequisites (Verify Before Starting)
-- [ ] Slices 3A–3D merged and available in codebase
-- [ ] REC-01 (Issue #91) merged — RenderValidator enforces `request_sha256`
-- [ ] REC-02 (Issue #92) merged — Idempotency semantics defined
-- [ ] Worker `request_sha256` includes `caption_file` in canonicalization
-- [ ] MinIO running in test environment (CI and local)
-- [ ] FFmpeg with `subtitles` filter (libass) available
-- [ ] Test video fixture created: `tests/fixtures/caption_test_video.mp4` (~10-30s, 1920x1080, with audio)
+---
 
-## Implementation Steps
+## 1. Current State Assessment
 
-### Step 1: Create Test Fixtures
-**File**: `tests/fixtures/caption_test_video.mp4`
-- Source: Generate or obtain a short test video (10-30 seconds)
-- Resolution: 1920x1080 (landscape, for vertical crop to 1080x1920)
-- Codec: h264 video, aac audio
-- Duration: Known value (e.g., 30000ms = 30s)
-- Must be probeable by FFprobe
+### 1.1 Governance Issues (3)
+| ID | Issue | Impact |
+|----|-------|--------|
+| G1 | Evidence.md claims `RED_VERIFIED` but tests are skipped (not failing) — invalid RED | Violates TDD contract; RED requires failing tests, not skipped |
+| G2 | Plan.md assumes production code unchanged, but worker `request_sha256` canonicalization with `caption_file` is unverified | Cannot validate idempotency (AC-06) or cache invalidation (AC-07) without confirmed worker behavior |
+| G3 | CI workflow created but never executed; no evidence MinIO/FFmpeg/libass actually work in CI | Infrastructure gap masquerading as implementation progress |
 
-**File**: Transcript fixture data (inline in test or separate JSON)
+### 1.2 TDD Violations (2)
+| ID | Issue | Impact |
+|----|-------|--------|
+| T1 | Tests written but immediately skipped via `skip()` — never observed a genuine RED failure | No evidence behavior is missing; tests could pass for wrong reasons |
+| T2 | No Pre-RED phase (Phase 0) to verify infrastructure before writing tests | Cannot distinguish test defects from infrastructure defects |
+
+### 1.3 Technical Defects (4)
+| ID | Defect | File/Location | Expected vs Actual |
+|----|--------|---------------|---------------------|
+| D1 | `CaptionProjection::project()` does not validate segment structure — malformed segments cause silent failures or exceptions downstream | `app/Services/CaptionProjection.php` | Should throw `InvalidArgumentException` with `invalid_input` on missing `start_ms`/`end_ms`/`text` |
+| D2 | `SrtGenerator::generate()` accepts empty projected segments and returns empty string — caller treats as "no captions" but no distinction from valid empty projection | `app/Services/SrtGenerator.php` | Should return `null` or throw for empty input; caller must distinguish "no transcript" from "empty projection" |
+| D3 | `RenderMediaClip` job does not canonicalize `caption_file` into `request_sha256` — idempotency key ignores caption changes | `app/Jobs/RenderMediaClip.php` | `request_sha256` must include `caption_file` path/hash per REC-02/REC-03 |
+| D4 | Worker `render-clip` CLI does not validate `caption_file` existence before FFmpeg — fails with cryptic FFmpeg error instead of clean `invalid_input` | `services/worker/aiclip_worker/rendering/vertical_clip_renderer.py` | Should validate file exists, readable, valid SRT format before FFmpeg invocation |
+
+### 1.4 Infrastructure Gaps (2)
+| ID | Gap | Status |
+|----|-----|--------|
+| I1 | Test video fixture `tests/fixtures/caption_test_video.mp4` is a placeholder (0 bytes), not a probeable 30s 1920x1080 h264/aac video | Blocking |
+| I2 | Python worker package not installed in test environment; `config('media.worker_command')` points to non-existent CLI | Blocking |
+
+---
+
+## 2. Governance Recovery Strategy (Steps G1–G3)
+
+### G1: Reset TDD State to Honest RED
+- **Action**: Remove all `skip()` annotations from `RenderMediaClipCaptionE2ETest.php`
+- **Action**: Run tests and capture genuine failures (infrastructure + code defects)
+- **Evidence**: Record actual failure messages in `evidence.md` under RED Phase
+- **Constraint**: NO force push, NO history rewrite — add corrective commits on current branch
+
+### G2: Validate Worker Contract Before Test Execution
+- **Action**: Write a minimal contract test verifying `request_sha256` includes `caption_file` in canonicalization
+- **Action**: Verify worker CLI (`python -m aiclip_worker.cli render-clip`) accepts `--caption-file` and validates it
+- **Evidence**: Document worker contract schema version and canonicalization logic in `evidence.md`
+
+### G3: Execute CI Pipeline Once Before Claiming Readiness
+- **Action**: Push current branch, trigger GitHub Actions workflow
+- **Action**: Wait for CI completion; document all failures
+- **Evidence**: Link CI run URL in `evidence.md`; only claim `GREEN_VERIFIED` after CI passes
+
+---
+
+## 3. Infrastructure Prerequisites (6 Verifiable Checks)
+
+| # | Check | Command | Pass Criteria |
+|---|-------|---------|---------------|
+| P1 | MinIO reachable | `mc alias set test http://localhost:9000 minioadmin minioadmin && mc ls test/testing` | Returns bucket listing |
+| P2 | FFmpeg with `subtitles` filter | `ffmpeg -filters | grep -w subtitles` | Line containing `subtitles` present |
+| P3 | FFprobe available | `ffprobe -version` | Version ≥ 6.0 |
+| P4 | Test video probeable | `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 tests/fixtures/caption_test_video.mp4` | Returns `30.0` ± 1s |
+| P5 | Python worker CLI resolves | `cd services/worker && python -m aiclip_worker.cli render-clip --help` | Shows usage with `--caption-file` option |
+| P6 | Laravel test environment | `cd apps/api && php artisan --version` | Returns Laravel 11.x |
+
+**All 6 must pass before any test execution.**
+
+---
+
+## 4. Corrected TDD Sequence
+
+### Phase 0: Pre-RED (Infrastructure Verification)
+- [ ] Run all 6 Infrastructure Prerequisites checks
+- [ ] Document results in `evidence.md`
+- [ ] Only proceed if ALL pass
+
+### RED Phase: 7 Tests Must FAIL (Genuine Failures)
+| Test | Expected Failure Mode |
+|------|----------------------|
+| E2E-CAP-01 | Infrastructure missing (MinIO connection, worker CLI not found, video not probeable) OR code defects (D1-D4) |
+| E2E-CAP-02 | Same as above |
+| E2E-CAP-03 | Same as above |
+| E2E-CAP-04 | Same as above |
+| E2E-CAP-05 | Malformed segments not caught → exception type/message wrong OR no exception |
+| E2E-CAP-06 | Idempotency fails: `request_sha256` missing `caption_file` → new render created |
+| E2E-CAP-07 | Transcript change not detected → same `DerivedAsset` reused |
+
+**RED Evidence**: Each test must fail with a clear, actionable error message. Skipped tests = INVALID RED.
+
+### GREEN Phase: Minimal Fixes to Pass Each Test
+- Fix D1–D4 in production code (minimal changes)
+- Install/configure worker package
+- Generate real test video fixture
+- Run tests iteratively until all 7 pass
+
+### REFACTOR Phase
+- [ ] Code style: `vendor/bin/pint --dirty --format agent` — clean
+- [ ] Static analysis: `phpstan analyse --level=5` — clean
+- [ ] Test isolation verified: run suite 3x, no flakes
+- [ ] No production code changes beyond D1–D4 fixes
+
+---
+
+## 5. Four Technical Defect Fixes
+
+### D1: CaptionProjection Segment Validation
+**File**: `app/Services/CaptionProjection.php`
+**Method**: `project(array $segments, int $clipStartMs, int $clipEndMs): array`
+**Expected Behavior**: Validate each segment has required keys `start_ms`, `end_ms`, `text` with correct types (int, int, string). Throw `InvalidArgumentException` with message containing `invalid_input` on violation.
+**Error Handling**: Fail fast — no partial projection.
+**Concrete Assertion**:
 ```php
-$transcriptSegments = [
-    ['start_ms' => 0, 'end_ms' => 10000, 'text' => 'First caption segment'],
-    ['start_ms' => 10000, 'end_ms' => 20000, 'text' => 'Second caption segment'],
-    ['start_ms' => 20000, 'end_ms' => 30000, 'text' => 'Third caption segment'],
-];
+expect(fn() => CaptionProjection::project([
+    ['end_ms' => 5000, 'text' => 'missing start'],
+], 0, 10000))->toThrow(InvalidArgumentException::class, 'invalid_input');
 ```
-- Segments cover full video duration
-- Candidate clip at index 0: 0-10000ms (first 10 seconds)
-- Expected projected segments for candidate 0:
-  - `local_start_ms=0, local_end_ms=10000, text='First caption segment'`
 
-### Step 2: Create E2E Test Class
-**File**: `tests/Feature/Jobs/RenderMediaClipCaptionE2ETest.php`
-
-**Structure**:
+### D2: SrtGenerator Empty Input Handling
+**File**: `app/Services/SrtGenerator.php`
+**Method**: `generate(array $segments): ?string`
+**Expected Behavior**: Return `null` for empty input array. Return valid SRT string for non-empty. Never return empty string.
+**Error Handling**: Distinguish "no captions needed" (null) from "captions generated" (string).
+**Concrete Assertion**:
 ```php
-<?php
-
-namespace Tests\Feature\Jobs;
-
-use App\Jobs\RenderMediaClip;
-use App\Models\DerivedAsset;
-use App\Models\MediaAsset;
-use App\Models\MediaClipAnalysis;
-use App\Models\MediaClipRecommendation;
-use App\Models\MediaSceneAnalysis;
-use App\Models\MediaTranscript;
-use App\Services\ClipRankingProfile;
-use App\Services\ProcessMediaAction;
-use App\Services\RenderProfile;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Storage;
-use Tests\TestCase;
-
-uses(TestCase::class, RefreshDatabase::class);
-
-beforeEach(function () {
-    // Use real MinIO disk (not fake)
-    // Ensure render config is set
-    config([
-        'media.render_timeout_seconds' => '300',
-        'media.render_target_width' => 1080,
-        'media.render_target_height' => 1920,
-        'media.render_target_fps' => 30,
-        'media.render_video_codec' => 'libx264',
-        'media.render_video_bitrate_kbps' => 5000,
-        'media.render_audio_codec' => 'aac',
-        'media.render_audio_bitrate_kbps' => 128,
-    ]);
-    
-    // Verify MinIO is available
-    Storage::disk('media')->assertExists(''); // bucket exists
-});
-
-// Fixture helper functions (reused from RenderMediaClipTest.php but adapted for real storage)
-function createTestAssetForE2E(): MediaAsset { ... }
-function createSceneAnalysisForE2E(MediaAsset $asset): MediaSceneAnalysis { ... }
-function createClipAnalysisForE2E(MediaAsset $asset): MediaClipAnalysis { ... }
-function createTranscriptForE2E(MediaAsset $asset): MediaTranscript { ... }
-function createRecommendationForE2E(MediaAsset $asset, MediaClipAnalysis $clipAnalysis, MediaTranscript $transcript): MediaClipRecommendation { ... }
+expect(SrtGenerator::generate([]))->toBeNull();
+expect(SrtGenerator::generate([['local_start_ms' => 0, 'local_end_ms' => 1000, 'text' => 'x']]))
+    ->toContain('00:00:00,000 --> 00:00:01,000');
 ```
 
-### Step 3: Implement E2E-CAP-01 — Happy Path
-**Test**: `it('completes full caption flow with real MinIO, worker, and FFmpeg')`
-- Create project, asset, transcript, analyses, recommendation
-- Dispatch `RenderMediaClip` job with real `ProcessMediaAction` (no mock)
-- Assert:
-  - Job completes without exception
-  - `DerivedAsset` created with `render_status=completed`
-  - SRT file exists on MinIO at expected key pattern
-  - SRT content matches expected format with correct timestamps
-  - Worker was invoked (verify via log or DerivedAsset render_parameters)
-  - `render_parameters.filter_graph` contains `subtitles=` filter
-  - FFprobe on output video shows subtitle stream
-
-**Key assertions**:
+### D3: RenderMediaClip request_sha256 Canonicalization
+**File**: `app/Jobs/RenderMediaClip.php`
+**Method**: `computeRequestHash(...): string` (or inline in `handle()`)
+**Expected Behavior**: `request_sha256` = SHA256 of canonical JSON including: `media_asset_id`, `candidate_index`, `render_profile_version`, `transcript_hash`, **`caption_file`** (storage key or hash).
+**Error Handling**: If `caption_file` present but transcript hash unchanged, new hash generated → new render.
+**Concrete Assertion**:
 ```php
-// SRT stored on MinIO
-$srtFiles = Storage::disk('media')->allFiles('projects/*/captions/*');
-expect($srtFiles)->not->toBeEmpty();
-$srtContent = Storage::disk('media')->get($srtFiles[0]);
-expect($srtContent)->toContain('00:00:00,000 --> 00:00:10,000');
-expect($srtContent)->toContain('First caption segment');
-
-// DerivedAsset has render parameters with subtitle filter graph
-$render = DerivedAsset::where('type', DerivedAsset::TYPE_RENDERED_CLIP)->first();
-expect($render->render_parameters['filter_graph'])->toContain('subtitles=');
-
-// Output video validation (optional: probe output video for subtitle stream)
-// This requires downloading output from MinIO and running FFprobe
+$hash1 = $job->computeRequestHash($paramsWithCaption);
+$hash2 = $job->computeRequestHash($paramsWithoutCaption);
+expect($hash1)->not->toEqual($hash2);
 ```
 
-### Step 4: Implement E2E-CAP-02 — No Transcript
-**Test**: `it('renders without captions when no transcript exists')`
-- Create asset without any `MediaTranscript`
-- Dispatch job
-- Assert:
-  - Job completes
-  - No SRT files in captions path
-  - `DerivedAsset` created successfully
-  - `render_parameters.filter_graph` does NOT contain `subtitles=`
-
-### Step 5: Implement E2E-CAP-03 — Transcript Not Completed
-**Test**: `it('renders without captions when transcript status is not completed')`
-- Create transcript with status = `pending` (or `failed`)
-- Dispatch job
-- Assert: Same as E2E-CAP-02 — no captions, render succeeds
-
-### Step 6: Implement E2E-CAP-04 — Empty Projection
-**Test**: `it('renders without captions when all transcript segments are outside clip range')`
-- Create transcript with segments at 20000-30000ms (candidate is 0-10000ms)
-- Dispatch job
-- Assert: Same as E2E-CAP-02 — no captions, render succeeds
-
-### Step 7: Implement E2E-CAP-05 — Malformed Segments
-**Test**: `it('fails with invalid_input when transcript segments are malformed')`
-- Create transcript with malformed segment (missing `start_ms`)
-- Dispatch job
-- Assert:
-  - Job throws `ProcessMediaException` with `invalid_input` message
-  - No completed `DerivedAsset` created
-
-### Step 8: Implement E2E-CAP-06 — Idempotency with Captions
-**Test**: `it('reuses existing render with same transcript (idempotent)')`
-- Run E2E-CAP-01 once → capture `DerivedAsset` ID and caption file key
-- Run same job again
-- Assert:
-  - Second job returns same `DerivedAsset` ID
-  - No new SRT file created (count unchanged)
-  - Worker not invoked again (verify via log or by checking only one render_parameters entry)
-
-### Step 9: Implement E2E-CAP-07 — Transcript Change Triggers New Render
-**Test**: `it('creates new render when transcript segments change')`
-- Run E2E-CAP-01 once → capture `DerivedAsset` ID and caption file key
-- Update transcript segments (modify text)
-- Run job again
-- Assert:
-  - New `DerivedAsset` created (different ID)
-  - New SRT file created (different UUID in key)
-  - Two completed `DerivedAsset` rows exist
-
-### Step 10: CI Configuration
-**File**: `.github/workflows/test-e2e-caption.yml` (or update existing CI)
-- Ensure MinIO service container
-- Ensure FFmpeg with libass installed
-- Run E2E test suite
-
-### Step 11: Code Quality
-- Run Pint: `vendor/bin/pint --dirty --format agent`
-- Run PHPStan: `phpstan analyse --level=5`
-- Ensure all tests pass: `php artisan test --filter=RenderMediaClipCaptionE2ETest`
-
-## File Changes Summary
-
-### New Files
-1. `tests/fixtures/caption_test_video.mp4` — Test video fixture
-2. `tests/Feature/Jobs/RenderMediaClipCaptionE2ETest.php` — E2E test class (7 test cases)
-
-### Modified Files (CI only)
-- `.github/workflows/*.yml` — Ensure MinIO + FFmpeg for E2E tests
-
-### No Changes To
-- Production code (`app/Services/`, `app/Jobs/`, `app/Contracts/`, `app/Models/`)
-- Database migrations
-- Worker code
-
-## Test Execution Strategy
-
-### Local Development
-```bash
-# Start MinIO (if not running)
-docker run -d -p 9000:9000 -p 9001:9001 minio/minio server /data --console-address ":9001"
-
-# Run tests
-cd apps/api
-php artisan test --filter=RenderMediaClipCaptionE2ETest --compact
+### D4: Worker caption_file Pre-Validation
+**File**: `services/worker/aiclip_worker/rendering/vertical_clip_renderer.py`
+**Method**: `render_singular(..., caption_file: Optional[str] = None)`
+**Expected Behavior**: Before FFmpeg: validate `caption_file` exists, is readable, has `.srt` extension, contains valid SRT timestamps. Raise `ValueError("invalid_input: caption_file ...")` on failure.
+**Error Handling**: Clean exception → worker returns `{"status": "error", "error": "invalid_input", ...}` → Laravel maps to `ProcessMediaException`.
+**Concrete Assertion**:
+```python
+with pytest.raises(ValueError, match="invalid_input.*caption_file"):
+    renderer.render_singular(..., caption_file="/nonexistent.srt")
 ```
 
-### CI Execution
-- GitHub Actions spins up MinIO service container
-- FFmpeg pre-installed on runners
-- Tests run in isolated database (RefreshDatabase)
+---
 
-## Risk Mitigation
+## 6. CI Workflow Fixes
 
-| Risk | Mitigation |
-|------|------------|
-| FFmpeg `subtitles` filter not available | Verify `ffmpeg -filters | grep subtitles` in CI setup |
-| MinIO connection issues | Health check in `beforeEach`, skip tests if unavailable |
-| Test video fixture too large | Keep under 10MB, commit to repo |
-| Flaky FFmpeg timing | Use generous timeouts (300s), validate duration tolerance ±50ms |
-| Worker process not found | Ensure `config('media.worker_command')` points to correct Python module |
+**File**: `.github/workflows/test-e2e-caption.yml`
 
-## Verification Checklist
+### Required Changes:
+1. **Add `before_script` step** running all 6 Infrastructure Prerequisites (P1–P6) — fail fast if any fails
+2. **Add `services.worker` setup**: Install Python worker package from `services/worker` via `pip install -e .[dev]`
+3. **Add artifact upload** for FFprobe JSON output on test failure (debugging)
+4. **Increase timeout** to 600s for job (FFmpeg can be slow in CI)
+5. **Use `actions/cache`** for MinIO data and Python packages between runs
 
-Before marking `GREEN_VERIFIED`:
-- [ ] All 7 E2E tests pass locally
-- [ ] All 7 E2E tests pass in CI
-- [ ] No production code modified
-- [ ] Code style clean (Pint)
-- [ ] Static analysis clean (PHPStan)
-- [ ] Test video fixture committed and probeable
-- [ ] Transcript fixture data deterministic
-- [ ] No hardcoded secrets or credentials
+### Minimal Working CI Snippet:
+```yaml
+jobs:
+  e2e-caption-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      minio:
+        image: minio/minio:latest
+        ports: ['9000:9000']
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, redis
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Verify Infrastructure (P1-P6)
+        run: |
+          # P1
+          mc alias set local http://localhost:9000 minioadmin minioadmin
+          mc mb local/testing --ignore-existing
+          # P2
+          ffmpeg -filters | grep -w subtitles
+          # P3
+          ffprobe -version
+          # P4
+          ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 tests/fixtures/caption_test_video.mp4
+          # P5
+          cd services/worker && pip install -e .[dev] && python -m aiclip_worker.cli render-clip --help
+          # P6
+          cd ../apps/api && php artisan --version
+      - name: Run E2E Tests
+        working-directory: ./apps/api
+        run: php artisan test --filter=RenderMediaClipCaptionE2ETest --compact
+        env:
+          MINIO_ENDPOINT: http://localhost:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          MINIO_BUCKET: testing
+      - name: Upload FFprobe Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffprobe-debug
+          path: /tmp/ffprobe_*.json
+```
 
-## Rollback Plan
-If E2E tests cannot be stabilized:
-1. Revert test file changes
-2. Keep REC-04 risk documentation (Issue #94)
-3. Defer E2E test to future authorization
+---
+
+## 7. Exit Criteria
+
+| Criterion | Verification Method | Required |
+|-----------|---------------------|----------|
+| All 7 E2E tests pass locally (3 consecutive runs) | `php artisan test --filter=RenderMediaClipCaptionE2ETest` ×3 | ✅ |
+| All 7 E2E tests pass in CI | GitHub Actions green check | ✅ |
+| No production code modified beyond D1–D4 | `git diff --name-only` vs `main` | ✅ |
+| Code style clean | `vendor/bin/pint --dirty --format agent` exits 0 | ✅ |
+| Static analysis clean | `phpstan analyse --level=5` exits 0 | ✅ |
+| Test video fixture probeable, 30s ±1s | `ffprobe` duration check | ✅ |
+| Worker CLI validates caption_file | Unit test in worker repo + integration via E2E-CAP-05 | ✅ |
+| `request_sha256` includes `caption_file` | Contract test + E2E-CAP-06/07 pass | ✅ |
+| Evidence.md updated with RED/GREEN/REFACTOR logs | Manual review | ✅ |
+
+---
+
+## 8. Rollback Plan
+
+If E2E tests cannot be stabilized after D1–D4 fixes and infrastructure ready:
+
+1. **Revert test file only**: `git checkout main -- apps/api/tests/Feature/Jobs/RenderMediaClipCaptionE2ETest.php`
+2. **Keep production fixes (D1–D4)**: These are legitimate improvements
+3. **Keep CI workflow**: Valid for future use
+4. **Document blockers** in Issue #101 and Issue #94 (REC-04)
+5. **Return to `NO_ACTIVE_ISSUE`** — do not merge incomplete work
+6. **Re-plan** when infrastructure reliably available
+
+---
+
+## 9. Risk Mitigation
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| FFmpeg `subtitles` filter missing in CI | Low | High | Pre-flight check (P2) fails fast |
+| MinIO flaky in CI | Medium | High | Health checks, retry logic, dedicated bucket |
+| Test video fixture generation fails | Low | Medium | Pre-generate and commit known-good fixture (≤10MB) |
+| Worker CLI changes break contract | Low | High | Contract test in worker repo; schema version pin |
+| Flaky FFmpeg timing | Medium | Medium | 300s timeout, ±100ms duration tolerance, 3x re-run |
+| Cross-test MinIO pollution | Low | Low | Unique project IDs per test (RefreshDatabase) |
+
+---
+
+## 10. Verification Checklist
+
+### Pre-Work (Must Complete Before Any Implementation)
+- [ ] All 6 Infrastructure Prerequisites (P1–P6) pass
+- [ ] `evidence.md` updated with Pre-RED results
+- [ ] `skip()` removed from all 7 test methods
+
+### RED Phase Verification
+- [ ] All 7 tests fail with actionable errors (not skipped)
+- [ ] Failure modes match expected in Section 4 table
+- [ ] `evidence.md` records each failure message
+
+### GREEN Phase Verification
+- [ ] D1–D4 fixes committed separately with clear messages
+- [ ] Each test passes individually after its fix
+- [ ] Full suite passes 3x consecutively
+
+### REFACTOR Phase Verification
+- [ ] Pint clean
+- [ ] PHPStan clean
+- [ ] No test interdependence (random order passes)
+
+### CI Verification
+- [ ] GitHub Actions workflow passes
+- [ ] Artifacts uploaded on failure for debugging
+
+### Final Gates
+- [ ] Tester independent approval
+- [ ] No scope creep (production changes only D1–D4)
+- [ ] Branch naming convention followed
+- [ ] Conventional Commits on all commits
+
+---
+
+## 11. Corrected Lifecycle State
+
+```text
+NO_ACTIVE_ISSUE
+  → ISSUE_CREATED (#101)
+  → BRANCH_CREATED (@carlosegoulart/101/test/e2e-caption-flow)
+  → SPEC_READY (spec.md, plan.md, test-plan.md aligned)
+  → RED_VERIFIED (7 tests genuinely failing — THIS IS THE CORRECTED STATE)
+  → GREEN_VERIFIED (7 tests passing after D1–D4 + infrastructure)
+  → REFACTOR_VERIFIED (style, analysis, isolation clean)
+  → TESTER_APPROVED (independent validation)
+  → PR_OPEN (Closes #101)
+  → CI_GREEN (GitHub Actions passes)
+  → MERGE_GATE_READY (all checks green)
+  → MERGED (squash or merge commit)
+  → ISSUE_CLOSED (auto via PR)
+  → NO_ACTIVE_ISSUE (stop, await explicit authorization)
+```
+
+**Current Corrected State**: `SPEC_READY` → **next action: execute Pre-RED (Phase 0)**
+
+---
+
+**SPEC_READY**
