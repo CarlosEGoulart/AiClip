@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 COMMIT_RE = re.compile(
-    r"^(feat|fix|chore|refactor|docs|test|perf|ci)"
+    r"^(feat|fix|chore|refactor|docs|test|perf|ci|plan|evidence)"
     r"(\([a-z0-9][a-z0-9-]*\))?: .+"
 )
 
