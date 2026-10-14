@@ -12,7 +12,7 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 | M3 — Asynchronous Media Processing | Completed |
 | M4 — Video Understanding | Completed |
 | M5 — AI Clip Recommendation | Completed (Issue #64, PR #66) |
-| M6 — Vertical Clip Rendering | M6.1 Complete (Issue #69, PR #73); M6.2 Slices 3A–3D Complete (Issues #81, #81B, #87, #89) |
+| M6 — Vertical Clip Rendering | M6.1 Complete (Issue #69, PR #73); M6.2 Slices 3A–3E Complete (Issues #81, #81B, #87, #89, #101) |
 
 M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization, Sanctum SPA authentication, and authenticated project management. M2 delivered: project-scoped video upload with S3-compatible storage (MinIO for development, AWS S3 in production).
 
@@ -60,13 +60,7 @@ via dedicated `RenderMediaClip` queue job invoking `ffmpeg_vertical_baseline`
 v1.0.0 profile `vertical_v1`, producing persisted `DerivedAsset` records with
 `type=clip_rendered`.
 
-M6.2 Slices 3A–3D add caption flow integration: `RenderMediaClip` job fetches
-completed transcripts, projects segments to clip-local coordinates via
-`CaptionProjection`, generates SRT via `SrtGenerator`, stores caption files
-via `StorageKeyBuilder::captionFile()`, and includes `caption_file` in the
-worker contract (`media_processing_v1.json`) when projection yields content.
-Caption files are optional and omitted when no transcript exists, transcript
-status is not completed, or projection yields no in-range segments. Image generation remains a future capability.
+M6.2 Slices 3A–3E add caption flow integration and end-to-end testing: `RenderMediaClip` job fetches completed transcripts, projects segments to clip-local coordinates via `CaptionProjection`, generates SRT via `SrtGenerator`, stores caption files via `StorageKeyBuilder::captionFile()`, and includes `caption_file` in the worker contract (`media_processing_v1.json`) when projection yields content. Caption files are optional and omitted when no transcript exists, transcript status is not completed, or projection yields no in-range segments. Slice 3E adds end-to-end integration testing of the complete caption flow pipeline with real infrastructure (MinIO, FFmpeg, Python worker, FFprobe), validating 7 E2E scenarios including happy path, missing transcript, pending transcript, empty projection, malformed segments, idempotency, and transcript change detection. Image generation remains a future capability.
 
 ## Technology Stack
 
