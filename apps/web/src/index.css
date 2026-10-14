@@ -66,6 +66,7 @@ h2 {
   font-weight: 600;
   color: var(--text-h);
   letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 h1 {
@@ -309,6 +310,18 @@ code {
 .logout-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Project Management Styles */

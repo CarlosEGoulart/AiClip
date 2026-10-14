@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Contracts\MediaProcessingContract;
+use App\Enums\ClipReviewStatus;
 use App\Exceptions\InvalidCandidateIndexException;
 use App\Exceptions\InvalidInputException;
 use App\Exceptions\ProcessMediaException;
@@ -13,6 +14,7 @@ use App\Exceptions\RenderVersionConflictException;
 use App\Exceptions\UpstreamRecommendationFailedException;
 use App\Exceptions\UpstreamRecommendationMissingException;
 use App\Exceptions\UpstreamRecommendationUnavailableException;
+use App\Models\ClipReview;
 use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\MediaClipRecommendation;
@@ -342,6 +344,14 @@ class RenderMediaClip implements ShouldQueue
                     $locked->render_error = null;
                     $locked->transcript_hash = $transcriptHash;
                     $locked->save();
+
+                    // Auto-create ClipReview for the project owner
+                    ClipReview::firstOrCreate([
+                        'derived_asset_id' => $locked->id,
+                        'reviewer_id' => $asset->project->user_id,
+                    ], [
+                        'status' => ClipReviewStatus::PENDING,
+                    ]);
                 } catch (\Throwable $e) {
                     // Wrap non-ProcessMediaException to ensure failed render is persisted
                     if (! $e instanceof ProcessMediaException) {
