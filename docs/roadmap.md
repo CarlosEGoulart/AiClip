@@ -65,7 +65,7 @@ Completed slices:
 
 - Model-backed semantic clip recommendation stage (Issue #64, PR #66 — merged; issue closed; PR #65 superseded and closed unmerged)
 
-## M6 — Vertical Clip Rendering (M6.1 completed; M6.2 Slices 3A–3D completed)
+## M6 — Vertical Clip Rendering (M6.1 completed; M6.2 Slices 3A–3E completed)
 
 Completed slices:
 
