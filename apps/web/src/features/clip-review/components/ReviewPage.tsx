@@ -1,10 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import type { ClipReviewStatus } from '../types';
 import { useClipReviews, useUpdateClipReviewStatus, useSubmitClipReviewFeedback } from '../hooks';
 import { VideoPlayer } from './VideoPlayer';
 import { ReviewActions } from './ReviewActions';
 import { FeedbackForm } from './FeedbackForm';
+
+/*
+ * Deep-linking uses the native History API because the production tree has no
+ * client-side router: react-router hooks throw outside a Router context and
+ * crash the embedded review section on mount (plan Phase 7.5).
+ */
+
+function readClipReviewIdParam(): number | null {
+  const param = new URLSearchParams(window.location.search).get('clipReviewId');
+  if (!param) {
+    return null;
+  }
+  const id = Number.parseInt(param, 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function writeClipReviewIdParam(clipReviewId: number): void {
+  // replace (not push): the browser Back button keeps leaving the project
+  // instead of stepping through clip selections.
+  const url = new URL(window.location.href);
+  url.searchParams.set('clipReviewId', String(clipReviewId));
+  window.history.replaceState(window.history.state, '', url);
+}
 
 const statusColors: Record<string, { bg: string; text: string }> = {
   pending: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-300' },
@@ -31,7 +53,6 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   projectName,
   onBack,
 }) => {
-  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedClipReviewId, setSelectedClipReviewId] = useState<number | null>(null);
   const [hasUnsavedFeedback, setHasUnsavedFeedback] = useState(false);
 
@@ -41,19 +62,18 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   const submitFeedbackMutation = useSubmitClipReviewFeedback();
 
   useEffect(() => {
-    const clipReviewIdParam = searchParams.get('clipReviewId');
-    if (clipReviewIdParam) {
-      const id = parseInt(clipReviewIdParam, 10);
-      if (clipReviews.some((cr) => cr.id === id)) {
-        setSelectedClipReviewId(id);
+    const clipReviewIdParam = readClipReviewIdParam();
+    if (clipReviewIdParam !== null) {
+      if (clipReviews.some((clipReview) => clipReview.id === clipReviewIdParam)) {
+        setSelectedClipReviewId(clipReviewIdParam);
       }
     } else if (clipReviews.length > 0) {
-      const pendingClip = clipReviews.find((cr) => cr.status === 'pending');
-      const firstClip = pendingClip || clipReviews[0];
+      const firstPending = clipReviews.find((clipReview) => clipReview.status === 'pending');
+      const firstClip = firstPending || clipReviews[0];
       setSelectedClipReviewId(firstClip.id);
-      setSearchParams({ clipReviewId: String(firstClip.id) }, { replace: true });
+      writeClipReviewIdParam(firstClip.id);
     }
-  }, [clipReviews, searchParams, setSearchParams]);
+  }, [clipReviews]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -93,17 +113,17 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     if (selectedIndex < clipReviews.length - 1) {
       const nextClip = clipReviews[selectedIndex + 1];
       setSelectedClipReviewId(nextClip.id);
-      setSearchParams({ clipReviewId: String(nextClip.id) });
+      writeClipReviewIdParam(nextClip.id);
     }
-  }, [selectedIndex, clipReviews, setSearchParams]);
+  }, [selectedIndex, clipReviews]);
 
   const handlePrevious = useCallback(() => {
     if (selectedIndex > 0) {
       const prevClip = clipReviews[selectedIndex - 1];
       setSelectedClipReviewId(prevClip.id);
-      setSearchParams({ clipReviewId: String(prevClip.id) });
+      writeClipReviewIdParam(prevClip.id);
     }
-  }, [selectedIndex, clipReviews, setSearchParams]);
+  }, [selectedIndex, clipReviews]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -124,27 +144,24 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent" aria-label="Loading reviews" />
+      <div className="review-loading">
+        <div className="review-loading-spinner" aria-label="Loading reviews" role="status" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 z-50 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium"
-      >
+    <div className="review-page">
+      <a href="#main-content" className="review-skip-link">
         Skip to main content
       </a>
-      <header className="bg-gray-100 dark:bg-gray-800/50 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+      <header className="review-header">
+        <div className="review-header-inner">
+          <div className="review-header-bar">
+            <div className="review-header-start">
               <button
                 onClick={onBack}
-                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors touch-action-manipulation"
+                className="review-back-button"
                 aria-label="Back to project"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -152,8 +169,8 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                 </svg>
               </button>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{projectName}</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <h1 className="review-title">{projectName}</h1>
+                <p className="review-counter">
                   {selectedClipReview ? `Clip ${selectedIndex + 1} of ${clipReviews.length}` : 'No clips'}
                 </p>
               </div>
@@ -162,9 +179,9 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
+      <main id="main-content" className="review-main">
+        <div className="review-layout">
+          <div className="review-layout-primary">
             {selectedClipReview ? (
               <>
                 <VideoPlayer
@@ -221,15 +238,15 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                 </div>
               </>
             ) : (
-              <div className="py-12 bg-white dark:bg-gray-800 rounded-xl">
-                <p className="text-center text-gray-500 dark:text-gray-400 text-lg leading-relaxed">Select a clip to review</p>
+              <div className="review-empty">
+                <p className="review-empty-text">Select a clip to review</p>
               </div>
             )}
           </div>
 
-          <div className="lg:col-span-1">
-            <div className="bg-gray-100 dark:bg-gray-800/50 rounded-xl p-5 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Clips to Review</h2>
+          <div className="review-layout-secondary">
+            <div className="review-sidebar">
+              <h2 className="review-sidebar-title">Clips to Review</h2>
               <div className="space-y-3" role="list" aria-label="Clip review list">
                 {clipReviews.map((clipReview, index) => {
                   const statusColor = statusColors[clipReview.status] || statusColors.pending;
@@ -240,7 +257,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                       key={clipReview.id}
                       onClick={() => {
                         setSelectedClipReviewId(clipReview.id);
-                        setSearchParams({ clipReviewId: String(clipReview.id) });
+                        writeClipReviewIdParam(clipReview.id);
                       }}
                       className={`
                         w-full text-left p-4 rounded-lg border-2 transition-colors

@@ -7,9 +7,10 @@ use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\SpaTestCase;
 
-uses(SpaTestCase::class)->in('Feature/ClipReview');
+uses(SpaTestCase::class, RefreshDatabase::class);
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -92,10 +93,10 @@ it('returns 404 when accessing video for other user clip review', function () {
 
 it('returns 404 for non-existent clip review on all endpoints', function () {
     $endpoints = [
-        ['GET', "/api/v1/clip-reviews/999999"],
-        ['PATCH', "/api/v1/clip-reviews/999999/status"],
-        ['POST', "/api/v1/clip-reviews/999999/feedback"],
-        ['GET', "/api/v1/clip-reviews/999999/video"],
+        ['GET', '/api/v1/clip-reviews/999999'],
+        ['PATCH', '/api/v1/clip-reviews/999999/status'],
+        ['POST', '/api/v1/clip-reviews/999999/feedback'],
+        ['GET', '/api/v1/clip-reviews/999999/video'],
     ];
 
     foreach ($endpoints as [$method, $uri]) {

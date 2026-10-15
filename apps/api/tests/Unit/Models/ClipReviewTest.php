@@ -8,12 +8,14 @@ use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-uses(TestCase::class)->in('Unit/Models');
+uses(TestCase::class, RefreshDatabase::class);
 
 it('has correct fillable attributes', function () {
-    $model = new ClipReview();
+    $model = new ClipReview;
     expect($model->getFillable())->toContain('derived_asset_id', 'reviewer_id', 'status', 'feedback');
 });
 
@@ -166,10 +168,10 @@ it('enforces unique constraint on derived_asset_id and reviewer_id', function ()
         'reviewer_id' => $user->id,
     ]);
 
-    expect(fn() => ClipReview::factory()->create([
+    expect(fn () => ClipReview::factory()->create([
         'derived_asset_id' => $derivedAsset->id,
         'reviewer_id' => $user->id,
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    ]))->toThrow(QueryException::class);
 });
 
 it('allows any enum value on create', function () {

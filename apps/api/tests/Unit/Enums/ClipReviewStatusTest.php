@@ -5,7 +5,7 @@ namespace Tests\Unit\Enums;
 use App\Enums\ClipReviewStatus;
 use Tests\TestCase;
 
-uses(TestCase::class)->in('Unit/Enums');
+uses(TestCase::class);
 
 it('has correct enum values', function () {
     expect(ClipReviewStatus::PENDING->value)->toBe('pending');
@@ -43,7 +43,7 @@ it('can be created from string', function () {
 });
 
 it('throws on invalid value', function () {
-    expect(fn() => ClipReviewStatus::from('invalid'))->toThrow(\ValueError::class);
+    expect(fn () => ClipReviewStatus::from('invalid'))->toThrow(\ValueError::class);
 });
 
 it('tryFrom returns null for invalid value', function () {

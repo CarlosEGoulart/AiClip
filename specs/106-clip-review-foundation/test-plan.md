@@ -33,6 +33,8 @@ cd apps/api && php artisan test tests/Unit/Models/ClipReviewTest.php tests/Unit/
 
 Use Pest feature tests under `apps/api/tests/Feature/ClipReview/`. SPA API tests use `SpaTestCase` with real session/cookie/CSRF semantics.
 
+Guest semantics (ratified): guest GET cases use an empty cookie jar (CSRF does not apply to reads). Guest PATCH/POST cases must call `$this->csrfCookies()` — the real `/sanctum/csrf-cookie` handshake with no login — so the write is CSRF-valid but unauthenticated. CSRF validation precedes `auth:sanctum` in the stateful pipeline, so a tokenless guest write returns 419 before authentication is evaluated and can never exercise the required 401; the dedicated missing-CSRF cases own the 419 contract. Guest write cases assert 401 with CSRF valid.
+
 ### 2.1 List Clip Reviews — `GET /api/v1/projects/{project}/clip-reviews`
 
 | Scenario | Expected |
@@ -53,7 +55,7 @@ Use Pest feature tests under `apps/api/tests/Feature/ClipReview/`. SPA API tests
 | Non-owner | 404 |
 | Non-existent | 404 |
 | Guest | 401 |
-| `video_url` format | Contains signed route `clip-review.video` with expiration ~1 hour |
+| `video_url` format | Signed URL from named route `clip-review.video`: the URL string contains the route URI path `clip-reviews/{id}/video` plus `signature` and `expires` query parameters (expiration ~1 hour). Assert the URI path + `signature` + `expires`; Laravel signed URLs embed the route URI, never the dot-separated route name, so a literal `toContain('clip-review.video')` is unsatisfiable |
 
 ### 2.3 Update Status — `PATCH /api/v1/clip-reviews/{clipReview}/status`
 
@@ -87,6 +89,7 @@ Use Pest feature tests under `apps/api/tests/Feature/ClipReview/`. SPA API tests
 | Scenario | Expected |
 |---|---|
 | Owner | 302 redirect to MinIO presigned URL (or streamed response) |
+| Guest (no auth, unsigned request) | 401 (dual-gate contract: unsigned requests fall through to ownership authorization; guest is rejected before any storage information) |
 | Non-owner | 404 |
 | Expired signature (>1 hour) | 403 |
 | Tampered signature | 403 |
@@ -118,6 +121,26 @@ Use Pest tests under `apps/api/tests/Feature/ClipReview/ProcessClipReviewJobTest
 ```bash
 cd apps/api && php artisan test tests/Feature/ClipReview/ProcessClipReviewJobTest.php --compact
 ```
+
+## Backend ClipReview Harness Repair (AC-11) — TC-BE-04
+
+CI on PR #107 fails the backend `tests` job: all 71 failures are `tests/Feature/ClipReview/` suites failing in `beforeEach` with `BindingResolutionException: Target class [config] does not exist` (unbooted container; diagnosis and fix steps in plan Phase 6). Verification of the repair:
+
+| Check | Expected |
+|---|---|
+| File-scoped base binding | Each of the seven `tests/Feature/ClipReview/*` files declares `uses(<Base>::class, RefreshDatabase::class);` matching passing-suite conventions (`SpaTestCase` for the four SPA/API files; `TestCase` for the three job/integration files); no `->in('Feature/ClipReview')` declarations remain |
+| Container boot | `php artisan test tests/Feature/ClipReview` completes with no `BindingResolutionException`; every suite reaches its behavioral assertions |
+| Behavioral execution | All ClipReview assertions pass; any behavioral failure surfaced by the repair is resolved through normal TDD RED→GREEN, never by weakening or skipping assertions |
+| No regressions | Full `php artisan test` passes; the 1424 previously passing backend tests remain green |
+
+### Commands
+
+```bash
+cd apps/api && php artisan test tests/Feature/ClipReview --compact
+cd apps/api && php artisan test --compact
+```
+
+Per the evidence rules above, container-bootstrap/setup failures of this kind are not valid RED; only post-repair assertion results count as behavioral evidence.
 
 ## 4. Frontend Component Tests — Vitest (AC-05 through AC-09)
 
@@ -190,8 +213,11 @@ Use Vitest + React Testing Library under `apps/web/src/features/clip-review/comp
 
 ### TC-FE-05: ReviewPage Component
 
+The test must render `ReviewPage` WITHOUT any Router provider — the production tree has no Router, and a `MemoryRouter` wrapper masks the router-context crash fixed in plan Phase 7.5. URL assertions use `window.location`/`window.history` (jsdom). The selection, URL, and N/P rows are load-bearing for AC-09 because E2E cannot reach populated review states (see §6).
+
 | Test Case | Assertion |
 |---|---|
+| Mounts without a Router provider (production topology) | Renders without crashing; no react-router context required |
 | Header shows project name, back button, clip counter | Text content correct |
 | Loads clip reviews via hook | `useClipReviews` called with projectId |
 | Selects first pending clip on load | VideoPlayer shows first pending clip |
@@ -218,87 +244,72 @@ cd apps/web && npm run lint && npm run build
 ```
 Expect: Zero lint errors (including TS6133), TypeScript compiles, Vite production build succeeds.
 
-## 6. Playwright E2E Tests (AC-10, AC-11)
+## 6. Playwright E2E Tests (AC-09, AC-10, AC-11)
 
-Run via `npm run test:e2e` from `apps/web`. Playwright config starts Laravel at 127.0.0.1:8000, Vite at 127.0.0.1:5173, `reuseExistingServer: false`. Laravel readiness at `/api/v1/health`. Real PostgreSQL and MinIO required.
+Run via `npm run test:e2e` from `apps/web`. Playwright config starts Laravel at 127.0.0.1:8000, Vite at 127.0.0.1:5173, `reuseExistingServer: false`. Laravel readiness at `/api/v1/health`. Real PostgreSQL is required. MinIO is NOT provisioned in the e2e environment (`FILESYSTEM_DISK=local`), and the e2e job has no Python worker/FFmpeg, so the render pipeline cannot produce `DerivedAsset` rows — the reachable clip-review UI state is the review section's empty state (see spec "Known Limitations and Coverage Boundary"). The spec file must live at `apps/web/e2e/clip-review.spec.ts` (inside Playwright's `testDir: './e2e'`); a spec at `apps/web/tests/e2e/` is never discovered and is forbidden.
 
-### TC-E2E-01: Happy Path — Approve Clip
+### Reachable UI and Verified Topology
 
-1. Register/login unique user
-2. Create project, upload video (real MP4 fixture)
-3. Wait for render pipeline to produce `DerivedAsset` type=clip_rendered (or seed via test)
-4. Navigate to `/projects/{id}/review` (ReviewPage)
-5. Verify ReviewList shows clip with "Pending" badge
-6. Click "Review" → ReviewPage with VideoPlayer
-7. Play video (Space), verify playback
-8. Click "Approve" → confirm dialog → confirm
-9. Verify status badge changes to "Approved" (green)
-10. Verify API response 200, ClipReview status=approved
-11. Reload page → status persists
+All scenarios run against the real embedded UI: `App` → `AuthenticatedShell` → project list → `Open {project name}` button → `ProjectMediaSection` → "Review Clips" tab → embedded `ReviewPage`. There is no `/projects/{id}/review` route; navigating to one is forbidden in these scenarios. Data setup follows the established pattern in `apps/web/e2e/media.spec.ts`: register a unique user via the UI (no magic seed users — `test@example.com` does not exist), create the project via the UI, capture the project id from the 201 response. No API interception in these scenarios: every request, including `GET /api/v1/projects/{id}/clip-reviews`, runs against the real Laravel server and must return 2xx.
 
-### TC-E2E-02: Reject Workflow
+Where full workflow coverage lives (ratified): approve/reject/needs_changes API behavior — TC-BE-02/TC-BE-03 backend feature tests; real presigned video redirect — §7.1 real-integration group executed with real MinIO in the CI backend `tests` job; component-level workflows (player shortcuts, confirmations, feedback validation, selection, URL sync) — TC-FE-01 through TC-FE-05. Full-workflow E2E is unreachable in the current e2e environment (recorded limitation).
 
-1. Same setup as TC-E2E-01
-2. Click "Reject" → confirm dialog
-3. FeedbackForm appears, enter feedback (≥10 chars)
-4. Submit feedback
-5. Verify status badge "Rejected" (red)
-6. Verify feedback stored in ClipReview.feedback
-7. Reload → persists
+### TC-E2E-01: Review Section Discoverability and Empty State
 
-### TC-E2E-03: Needs Changes Workflow
+1. Register a unique user via the UI; create a project via the UI (unique name; capture id from the 201 response)
+2. Click `Open {project name}`; verify `ProjectMediaSection` renders with the "Review Clips" tab
+3. Click the "Review Clips" tab
+4. Verify the embedded review section renders: header shows the project name and "No clips"; main panel shows "Select a clip to review"; sidebar heading "Clips to Review" renders with an empty list
+5. Verify the network: `GET /sanctum/csrf-cookie` → 204 and `GET /api/v1/projects/{id}/clip-reviews` → 200 with body `{"data": []}`
+6. Verify no video player, review action buttons, or feedback form are rendered
+7. Clean up: delete the project via the UI delete flow (established pattern in `media.spec.ts`)
 
-1. Same setup
-2. Click "Needs Changes" → confirm
-3. Enter feedback, submit
-4. Verify status "Needs Changes" (orange)
-5. Verify feedback stored
+### TC-E2E-02: Empty Section Non-Interactivity and Navigation
 
-### TC-E2E-04: Keyboard Navigation
+1. Same setup as TC-E2E-01 (fresh user/project), review tab active
+2. Verify no review action buttons (Approve/Reject/Needs Changes) exist in the DOM
+3. Press `N` and `P` (clip navigation keys): no URL change (no `clipReviewId` parameter appears), no error, no state change
+4. Switch to the "Media" tab and back to "Review Clips": the review section re-renders the same empty state; the clip-reviews request succeeds again
+5. Click the review section's "Back to project" control: returns to the projects list
 
-1. In ReviewPage with video loaded
-2. Space → play/pause
-3. ArrowLeft/Right → seek ±5s
-4. ArrowUp/Down → volume
-5. M → mute toggle
-6. F → fullscreen
-7. N → next clip (if multiple)
-8. P → previous clip
-9. Verify all work without mouse
+### TC-E2E-03: Responsive Viewports — Real Review Section
 
-### TC-E2E-05: Responsive Viewports
+Runs on each configured Playwright viewport project (mobile 390x844, tablet 768x1024, desktop 1440x900 — supplied by the config's `projects`; do not set viewport sizes manually). At each viewport:
 
-Run TC-E2E-01 through TC-E2E-04 at each viewport:
-- **390x844** (mobile): single column, VideoPlayer top, panel bottom, touch-friendly
-- **768x1024** (tablet): side-by-side or stacked, readable
-- **1440x900** (desktop): side-by-side, comfortable spacing
-
-At each viewport:
 - No horizontal overflow
-- Text readable (no clipping)
-- Buttons touch-target sized (≥44px)
-- Focus visible on all interactive elements
+- Header, "Clips to Review" sidebar, and empty-state text readable; no clipping
+- Interactive controls (tabs, back, logout) touch-target sized (≥44px) with visible focus
+- Layout reflows without overlap at all three widths
 
-### TC-E2E-06: Signed URL Security
+### TC-E2E-04: Console and Network Cleanliness
 
-1. Copy `video_url` from API response
-2. Open in new incognito tab → 403/404 (not accessible without auth)
-3. Wait >1 hour (or manipulate expiry) → 403
-4. Tamper signature → 403
-5. Owner in authenticated session → video plays
+During TC-E2E-01 through TC-E2E-03:
 
-### Console, Network, and Security Inspection
+- **Browser Console**: no errors, no warnings, no uncaught exceptions (the empty review section must mount cleanly — load-bearing for the router-context defect fix in plan Phase 7.5)
+- **Network**: `GET /sanctum/csrf-cookie` → 204; `GET /api/v1/projects/{id}/clip-reviews` → 200 `{"data": []}`; no unexpected 4xx/5xx anywhere
+- **API Responses**: envelope contains only the `data` array; no `storage_disk`, `storage_key`, internal IDs, bucket names
+- **No secrets in browser**: no tokens or credentials in request bodies, console output, or storage
 
-During all E2E tests, Tester MUST inspect:
-- **Browser Console**: No unexpected errors (React warnings allowed, no uncaught exceptions)
-- **Network Tab**: All API calls return expected status; no 4xx/5xx except intentional test cases; `video_url` request returns 200/206; no credentials in request bodies
-- **API Responses**: Verify `ClipReviewResource` fields match spec; no `storage_disk`, `storage_key`, internal IDs, bucket names
-- **Screenshots**: Capture empty, populated, playing, confirmation dialog, error states at all 3 viewports
-- **Accessibility**: Tab order logical, focus visible, ARIA labels present, live regions announce status changes
+### Unreachable in E2E — Re-Scoped Coverage (Ratified)
+
+The following former scenario content is unreachable in the e2e environment and must not be re-added as E2E:
+
+- Approve/reject/needs_changes UI workflows (former TC-E2E-01..03): require a `ClipReview` row, which requires the render pipeline → covered by TC-BE-02/TC-BE-03 and TC-FE-01..05
+- VideoPlayer keyboard shortcuts and playback (former TC-E2E-04): require a loaded video → covered by TC-FE-01
+- Signed URL security — the dual gate of unsigned → 401/404 and tampered/expired → 403 (former TC-E2E-06): covered by §2.5 backend feature tests; the real presigned redirect + 200 byte fetch by §7.1 (CI backend job)
+
+### Tester Inspection Requirements (All Scenarios)
+
+- **Screenshots**: empty review section at all three viewports; tab navigation states; loading state when observable (transient spinner labeled "Loading reviews" — do not assert the stability of a transient state)
+- **Accessibility**: tab order logical (projects → open → tabs → review controls), focus visible on all interactive elements, ARIA labels present (tabs expose `role="tab"`/`aria-selected`; the back control is labeled "Back to project")
 
 ### Commands
 
 ```bash
+# Discovery: the spec must be selected by Playwright (non-empty)
+cd apps/web && npx playwright test e2e/clip-review.spec.ts --list
+
+# Full run across the three viewport projects
 cd apps/web && npm run test:e2e
 ```
 
@@ -306,29 +317,36 @@ cd apps/web && npm run test:e2e
 
 ### 7.1 Backend Real Integration
 
-Location: `apps/api/tests/Feature/ClipReview/ClipReviewRealIntegrationTest.php` (group: `real-integration`)
+Location: `apps/api/tests/Feature/ClipReview/ClipReviewRealIntegrationTest.php` (group: `real-integration` — every test in the file declares `->group('real-integration')`, mirroring the per-test `->group('minio-integration')` declarations in `tests/Feature/Media/MinIOIntegrationTest.php`; the file docblock states the group)
+
+An availability guard runs in `beforeEach`, mirroring `MinIOIntegrationTest::beforeEach`: skip via `markTestSkipped` when the media disk driver is not `s3` or when a lightweight real connectivity probe (`put`/`delete` of a probe object) fails. The guard keeps full-suite runs graceful in environments without MinIO; the gated command in §9 stays fail-closed because `--fail-on-skipped` converts a skip into a failure where infrastructure is missing. Authoritative venue: CI backend `tests` job (real PostgreSQL + MinIO).
 
 | Test Case | Assertion |
 |---|---|
-| Real MinIO signed URL | `ClipReviewController::video()` returns redirect to MinIO presigned URL; `GET` that URL returns 200 video bytes |
-| Real database transactions | Status update wrapped in transaction; rollback on error verified |
-| Real queue (sync driver) | `ProcessClipReview` job executes synchronously in test; state changes visible immediately |
+| Group membership | The gated command selects the file's tests (positive test/assertion counts) and executes all of them with zero skips in CI |
+| Real MinIO presigned URL | A real object is written to the real media disk at the review's `derived_asset->storage_key`; `ClipReviewController::video()` returns 302 whose `Location` is a presigned URL on the configured MinIO endpoint (endpoint host, bucket + storage-key path, `X-Amz-Signature`/`X-Amz-Expires` query); a real HTTP GET of the `Location` returns 200 with a body equal to the written bytes |
+| Real database rollback on error | A genuine mid-transaction failure (e.g. a real PostgreSQL trigger raising an exception on `clip_reviews` UPDATE — real database objects, not mocks) rolls the job's transaction back: the exception propagates, `status` remains `pending`, no partial state persists, no event dispatched. Failure injection via mocks/fakes is forbidden |
+| Real queue (sync driver) | Verify via real dispatch: `ProcessClipReview::dispatch(...)` followed by immediate state verification (`refresh()` + status assertion). `phpunit.xml` pins `QUEUE_CONNECTION=sync`, so the sync driver executes the job inline and the state change is visible when `dispatch()` returns. Do NOT combine `Queue::fake()`, manual `->handle()`, and `assertPushed()` in this case: a faked queue never executes the job (contradicting immediate state verification) and manual `->handle()` bypasses the queue entirely |
 | Real ownership chain | `user → project → media_asset → derived_asset → clip_review` all validated |
-| No mocks for storage/queue | `Storage::fake()` not used; `Queue::fake()` not used (sync driver is real execution) |
+| No mocks for storage/queue | `Storage::fake()` and `Queue::fake()` absent from the file (grep-verifiable); storage is the real MinIO disk; the sync queue driver is real inline execution |
 
 ### 7.2 Infrastructure Verification
 
-Before integration/E2E tests, verify:
+Before local integration runs (where Docker is available), verify:
 - `docker compose ps` shows postgres, minio, minio-init healthy
 - MinIO healthcheck: `curl -f http://127.0.0.1:9000/minio/health/ready`
 - MinIO bucket exists and is private: `mc ls local/ai-clip` shows bucket
 - PostgreSQL: `php artisan migrate:status` shows all migrations ran
 - Laravel health: `GET /api/v1/health` returns `{"status":"ok","database":"connected"}`
 
+Venue note: the authoritative venue for the real-integration gate is the CI backend `tests` job, which provisions PostgreSQL and MinIO as services (S3 environment, private bucket) and runs the full backend suite including the `real-integration` group. The CI e2e job provisions PostgreSQL only and uses the local filesystem disk by design (see Known Limitations). The current local sandbox cannot provision Docker infrastructure (registry pulls denied); there, local gated runs fail closed via the availability guard — correct behavior, not a RED/GREEN result.
+
 ### Commands
 
 ```bash
 # Backend real integration (mandatory, fail-closed)
+# Authoritative venue: CI backend `tests` job (real MinIO). A local run without
+# MinIO fails closed via the availability guard — correct behavior, not evidence.
 cd apps/api && php artisan test tests/Feature/ClipReview/ClipReviewRealIntegrationTest.php --group=real-integration --fail-on-empty-test-suite --fail-on-skipped --fail-on-incomplete --fail-on-risky
 
 # Full backend suite
@@ -391,12 +409,95 @@ All shell commands belong to the appropriately authorized execution role. Use st
 | `apps/web` | `npm test` — Vitest suite pass |
 | `apps/web` | `npm run lint` — lint pass |
 | `apps/web` | `npm run build` — TypeScript + Vite build pass |
-| `apps/web` | `npm run test:e2e` — Playwright all viewport projects, real-storage workflow |
+| `apps/web` | `npm run test:e2e` — Playwright all viewport projects; `apps/web/e2e/clip-review.spec.ts` discovered and passing (reachable embedded review experience; no MinIO in the e2e job by design) |
 | Repository root | `python -m unittest discover -s tests/governance -p 'test_*.py' -v` — governance pass |
 
 Verify installed runner support for fail-closed options during setup. An unknown option is a setup failure, not RED. The standalone integration output must explicitly show the file/group and all required cases actually executed, with positive test/assertion counts and zero skips.
 
-Validate `.github/workflows/e2e.yml` against GitHub Actions schema. Explicit Compose startup/readiness/init steps required. Require deterministic migrations/database health, pinned MinIO health and private bucket completion before mandatory integration invocation and Playwright. Ensure PHP limits and S3/DB environment reach browser-managed Laravel process. CI must fail for either integration or E2E failure, missing infrastructure, empty selection, or skipped required tests.
+Validate `.github/workflows/e2e.yml` against the GitHub Actions schema. Required for the e2e job: the PostgreSQL service with health options, deterministic migrations against it, and the Playwright `webServer` readiness chain (`/api/v1/health` for Laravel, the Vite URL) — the browser-managed Laravel process must share the job's database environment. The e2e job intentionally provisions neither MinIO nor the render pipeline; `FILESYSTEM_DISK=local` is the ratified e2e configuration (see spec "Known Limitations and Coverage Boundary"). CI must fail on E2E failure or on empty Playwright selection. The mandatory real-integration invocation is hosted by the backend `tests` job (`.github/workflows/backend.yml`), which provisions PostgreSQL and MinIO (S3 environment, private bucket) and runs the full backend suite including the `real-integration` group; that job must fail on integration failure, missing infrastructure, empty selection, or skipped required tests.
+
+---
+
+## Governance Validation Test Cases
+
+These test cases verify the CI governance prerequisites documented in `spec.md` "Governance Validation Requirements (CI Prerequisites)". They must pass before PR #107 can merge.
+
+Execution of TC-GOV-04 through TC-GOV-08 is human-gated: `scripts/merge_gate.py` and `tests/governance/**` are denied to every agent by explicit repository permission rules. The corrections specified in plan Phase 6.6 — including the actual skills-test location, `tests/governance/test_governance.py::test_g5_six_skills_parse` — are applied by the human only; agents report and verify CI outcomes. TC-GOV-01 through TC-GOV-03 already pass in the verified local governance run (173 tests, single failure: the skills count test).
+
+### TC-GOV-01: SDD Bundle 081A Completeness
+
+| Check | Expected |
+|---|---|
+| `specs/081A-m6-2-slice3a-caption-projection/spec.md` | Exists (already present) |
+| `specs/081A-m6-2-slice3a-caption-projection/plan.md` | Exists (to be created) |
+| `specs/081A-m6-2-slice3a-caption-projection/test-plan.md` | Exists (to be created) |
+| `specs/081A-m6-2-slice3a-caption-projection/evidence.md` | Exists (to be created) |
+| All 4 files non-empty, valid markdown | Pass |
+
+**Validator**: `tests/governance/validators.py::ValidationRule.SDD_BUNDLE_COMPLETE`
+
+### TC-GOV-02: SDD Bundle 081B Completeness
+
+| Check | Expected |
+|---|---|
+| `specs/081B-m6-2-slice3b-srt-generator/spec.md` | Exists (to be created) |
+| `specs/081B-m6-2-slice3b-srt-generator/plan.md` | Exists (to be created) |
+| `specs/081B-m6-2-slice3b-srt-generator/test-plan.md` | Exists (to be created) |
+| `specs/081B-m6-2-slice3b-srt-generator/evidence.md` | Exists (already present) |
+| All 4 files non-empty, valid markdown | Pass |
+
+**Validator**: `tests/governance/validators.py::ValidationRule.SDD_BUNDLE_COMPLETE`
+
+### TC-GOV-03: SDD Bundle Reference (089) Remains Complete
+
+| Check | Expected |
+|---|---|
+| `specs/089-m6-2-slice3d-render-caption-integration/` | All 4 files present, unchanged |
+
+**Validator**: Regression check — bundle 089 must not be modified.
+
+### TC-GOV-04: Merge Gate — Single APPROVE Decision Passes
+
+| Input | Expected |
+|---|---|
+| `decisions = [TesterDecision(decision="APPROVE", ...)]` | `validate_tester_approval() → True` |
+
+### TC-GOV-05: Merge Gate — Single REJECT Decision Fails
+
+| Input | Expected |
+|---|---|
+| `decisions = [TesterDecision(decision="REJECT", ...)]` | `validate_tester_approval() → False` |
+
+### TC-GOV-06: Merge Gate — Conflicting Decisions (REJECT then APPROVE) Fails
+
+| Input | Expected |
+|---|---|
+| `decisions = [TesterDecision(decision="REJECT", ...), TesterDecision(decision="APPROVE", ...)]` | `validate_tester_approval() → False` (exactly one decision required) |
+
+### TC-GOV-07: Merge Gate — Duplicate APPROVE Decisions Fails
+
+| Input | Expected |
+|---|---|
+| `decisions = [TesterDecision(decision="APPROVE", ...), TesterDecision(decision="APPROVE", ...)]` | `validate_tester_approval() → False` (exactly one decision required) |
+
+### TC-GOV-08: Skills Count — 8 Skills in `.opencode/skills/`
+
+| Check | Expected |
+|---|---|
+| `test_g5_eight_skills_parse` (renamed from `test_g5_six_skills_parse`) | Passes with `expected_count = 8` |
+| `.opencode/skills/` directory count | 8 directories |
+| Skill names | `issue-linearity`, `tdd-enforcer`, `token-efficient-context`, `playwright-visual-qa`, `media-pipeline`, `social-publishing`, `design-taste-frontend`, `web-design-guidelines` |
+
+### Commands
+
+```bash
+# Full governance suite (all TC-GOV cases covered)
+python -m unittest discover -s tests/governance -p 'test_*.py' -v
+```
+
+Expect: All governance tests pass (G1–G5). Zero failures, zero skips, zero errors.
+
+---
 
 ## 10. Release Gate
 
@@ -419,17 +520,17 @@ After verified merge, Orchestrator reconciles `docs/project-state.md` and closes
 | TC-BE-01: Model/Migration | AC-01 |
 | TC-BE-02: API Endpoints | AC-02, AC-04 |
 | TC-BE-03: Queue Job | AC-03 |
+| TC-BE-04: ClipReview Harness Repair | AC-11 |
 | TC-FE-01: VideoPlayer | AC-05 |
 | TC-FE-02: ReviewActions | AC-06 |
 | TC-FE-03: FeedbackForm | AC-07 |
 | TC-FE-04: ReviewList | AC-08 |
 | TC-FE-05: ReviewPage | AC-09 |
-| TC-E2E-01: Approve Workflow | AC-02, AC-03, AC-05, AC-06, AC-10, AC-11 |
-| TC-E2E-02: Reject Workflow | AC-02, AC-03, AC-06, AC-07, AC-10, AC-11 |
-| TC-E2E-03: Needs Changes Workflow | AC-02, AC-03, AC-06, AC-07, AC-10, AC-11 |
-| TC-E2E-04: Keyboard Navigation | AC-05, AC-10 |
-| TC-E2E-05: Responsive | AC-10 |
-| TC-E2E-06: Signed URL Security | AC-04 |
+| TC-E2E-01: Review Section Discoverability and Empty State | AC-09, AC-10, AC-11 |
+| TC-E2E-02: Empty Section Non-Interactivity and Navigation | AC-09, AC-10, AC-11 |
+| TC-E2E-03: Responsive Viewports — Real Review Section | AC-10, AC-11 |
+| TC-E2E-04: Console and Network Cleanliness | AC-10, AC-11 |
+| Full approve/reject/needs_changes and video workflows (unreachable in e2e; §6 coverage routing) | AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-12 — covered by TC-BE-02, TC-BE-03, §2.5, §7.1, TC-FE-01..05 |
 | Cross-cutting Security | AC-02, AC-04 |
 | Cross-cutting Accessibility | AC-05, AC-06, AC-07, AC-10 |
 | Real Integration | AC-12 |

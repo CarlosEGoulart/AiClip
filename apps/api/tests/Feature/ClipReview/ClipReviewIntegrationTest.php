@@ -8,9 +8,11 @@ use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-uses(TestCase::class)->in('Feature/ClipReview');
+uses(TestCase::class, RefreshDatabase::class);
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -82,10 +84,10 @@ it('unique constraint prevents duplicate reviews per user per clip', function ()
         'reviewer_id' => $this->user->id,
     ]);
 
-    expect(fn() => ClipReview::factory()->create([
+    expect(fn () => ClipReview::factory()->create([
         'derived_asset_id' => $this->derivedAsset->id,
         'reviewer_id' => $this->user->id,
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    ]))->toThrow(QueryException::class);
 });
 
 it('different users can review same clip', function () {

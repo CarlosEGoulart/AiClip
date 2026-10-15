@@ -12,7 +12,9 @@ export function useClipReviews(projectId: number) {
     queryKey: ['clipReviews', projectId],
     queryFn: () => fetchClipReviews(projectId),
     enabled: !!projectId,
-    staleTime: 30000,
+    // No staleTime override: the review queue refetches on every review
+    // section mount so the queue is always fresh when the user returns
+    // (React Query defaults: staleTime 0 + refetchOnMount).
   });
 }
 

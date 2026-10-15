@@ -10,10 +10,12 @@ use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
-uses(TestCase::class)->in('Feature/ClipReview');
+uses(TestCase::class, RefreshDatabase::class);
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -154,7 +156,7 @@ it('wraps in database transaction', function () {
     // We'll simulate an error by using an invalid clip review ID
     $job = new ProcessClipReview(999999, 'approve');
 
-    expect(fn() => $job->handle())->toThrow(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+    expect(fn () => $job->handle())->toThrow(ModelNotFoundException::class);
 
     // Original clip review should be unchanged
     $this->clipReview->refresh();

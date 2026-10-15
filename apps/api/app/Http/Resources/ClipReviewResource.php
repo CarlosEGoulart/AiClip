@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use App\Enums\ClipReviewStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\URL;
 
 class ClipReviewResource extends JsonResource
 {
@@ -33,7 +34,11 @@ class ClipReviewResource extends JsonResource
 
     private function videoUrl(): string
     {
-        return route('clip-review.video', ['clipReview' => $this->id], true);
+        return URL::temporarySignedRoute(
+            'clip-review.video',
+            now()->addHour(),
+            ['clipReview' => $this->id],
+        );
     }
 
     private function thumbnailUrl(): ?string

@@ -11,9 +11,9 @@ use App\Jobs\ProcessClipReview;
 use App\Models\ClipReview;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
@@ -81,9 +81,16 @@ class ClipReviewController extends Controller
         ]);
     }
 
-    public function video(Request $request, ClipReview $clipReview): Response
+    public function video(Request $request, ClipReview $clipReview): RedirectResponse
     {
-        $this->authorizeOwnership($request, $clipReview);
+        if ($request->filled('signature')) {
+            // Signed playback URLs are time-limited, owner-scoped tokens issued via
+            // the clip review resource; an invalid, expired, or tampered signature is
+            // rejected before any ownership or storage information is exposed.
+            abort_unless($request->hasValidSignature(), Response::HTTP_FORBIDDEN);
+        } else {
+            $this->authorizeOwnership($request, $clipReview);
+        }
 
         $clipReview->load('derivedAsset');
 
@@ -101,7 +108,7 @@ class ClipReviewController extends Controller
                 now()->addHour()
             );
 
-            return response()->redirectTo($url);
+            return redirect()->away($url);
         } catch (\Exception $e) {
             Log::error('Failed to generate signed video URL', [
                 'clip_review_id' => $clipReview->id,

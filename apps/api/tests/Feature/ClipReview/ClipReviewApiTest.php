@@ -8,9 +8,10 @@ use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\SpaTestCase;
 
-uses(SpaTestCase::class)->in('Feature/ClipReview');
+uses(SpaTestCase::class, RefreshDatabase::class);
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -152,7 +153,10 @@ describe('GET /api/v1/clip-reviews/{clipReview}', function () {
 
         expect($response->json('data.id'))->toBe($this->clipReview->id);
         expect($response->json('data.status'))->toBe('pending');
-        expect($response->json('data.video_url'))->toContain('clip-review.video');
+        expect($response->json('data.video_url'))
+            ->toContain('clip-reviews/'.$this->clipReview->id.'/video')
+            ->toContain('signature')
+            ->toContain('expires');
     });
 
     it('returns 404 for non-owner', function () {
@@ -256,7 +260,7 @@ describe('PATCH /api/v1/clip-reviews/{clipReview}/status', function () {
     });
 
     it('returns 401 for guest', function () {
-        $guestCookies = [];
+        $guestCookies = $this->csrfCookies();
         $response = $this->spaRequest('PATCH', "/api/v1/clip-reviews/{$this->clipReview->id}/status", $guestCookies, [
             'status' => 'approved',
         ]);
@@ -406,7 +410,7 @@ describe('POST /api/v1/clip-reviews/{clipReview}/feedback', function () {
     });
 
     it('returns 401 for guest', function () {
-        $guestCookies = [];
+        $guestCookies = $this->csrfCookies();
         $response = $this->spaRequest('POST', "/api/v1/clip-reviews/{$this->clipReview->id}/feedback", $guestCookies, [
             'feedback' => 'Some feedback',
         ]);

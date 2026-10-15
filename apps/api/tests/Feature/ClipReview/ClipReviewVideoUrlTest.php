@@ -7,11 +7,12 @@ use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Tests\Support\SpaTestCase;
 
-uses(SpaTestCase::class)->in('Feature/ClipReview');
+uses(SpaTestCase::class, RefreshDatabase::class);
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -79,8 +80,10 @@ it('clip review resource includes signed video URL', function () {
     $response->assertOk();
     $videoUrl = $response->json('data.video_url');
     expect($videoUrl)->toBeString();
-    expect($videoUrl)->toContain('clip-review.video');
-    expect($videoUrl)->toContain((string)$this->clipReview->id);
+    expect($videoUrl)->toContain('clip-reviews/'.$this->clipReview->id.'/video');
+    expect($videoUrl)->toContain((string) $this->clipReview->id);
+    expect($videoUrl)->toContain('signature');
+    expect($videoUrl)->toContain('expires');
 });
 
 it('signed URL expires after 1 hour (tested via URL signature)', function () {
@@ -114,7 +117,7 @@ it('returns 403 for tampered signature', function () {
     );
 
     // Tamper with the signature
-    $tamperedUrl = $signedUrl . '&tampered=true';
+    $tamperedUrl = $signedUrl.'&tampered=true';
 
     $response = $this->call('GET', $tamperedUrl);
     $response->assertStatus(403);

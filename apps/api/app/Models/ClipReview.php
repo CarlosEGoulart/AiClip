@@ -4,11 +4,14 @@ namespace App\Models;
 
 use App\Enums\ClipReviewStatus;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ClipReview extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'derived_asset_id',
         'reviewer_id',

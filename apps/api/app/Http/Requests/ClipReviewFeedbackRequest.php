@@ -2,33 +2,12 @@
 
 namespace App\Http\Requests;
 
-use App\Models\ClipReview;
 use App\Enums\ClipReviewStatus;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class ClipReviewFeedbackRequest extends FormRequest
 {
-    public function authorize(Request $request): bool
-    {
-        $clipReview = $this->route('clipReview');
-
-        if (! $clipReview instanceof ClipReview) {
-            return false;
-        }
-
-        $user = Auth::user();
-
-        if (! $user) {
-            return false;
-        }
-
-        // Verify ownership through the chain: user -> project -> media_asset -> derived_asset -> clip_review
-        return $clipReview->derivedAsset->mediaAsset->project->user_id === $user->id;
-    }
-
-    public function rules(Request $request): array
+    public function rules(): array
     {
         $clipReview = $this->route('clipReview');
         $status = $clipReview?->status;

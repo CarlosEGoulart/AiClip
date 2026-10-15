@@ -49,8 +49,6 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:clip-review-update');
         Route::post('/clip-reviews/{clipReview}/feedback', [ClipReviewController::class, 'storeFeedback'])
             ->middleware('throttle:clip-review-update');
-        Route::get('/clip-reviews/{clipReview}/video', [ClipReviewController::class, 'video'])
-            ->name('clip-review.video');
 
         // Media routes
         Route::post('/projects/{project}/media/upload', [MediaAssetController::class, 'upload'])
@@ -58,4 +56,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/projects/{project}/media', [MediaAssetController::class, 'index']);
         Route::delete('/media/{media}', [MediaAssetController::class, 'destroy']);
     });
+
+    // Clip review video playback is reachable either through a time-limited
+    // signed URL (clip-review.video, issued to owners via the resource) or
+    // through an authenticated session; the controller enforces both paths.
+    Route::get('/clip-reviews/{clipReview}/video', [ClipReviewController::class, 'video'])
+        ->name('clip-review.video');
 });

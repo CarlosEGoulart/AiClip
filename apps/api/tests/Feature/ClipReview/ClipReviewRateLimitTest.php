@@ -7,9 +7,10 @@ use App\Models\DerivedAsset;
 use App\Models\MediaAsset;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\SpaTestCase;
 
-uses(SpaTestCase::class)->in('Feature/ClipReview');
+uses(SpaTestCase::class, RefreshDatabase::class);
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -68,7 +69,7 @@ it('rate limits clip-review-feedback at 30 requests per minute', function () {
         ]);
 
         $response = $this->spaRequest('POST', "/api/v1/clip-reviews/{$clipReview->id}/feedback", $this->cookies, [
-            'feedback' => 'Feedback ' . $i,
+            'feedback' => 'Feedback '.$i,
         ]);
         $response->assertOk();
     }
