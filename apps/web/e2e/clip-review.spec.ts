@@ -186,15 +186,23 @@ test.describe('Clip Review Section (embedded)', () => {
     await openProject(page, projectName);
 
     // Clicking the Review Clips tab issues the real CSRF handshake (204)
-    // followed by the real clip-reviews request (200, {"data": []}).
+    // followed by the real clip-reviews request (200, standard pagination
+    // envelope).
     const csrfSeen = page.waitForResponse(isGet('/sanctum/csrf-cookie'));
     const clipReviewsResponse = await openReviewTab(page, projectId);
     const csrfResponse = await csrfSeen;
     expect(csrfResponse.status()).toBe(204);
     expect(clipReviewsResponse.status()).toBe(200);
-    // The envelope contains only the data array: no storage_disk,
-    // storage_key, internal IDs, or bucket names.
-    expect(await clipReviewsResponse.json()).toEqual({ data: [] });
+    // The envelope is the standard pagination shape only — data.data,
+    // data.links, data.meta: no storage_disk, storage_key, internal IDs,
+    // or bucket names.
+    const body = await clipReviewsResponse.json();
+    expect(Object.keys(body.data).sort()).toEqual(['data', 'links', 'meta']);
+    expect(body.data.data).toEqual([]);
+    expect(body.data.meta.total).toBe(0);
+    expect(body.data.meta.last_page).toBe(1);
+    expect(body.data.links.next).toBeNull();
+    expect(body.data.links.prev).toBeNull();
 
     await expectEmptyReviewSection(page, projectName);
 
@@ -229,7 +237,13 @@ test.describe('Clip Review Section (embedded)', () => {
     await openProject(page, projectName);
     const firstResponse = await openReviewTab(page, projectId);
     expect(firstResponse.status()).toBe(200);
-    expect(await firstResponse.json()).toEqual({ data: [] });
+    const firstBody = await firstResponse.json();
+    expect(Object.keys(firstBody.data).sort()).toEqual(['data', 'links', 'meta']);
+    expect(firstBody.data.data).toEqual([]);
+    expect(firstBody.data.meta.total).toBe(0);
+    expect(firstBody.data.meta.last_page).toBe(1);
+    expect(firstBody.data.links.next).toBeNull();
+    expect(firstBody.data.links.prev).toBeNull();
     await expectEmptyReviewSection(page, projectName);
 
     // No review action buttons exist in the DOM.
@@ -257,7 +271,13 @@ test.describe('Clip Review Section (embedded)', () => {
     ).toBeVisible();
     const secondResponse = await openReviewTab(page, projectId);
     expect(secondResponse.status()).toBe(200);
-    expect(await secondResponse.json()).toEqual({ data: [] });
+    const secondBody = await secondResponse.json();
+    expect(Object.keys(secondBody.data).sort()).toEqual(['data', 'links', 'meta']);
+    expect(secondBody.data.data).toEqual([]);
+    expect(secondBody.data.meta.total).toBe(0);
+    expect(secondBody.data.meta.last_page).toBe(1);
+    expect(secondBody.data.links.next).toBeNull();
+    expect(secondBody.data.links.prev).toBeNull();
     await expectEmptyReviewSection(page, projectName);
 
     // The review section's "Back to project" control returns to the
@@ -281,7 +301,13 @@ test.describe('Clip Review Section (embedded)', () => {
     await openProject(page, projectName);
     const clipReviewsResponse = await openReviewTab(page, projectId);
     expect(clipReviewsResponse.status()).toBe(200);
-    expect(await clipReviewsResponse.json()).toEqual({ data: [] });
+    const body = await clipReviewsResponse.json();
+    expect(Object.keys(body.data).sort()).toEqual(['data', 'links', 'meta']);
+    expect(body.data.data).toEqual([]);
+    expect(body.data.meta.total).toBe(0);
+    expect(body.data.meta.last_page).toBe(1);
+    expect(body.data.links.next).toBeNull();
+    expect(body.data.links.prev).toBeNull();
     await expectEmptyReviewSection(page, projectName);
 
     // No horizontal overflow at the configured viewport.

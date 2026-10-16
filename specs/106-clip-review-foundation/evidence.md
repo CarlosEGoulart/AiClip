@@ -638,4 +638,102 @@ The Orchestrator must watch the pushed CI run; these venues have never yet execu
 
 All four Tester defects plus the Planner-discovered defect 5 are genuinely fixed — none papered over: the group now exists and is fail-closed; the real-integration file is free of test doubles with a strictly stronger real presigned round trip and a real-database rollback case; the E2E suite is discovered by the configured runner and grounded in the verified application topology with real flows only; the embedded review section mounts in the production topology (component tests plus real-browser boot evidence) with the deep-linking contract preserved via the native History API. No assertion was weakened, skipped, or deleted anywhere in the Phase 6+7 delta. Scope is exactly `apps/**` plus the Planner-owned bundle, with every non-obvious change carrying a ratified-requirement justification. Every locally-executable mandatory verification passes and reproduces the Builder's numbers exactly; the two CI-authoritative executions (gated real-integration with real MinIO; full Playwright run) are recorded as binding pre-merge CI obligations per the ratified plan 7.8 venue matrix, enforced by the merge lifecycle.
 
+**Superseded decision (historical record only): the 2026-10-15 Phase 7 re-review concluded APPROVE for the remediation, with the full Playwright run recorded as a binding pre-merge CI obligation.** That obligation's first CI execution then failed all nine clip-review tests on the stale `{ "data": [] }` envelope expectation while the 75 pre-existing e2e tests passed — root-caused in the Builder correction section below and independently re-verified in the Tester focused re-verification at the end of this file, which records the single live decision for PR #107. This line was rewritten to prose on 2026-10-16 so that the file carries exactly one live Tester decision.
+
+## Builder test-expectation correction (2026-10-16) — e2e clip-reviews envelope aligned to CI ground truth
+
+### C1. Root cause — one stale assertion, nine failing CI tests
+
+The first CI e2e run of `apps/web/e2e/clip-review.spec.ts` (PR #107) executed the nine clip-review tests (TC-E2E-01/02/03 × mobile/tablet/desktop); all nine failed on one shared stale assertion — `expect(await response.json()).toEqual({ data: [] })` for `GET /api/v1/projects/{id}/clip-reviews` on an empty project — while the 75 pre-existing e2e tests passed. The CI output is ground truth: the real endpoint returns the `ClipReviewCollection` paginated resource — the standard Laravel pagination envelope wrapped in `data`: `{ "data": { "data": [], "links": { "first", "last", "next": null, "prev": null }, "meta": { "current_page": 1, "from": null, "last_page": 1, "path", "per_page": 20, "to": null, "total": 0 } } }`. Verified in source (read-only): `ClipReviewController::index` returns `response()->json(['data' => new ClipReviewCollection(...)])` and `ClipReviewCollection::toArray` serializes exactly `data`, `links`, `meta`. The same contract is enforced by the green CI backend `tests` job (`ClipReviewApiTest`) and consumed by the frontend `useClipReviews` hook.
+
+### C2. Planner-ratified correction
+
+Test-plan §6 "Correction (2026-10-16): clip-reviews network envelope — CI ground truth, not a weakening" (TC-E2E-01..04 rows corrected) and plan.md Phase 7.4/7.8 literals. Envelope-shape fix only: empty-collection semantics and the no-leak intent are preserved — NOT a weakening; no backend/production change is warranted (reshaping the verified API contract would be unjustified scope).
+
+### C3. Diff applied — `apps/web/e2e/clip-review.spec.ts` only
+
+The three scenario assertion sites (four physical occurrences: TC-E2E-01; TC-E2E-02's first and second requests; TC-E2E-03) were corrected to the ratified envelope criteria, each response body parsed exactly once (`firstBody`/`secondBody` in TC-E2E-02):
+
+```ts
+const body = await clipReviewsResponse.json();
+expect(Object.keys(body.data).sort()).toEqual(['data', 'links', 'meta']);
+expect(body.data.data).toEqual([]);
+expect(body.data.meta.total).toBe(0);
+expect(body.data.meta.last_page).toBe(1);
+expect(body.data.links.next).toBeNull();
+expect(body.data.links.prev).toBeNull();
+```
+
+The `Object.keys(body.data)` check mechanizes the ratified TC-E2E-04 no-leak clause ("`data.data` (review items), `data.links`, `data.meta` only; no `storage_disk`, `storage_key`, internal IDs, bucket names"), replacing the leak protection the old exact-equality assertion provided. Two comments describing the envelope were updated to the pagination shape with the no-leak wording kept (TC-E2E-01: "envelope contains only the data array" → "standard pagination shape only — data.data, data.links, data.meta"; the flow comment's `(200, {"data": []})` → `(200, standard pagination envelope)`). No scenario logic, selectors, waits, or other assertions were touched; no other file was modified by the Builder (`git status` shows only this spec plus the Planner's own pre-existing ratified `plan.md`/`test-plan.md` literals in the working tree).
+
+### C4. Local verification (2026-10-16, this session)
+
+- `cd apps/web && npx playwright test --list` → Total: 84 tests in 5 files; all 9 clip-review tests still discovered (TC-E2E-01/02/03 at clip-review.spec.ts:176/227/291 × mobile/tablet/desktop). Filtered `npx playwright test e2e/clip-review.spec.ts --list` → Total: 9 tests in 1 file.
+- `npm test` (Vitest) → Test Files 17 passed (17), Tests 260 passed (260) — unchanged, as expected: the e2e spec is outside the Vitest suite.
+- `npm run lint` (oxlint) → green; only the pre-existing React Compiler warnings in `src/features/clip-review/components/` (VideoPlayer, FeedbackForm, ReviewPage); zero diagnostics for the changed spec.
+- `npm run build` (`tsc -b && vite build`) → green (87 modules transformed; built in 280ms).
+
+### C5. Remaining authoritative verification
+
+Full e2e execution remains CI-authoritative (plan 7.8 venue matrix; R6/R8: the local sandbox cannot serve the app — no APP_KEY): the CI e2e re-run on PR #107 must pass all 9 clip-review tests alongside the 75 pre-existing e2e tests. Since the corrected expectations state the same contract the green backend `tests` job already enforces, the re-run is the binding confirmation, not a new unknown.
+
+### C6. Supersession of historical entries (record not rewritten)
+
+The historical `{ data: [] }` / `{"data": []}` expectations recorded above — §7.4's TC-E2E-01/TC-E2E-02 bullets (lines ~404–405) and R8 pre-merge obligation item 2 (line ~626) — are superseded by this correction and by the Planner's test-plan §6 correction note. The binding envelope criteria are now: `data.data === []` AND `meta.total === 0`, plus `meta.last_page === 1`, `links.next`/`links.prev === null`, and the `data.data`/`data.links`/`data.meta`-only no-leak composition. The historical record is intentionally left as written.
+
+## Phase 7 — Tester Focused Re-verification (2026-10-16): CI-failure correction of the clip-reviews e2e envelope
+
+Executed 2026-10-16 by the independent Tester on the working tree at branch `@carlosegoulart/106/feat/clip-review-experience` (HEAD `52931f9` plus uncommitted changes). Scope: the Planner-ratified correction of the clip-reviews network-envelope expectation (test-plan §6 "Correction (2026-10-16)" note and TC-E2E-01..04 rows; plan 7.4/7.8 literals) and the Builder's C1–C6 application. Every command below was executed fresh by the Tester this session; Builder C-section claims were re-executed or verified against the actual diff and backend source, not trusted. This section supersedes the Phase 7 re-review decision (rewritten to prose above) and holds the single live Tester decision for PR #107 (file-final line). A previous Tester attempt at this focused re-verification was interrupted by a server restart before any evidence was recorded; this section is the complete re-verification.
+
+### V1. Ratified contract vs. applied diff — exact match at all four sites
+
+`git diff apps/web/e2e/clip-review.spec.ts` (complete diff: +33/−7, four hunks, verified via `git diff --numstat`) contains exactly the four physical assertion sites the ratification covers and nothing else: TC-E2E-01 (spec lines 199–205, `body`), TC-E2E-02's first request (240–246, `firstBody`), TC-E2E-02's second request (274–280, `secondBody`), and TC-E2E-03 (304–310, `body`); test declarations at 176/227/291. Each site parses its response body exactly once and asserts precisely the ratified criteria: `Object.keys(body.data).sort()` equals `['data', 'links', 'meta']`; `body.data.data` `toEqual([])` (exact empty array); `meta.total === 0`; `meta.last_page === 1`; `links.next` and `links.prev` both null — the complete TC-E2E-01 step-5 criteria verbatim, applied identically at the TC-E2E-02 and TC-E2E-03 sites (covering their ratified rows, which require "the same pagination envelope — empty `data.data`, `meta.total === 0`"). Targeted grep confirms zero residual `toEqual({ data: [] })` in the spec.
+
+The `Object.keys` composition check is the Builder-disclosed judgment call mechanizing the ratified TC-E2E-04 API-Responses clause ("body is the standard pagination envelope — `data.data` (review items), `data.links`, `data.meta` only; no `storage_disk`, `storage_key`, internal IDs, bucket names"), replacing the leak protection the old exact-equality assertion carried. Verified against backend source truth (read-only): `ClipReviewController::index` returns `response()->json(['data' => new ClipReviewCollection(...)])` — the top level is constructed as exactly one `data` key — and `ClipReviewCollection::toArray` serializes exactly `data` (transformed `ClipReviewResource` items), `links` (`first`/`last`/`prev`/`next`), and `meta` (`current_page`/`from`/`last_page`/`path`/`per_page`/`to`/`total`). The asserted key set is therefore source-exact, and with `data.data` exactly `[]` there are no review items that could carry leaked fields. The same contract is enforced by the CI-green backend `tests` job (`ClipReviewApiTest`: envelope structure including `links`/`meta`; empty case `data.data` count 0) and consumed by the frontend (`ClipReviewListResponse` = `data`/`links`/`meta` behind `fetchClipReviews`).
+
+### V2. No weakening, no collateral change
+
+- Nothing was weakened relative to the ratified contract: the empty collection is enforced three ways (exact `[]` equality on `data.data`, `meta.total === 0`, `last_page === 1` with null `prev`/`next` links), and no-leak is enforced by the exact key composition of the envelope that carries the items. The old exact-equality assertion was not stronger protection — it asserted a body shape the real API never produces (all nine CI failures prove it) — and the test-plan §6 note explicitly ratifies the composition mechanization as "NOT a weakening".
+- No collateral change: the complete diff contains only the four assertion blocks plus two envelope comments (TC-E2E-01's flow comment and envelope comment, no-leak wording preserved). All scenario logic, selectors, waits, helpers, and the TC-E2E-04 collectors (per-test console/pageerror/unexpected-4xx with the anonymous `GET /api/v1/auth/me` 401 as the single whitelisted 4xx; empty localStorage/sessionStorage) are byte-identical to the state ratified in R1/R4 — verified by full diff read and targeted grep.
+- The Planner-owned bundle diffs (`plan.md` 7.4/7.8 literals, +2/−2; `test-plan.md` §2 rows, §6 correction note, TC-E2E-01..04 rows, +23/−6) contain exactly the ratified 2026-10-16 correction literals and nothing else — verified by full diff read; no Builder fingerprints in Planner-owned files.
+
+### V3. Local re-runs — all Builder C4 numbers reproduced exactly
+
+```bash
+cd apps/web && npx playwright test --list
+# → Total: 84 tests in 5 files; all 9 clip-review tests discovered
+#   (clip-review.spec.ts:176/227/291 × [mobile|tablet|desktop])
+
+cd apps/web && npx playwright test e2e/clip-review.spec.ts --list
+# → Total: 9 tests in 1 file
+
+cd apps/web && npm test
+# → Test Files 17 passed (17); Tests 260 passed (260) — unchanged, as expected (e2e spec is outside Vitest)
+
+cd apps/web && npm run lint
+# → oxlint exit 0; 14 warnings — the identical pre-existing profile
+#   (VideoPlayer.tsx ×3, FeedbackForm.tsx ×7, ReviewPage.tsx ×4); zero diagnostics for the changed spec
+
+cd apps/web && npm run build
+# → tsc -b && vite build green; 87 modules transformed (built in 684ms)
+```
+
+### V4. Scope and decision-contract
+
+`git status --porcelain`: exactly the four expected paths — `apps/web/e2e/clip-review.spec.ts` (Builder correction), `specs/106-clip-review-foundation/evidence.md` (Builder C1–C6 plus this Tester section), and the Planner-owned `plan.md`/`test-plan.md` ratified corrections. Zero changes to `apps/api/**`, `apps/web/src/**`, `tests/governance/**`, `scripts/merge_gate.py`, `.github/workflows/**`, Docker, or `.opencode/**`; no branch, commit, push, or PR/issue operations. Decision-contract mechanics were re-verified against the actual validators before editing: `validators.py` defines the two decision forms as plain substring constants (`DECISION_APPROVE` / `DECISION_REJECT`, lines 30–31), and `validate_evidence_decision` plus `validate_merge_approval` — the latter invoked by `pr_enforcement.py` on this very file, located via the branch's issue number — fail when both forms or neither appears anywhere in the content; `scripts/merge_gate.py::DECISION_RE` is instead line-anchored and case-insensitive (last-wins; its exactly-one correction is the known human-gated item). The superseded Phase 7 decision above was therefore rewritten to prose embedding neither form (same convention as the Phase 6 supersession), and this Tester section documents the mechanisms by constant name only, so the file ends with exactly one live decision line. Post-edit verification: grep confirms exactly one occurrence of the approve-form constant (the file-final line) and zero occurrences of the reject-form constant anywhere in the file; the governance suite re-run (`python -m unittest discover -s tests/governance -p 'test_*.py'`) shows zero new failures — only the identical pre-existing human-gated skills-count item (`test_governance.py::test_g5_six_skills_parse`, plan 6.6), matching R7's baseline.
+
+### V5. Binding pre-merge CI obligations (unchanged venue; re-run now a confirmation, not an unknown)
+
+Full e2e execution remains CI-authoritative per the ratified plan 7.8 venue matrix; the local sandbox still cannot serve the app (R6 diagnosis unchanged: no APP_KEY — `MissingAppKeyException` on the served session probe; every agent-available injection mechanism was permission-denied), and no local e2e result is fabricated here. The binding obligations for the Orchestrator before merge:
+
+1. **CI e2e job re-run on PR #107**: all 9 clip-review tests green across mobile/tablet/desktop alongside the 75 pre-existing e2e tests. The corrected expectations state the same envelope contract the green CI backend `tests` job already enforces (`ClipReviewApiTest`), so this re-run is the binding confirmation of a verified contract.
+2. **CI backend `tests` job**: the unchanged R8 obligation — all six `real-integration` tests selected and executed with zero skips against real PostgreSQL + MinIO, full backend suite green on the CI environment.
+3. **Human-gated governance corrections** (plan 6.6, unchanged): the skills-count test (6→8) and the `merge_gate.py` exactly-one-decision contract; `governance` and `pr-enforcement` checks green before merge.
+
+The previous CI failure demonstrates the lifecycle guard works: the failed run blocked the merge, the Planner ratified the ground-truth correction, and this re-verification closes the loop. The Orchestrator must watch the pushed CI re-run.
+
+### V6. Verdict on the correction
+
+The root cause was one stale expectation asserting a body shape the real API never produces; the Planner ratified the ground-truth correction (test-plan §6 note, TC-E2E-01..04 rows; plan 7.4/7.8), and the Builder applied it exactly: four sites, one body parse per response, comments updated with the no-leak wording preserved, zero collateral change, zero weakening of empty-collection or no-leak semantics — corroborated by backend source truth, the CI-green backend job's own assertions, and the frontend consumer type. Every locally-executable mandatory verification passes and reproduces the Builder's numbers exactly; the CI e2e re-run remains the binding pre-merge obligation per the ratified venue matrix, enforced by the merge lifecycle.
+
 Decision: APPROVE

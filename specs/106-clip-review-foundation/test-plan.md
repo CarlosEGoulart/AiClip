@@ -39,8 +39,8 @@ Guest semantics (ratified): guest GET cases use an empty cookie jar (CSRF does n
 
 | Scenario | Expected |
 |---|---|
-| Owner with reviews | 200, `{"data": [...]}`, newest `created_at` first, pagination |
-| Owner no reviews | 200, `{"data": []}` |
+| Owner with reviews | 200, standard pagination envelope: `data.data` = reviews array (newest `created_at` first) plus `links`/`meta` |
+| Owner no reviews | 200, pagination envelope with empty collection: `data.data === []` AND `meta.total === 0` (see §6 correction note, 2026-10-16) |
 | Non-owner project | 404 (not 403) |
 | Non-existent project | 404 |
 | Guest (no auth) | 401 |
@@ -254,13 +254,29 @@ All scenarios run against the real embedded UI: `App` → `AuthenticatedShell` �
 
 Where full workflow coverage lives (ratified): approve/reject/needs_changes API behavior — TC-BE-02/TC-BE-03 backend feature tests; real presigned video redirect — §7.1 real-integration group executed with real MinIO in the CI backend `tests` job; component-level workflows (player shortcuts, confirmations, feedback validation, selection, URL sync) — TC-FE-01 through TC-FE-05. Full-workflow E2E is unreachable in the current e2e environment (recorded limitation).
 
+### Correction (2026-10-16): clip-reviews network envelope — CI ground truth, not a weakening
+
+The first CI e2e run of this spec (PR #107) executed the nine clip-review tests; all nine failed on one shared stale assertion — the expected body `toEqual({ "data": [] })` for `GET /api/v1/projects/{id}/clip-reviews` on an empty project (assertion sites in TC-E2E-01, TC-E2E-02, and TC-E2E-03) — while the 75 pre-existing e2e tests passed. The CI output is ground truth for the real contract: the endpoint returns the `ClipReviewCollection` paginated resource — the standard Laravel pagination envelope wrapped in `data`:
+
+```json
+{
+  "data": {
+    "data": [],
+    "links": { "first": "...?page=1", "last": "...?page=1", "next": null, "prev": null },
+    "meta": { "current_page": 1, "from": null, "last_page": 1, "path": "...", "per_page": 20, "to": null, "total": 0 }
+  }
+}
+```
+
+This is the same contract verified by the green CI backend `tests` job (`ClipReviewApiTest`) and consumed by the frontend `useClipReviews` hook. The corrected rows fix only the envelope shape — this is NOT a weakening: empty-collection semantics (no reviews exist; none render) and the no-leak intent (no `storage_disk`, `storage_key`, internal IDs, or bucket names anywhere in the response) are preserved. The review collection is empty when `body.data.data` is an empty array AND `body.data.meta.total === 0`. Builder updates the three assertion sites in `apps/web/e2e/clip-review.spec.ts` to this contract; no backend/production change is warranted — the paginated envelope is the verified contract of the green backend job and of the frontend hooks, and reshaping the API now would be unjustified scope.
+
 ### TC-E2E-01: Review Section Discoverability and Empty State
 
 1. Register a unique user via the UI; create a project via the UI (unique name; capture id from the 201 response)
 2. Click `Open {project name}`; verify `ProjectMediaSection` renders with the "Review Clips" tab
 3. Click the "Review Clips" tab
 4. Verify the embedded review section renders: header shows the project name and "No clips"; main panel shows "Select a clip to review"; sidebar heading "Clips to Review" renders with an empty list
-5. Verify the network: `GET /sanctum/csrf-cookie` → 204 and `GET /api/v1/projects/{id}/clip-reviews` → 200 with body `{"data": []}`
+5. Verify the network: `GET /sanctum/csrf-cookie` → 204 and `GET /api/v1/projects/{id}/clip-reviews` → 200 with the standard pagination envelope (see correction note above): `body.data.data` is an empty array AND `body.data.meta.total === 0`; `meta.last_page === 1`; `links.next` and `links.prev` are both null
 6. Verify no video player, review action buttons, or feedback form are rendered
 7. Clean up: delete the project via the UI delete flow (established pattern in `media.spec.ts`)
 
@@ -269,7 +285,7 @@ Where full workflow coverage lives (ratified): approve/reject/needs_changes API 
 1. Same setup as TC-E2E-01 (fresh user/project), review tab active
 2. Verify no review action buttons (Approve/Reject/Needs Changes) exist in the DOM
 3. Press `N` and `P` (clip navigation keys): no URL change (no `clipReviewId` parameter appears), no error, no state change
-4. Switch to the "Media" tab and back to "Review Clips": the review section re-renders the same empty state; the clip-reviews request succeeds again
+4. Switch to the "Media" tab and back to "Review Clips": the review section re-renders the same empty state; the clip-reviews request succeeds again with the same pagination envelope (empty `data.data`, `meta.total === 0`)
 5. Click the review section's "Back to project" control: returns to the projects list
 
 ### TC-E2E-03: Responsive Viewports — Real Review Section
@@ -280,14 +296,15 @@ Runs on each configured Playwright viewport project (mobile 390x844, tablet 768x
 - Header, "Clips to Review" sidebar, and empty-state text readable; no clipping
 - Interactive controls (tabs, back, logout) touch-target sized (≥44px) with visible focus
 - Layout reflows without overlap at all three widths
+- Network (asserted at this site in the implemented spec): `GET /api/v1/projects/{id}/clip-reviews` → 200 with the standard pagination envelope; empty collection: `body.data.data` is an empty array AND `body.data.meta.total === 0`
 
 ### TC-E2E-04: Console and Network Cleanliness
 
 During TC-E2E-01 through TC-E2E-03:
 
 - **Browser Console**: no errors, no warnings, no uncaught exceptions (the empty review section must mount cleanly — load-bearing for the router-context defect fix in plan Phase 7.5)
-- **Network**: `GET /sanctum/csrf-cookie` → 204; `GET /api/v1/projects/{id}/clip-reviews` → 200 `{"data": []}`; no unexpected 4xx/5xx anywhere
-- **API Responses**: envelope contains only the `data` array; no `storage_disk`, `storage_key`, internal IDs, bucket names
+- **Network**: `GET /sanctum/csrf-cookie` → 204; `GET /api/v1/projects/{id}/clip-reviews` → 200 with the standard pagination envelope — empty collection: `body.data.data` is an empty array AND `body.data.meta.total === 0` (see correction note above); no unexpected 4xx/5xx anywhere
+- **API Responses**: body is the standard pagination envelope — `data.data` (review items), `data.links`, `data.meta` only; no `storage_disk`, `storage_key`, internal IDs, bucket names
 - **No secrets in browser**: no tokens or credentials in request bodies, console output, or storage
 
 ### Unreachable in E2E — Re-Scoped Coverage (Ratified)

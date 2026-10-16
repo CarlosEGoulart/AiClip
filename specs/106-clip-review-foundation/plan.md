@@ -684,7 +684,7 @@ cd apps/web && npx playwright test e2e/clip-review.spec.ts --list
 cd apps/web && npm run test:e2e
 ```
 
-Expected evidence: all scenarios discovered and passing across the mobile/tablet/desktop projects; `GET /api/v1/projects/{id}/clip-reviews` returns 200 `{"data": []}`; no console errors.
+Expected evidence: all scenarios discovered and passing across the mobile/tablet/desktop projects; `GET /api/v1/projects/{id}/clip-reviews` returns 200 with the standard pagination envelope — empty collection verified by `body.data.data` being an empty array AND `body.data.meta.total === 0` (corrected 2026-10-16 per CI ground truth: the first CI e2e run failed the former `{"data": []}` expectation, which did not match the real `ClipReviewCollection` paginated contract verified by the green backend `tests` job; empty-collection and no-leak semantics unchanged; no backend change warranted — see test-plan §6 correction note); no console errors.
 
 ### 7.5 Defect 5 (Planner-discovered) — embedded `ReviewPage` crashes without a Router
 
@@ -731,7 +731,7 @@ The spec section "Known Limitations and Coverage Boundary" is now part of the co
 | 1 | `ClipReviewRealIntegrationTest.php` group declarations + availability guard | group-declaration grep; gated command of test-plan §7/§9 | grep: local; gate: CI backend `tests` job (authoritative) | Gated run selects all tests, executes them, zero skips |
 | 2 | real presigned case (no `Storage::fake`) | same gated command | CI backend `tests` job | 302 → real presigned URL → real GET 200 with exact bytes |
 | 3 | rollback-on-error case | same gated command | CI backend `tests` job | Exception propagates; review stays `pending`; no partial state; no event |
-| 4 | `apps/web/e2e/clip-review.spec.ts` created; `apps/web/tests/e2e/` deleted | `npx playwright test e2e/clip-review.spec.ts --list`; `npm run test:e2e` | list: local; full run: CI e2e job (authoritative) | Spec discovered; all scenarios pass on all three viewport projects; clip-reviews GET 200 `{"data": []}` |
+| 4 | `apps/web/e2e/clip-review.spec.ts` created; `apps/web/tests/e2e/` deleted | `npx playwright test e2e/clip-review.spec.ts --list`; `npm run test:e2e` | list: local; full run: CI e2e job (authoritative) | Spec discovered; all scenarios pass on all three viewport projects; clip-reviews GET 200 with the standard pagination envelope — empty collection: `data.data` empty array AND `meta.total === 0` (corrected 2026-10-16 per CI ground truth; see test-plan §6 correction note) |
 | 5 | `ReviewPage.tsx` native URL sync + `ReviewPage.test.tsx` without Router | `npm test -- --run src/features/clip-review` | Local + CI frontend job | RED crash recorded pre-fix; GREEN post-fix; TC-FE-05 rows complete |
 | 6 | `pages/ClipReviewPage.tsx` removed; `react-router-dom` removed from devDependencies (if grep-confirmed unused) | `grep -rn "react-router" apps/web/src`; `npm run lint && npm run build` | Local + CI frontend job | Zero usages; lint/build green; lockfile regenerated |
 | All | full regression | `cd apps/api && php artisan test`; `cd apps/web && npm test && npm run lint && npm run build && npm run test:e2e` | Local where infrastructure exists; CI authoritative | Zero failures; previously passing suites stay green |
