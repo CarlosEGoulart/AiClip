@@ -736,4 +736,136 @@ The previous CI failure demonstrates the lifecycle guard works: the failed run b
 
 The root cause was one stale expectation asserting a body shape the real API never produces; the Planner ratified the ground-truth correction (test-plan §6 note, TC-E2E-01..04 rows; plan 7.4/7.8), and the Builder applied it exactly: four sites, one body parse per response, comments updated with the no-leak wording preserved, zero collateral change, zero weakening of empty-collection or no-leak semantics — corroborated by backend source truth, the CI-green backend job's own assertions, and the frontend consumer type. Every locally-executable mandatory verification passes and reproduces the Builder's numbers exactly; the CI e2e re-run remains the binding pre-merge obligation per the ratified venue matrix, enforced by the merge lifecycle.
 
+## Builder production-transport fix (2026-10-16) — clip-review list unwrap aligned to CI ground truth
+
+Second CI e2e run on PR #107 (HEAD `00ee618`, after the envelope-expectation correction re-verified in the section above): the pagination-envelope network assertions passed on all nine clip-review tests — `GET /api/v1/projects/{id}/clip-reviews` returned 200 with the real body `{ "data": { "data": [], "links": { "first", "last", "next": null, "prev": null }, "meta": { ..., "total": 0 } } }` — yet all nine tests still failed one step later at `expectEmptyReviewSection` (`apps/web/e2e/clip-review.spec.ts:167`, `locator('.review-header')` not found), while the 75 pre-existing e2e tests passed. The API call succeeded and the real envelope arrived; the defect was in the UI render path. This section records the Builder's TDD diagnose-and-fix of that production defect (RED → GREEN → refactor evaluated), executed 2026-10-16 on branch `@carlosegoulart/106/feat/clip-review-experience`.
+
+### D1. Root-cause chain (verified in source, exact references)
+
+- Backend (read-only): `ClipReviewController::index` (`apps/api/app/Http/Controllers/Api/V1/ClipReviewController.php:32-34`) returns `response()->json(['data' => new ClipReviewCollection($clipReviews)])` — the pagination collection wrapped in a top-level `data` key. The three single-item endpoints (`show` line 44, `updateStatus` line 67, `submitClipReviewFeedback` line 80) return `['data' => new ClipReviewResource(...)]`, which matches the frontend's `{ data: ClipReview }` contracts — only the LIST endpoint is double-wrapped, so only it needed a fix.
+- Frontend type: `apps/web/src/features/clip-review/types.ts:19-36` declares `ClipReviewListResponse = { data: ClipReview[]; links; meta }` — the pagination object at top level, one nesting level short of the wire format.
+- Transport (pre-fix): `apps/web/src/features/clip-review/api.ts:49-51` returned the raw JSON typed as `ClipReviewListResponse`, so `useClipReviews().data` (`hooks.ts:10-19`, queryFn at line 13) was the raw envelope and `clipReviewsResponse.data` was the pagination OBJECT, not the array.
+- Consumer crash: `ReviewPage.tsx:60` (`const clipReviews = clipReviewsResponse?.data || [];`) bound that object; the first throw in the reachable empty-state scenario is `ReviewPage.tsx:91` — `TypeError: clipReviews.find is not a function` — during render. The deep-link `clipReviews.some(...)` at line 67 is the same defect class (array method invoked on the pagination object) but is never reached pre-fix: the render at line 91 throws first, before the effect at lines 64-76 can run. With no error boundary anywhere in the production tree (`main.tsx → App → AuthProvider/QueryClientProvider → AuthenticatedShell → ProjectMediaSection → ReviewPage`), React unmounts the whole tree, so `.review-header` never renders — exactly the CI symptom.
+- Why Vitest stayed green while CI failed: the only transport-level stub, `apps/web/src/__tests__/ClipReviewSection.test.tsx:36` (pre-fix), stubbed the list body as the divergent unwrapped `{ "data": [] }`, so `clipReviewsResponse.data` was an array and the component never saw the real envelope. `ReviewPage.test.tsx` mocks the hooks module (`vi.mock('../hooks')` line 25; `mockLoaded` lines 102-108) with `data: { data: clips, links: {}, meta: {} }` — precisely the POST-fix hook contract (`ClipReviewListResponse`) — so it exercises the component but never the transport; it was checked per instruction and correctly requires no change (wrapping its mock would bypass the fixed transport and fail permanently). No clip-review hooks test exists (repo grep: `fetchClipReviews` is referenced only by `hooks.ts` and its definition in `api.ts`), so no other stub site exists.
+
+### D2. RED — transport stub aligned to the real contract
+
+Only the stub body and two comments changed in `apps/web/src/__tests__/ClipReviewSection.test.tsx`; every assertion is byte-identical (no weakening, no new tests — the suite count stays 260). The list stub now returns the real envelope, mirroring the CI-authoritative body:
+
+```ts
+if (target === '/api/v1/projects/1/clip-reviews') {
+  return json(200, {
+    data: {
+      data: [],
+      links: { first: 'http://localhost/api/v1/projects/1/clip-reviews?page=1',
+               last: 'http://localhost/api/v1/projects/1/clip-reviews?page=1',
+               prev: null, next: null },
+      meta: { current_page: 1, from: null, last_page: 1,
+              path: 'http://localhost/api/v1/projects/1/clip-reviews',
+              per_page: 20, to: null, total: 0 },
+    },
+  });
+}
+```
+
+Run: `cd apps/web && npx vitest run src/__tests__/ClipReviewSection.test.tsx src/features/clip-review` → **Test Files 1 failed | 5 passed (6); Tests 1 failed | 72 passed (73); Errors 1 error; exit code 1.** The failing test is the production-topology mount test, failing exactly like CI: `TestingLibraryElementError: Unable to find an element with the text: Select a clip to review` with the tree unmounted (`<body><div /></body>`), React reporting "An error occurred in the <ReviewPage> component. Consider adding an error boundary to your tree", plus the uncaught production exception `TypeError: clipReviews.find is not a function` at `src/features/clip-review/components/ReviewPage.tsx:91:42`. Valid assertion-based RED: the failure is the missing production behavior (transport unwrap), not an environment error. The other 72 tests — including `ReviewPage.test.tsx` — passed, confirming the defect is isolated to the transport layer.
+
+### D3. GREEN — minimal production fix
+
+`apps/web/src/features/clip-review/api.ts`, `fetchClipReviews` only — unwrap the top-level wrapper, keep `ClipReviewListResponse` so every consumer keeps working (`ReviewPage` keeps reading `clipReviewsResponse.data` as the array):
+
+```ts
+export async function fetchClipReviews(projectId: number): Promise<ClipReviewListResponse> {
+  const json = await fetchWithCsrf<{ data: ClipReviewListResponse }>(
+    `${API_BASE}/projects/${projectId}/clip-reviews`
+  );
+  return json.data;
+}
+```
+
+No component, hook, type, backend, or e2e-spec change; the single-item API functions are untouched. Re-run of the RED command → **Test Files 6 passed (6); Tests 73 passed (73)**, zero unhandled errors.
+
+### D4. Refactor — evaluated, no change needed
+
+The GREEN implementation is already minimal (one function, one unwrap, one contract comment citing the controller wrap); it introduces no duplication or quality debt, and `ClipReviewListResponse`/consumers are intentionally unchanged per the authorized minimal scope. The full suite remained green on the post-fix evaluation run (the 260/260 result below).
+
+### D5. Local verification (2026-10-16, this session)
+
+- `npx vitest run src/__tests__/ClipReviewSection.test.tsx src/features/clip-review`: 6 files / 73 tests passed (D3 GREEN).
+- `npm test`: **Test Files 17 passed (17); Tests 260 passed (260)** — identical count to the pre-fix baseline.
+- `npm run lint` (oxlint): exit 0; 14 warnings — the identical pre-existing profile (VideoPlayer.tsx ×3, FeedbackForm.tsx ×7, ReviewPage.tsx ×4); zero diagnostics for the two changed files.
+- `npm run build` (`tsc -b && vite build`): green — 87 modules transformed, built in 822ms.
+- `npx playwright test --list`: Total 84 tests in 5 files; all 9 clip-review tests still discovered (TC-E2E-01/02/03 at clip-review.spec.ts:176/227/291 × mobile/tablet/desktop). Focused `npx playwright test e2e/clip-review.spec.ts --list`: Total 9 tests in 1 file. The e2e spec itself is untouched — its assertions already state the real contract.
+- Scope check (`git status`): exactly two application paths changed — `apps/web/src/features/clip-review/api.ts` and `apps/web/src/__tests__/ClipReviewSection.test.tsx` (plus this evidence file). `docs/project-state.md` was already dirty in the working tree before this session and was not touched.
+
+### D6. Remaining authoritative verification and decision-line scoping
+
+Full e2e execution remains CI-authoritative (unchanged venue; the local sandbox still cannot serve the app — no APP_KEY, the R6/V5 diagnosis): the CI e2e job on PR #107 must now pass all 9 clip-review tests (the empty review section rendering after the real envelope arrives) alongside the 75 pre-existing e2e tests; the CI backend `tests` job obligations are unchanged. The file-final decision line below is the Phase 7 Tester re-verification's recorded approval of the e2e envelope-expectation correction at HEAD `00ee618`; it predates this production-transport fix and does not cover it — this fix requires fresh independent Tester verification before merge. Recorded for future Planner consideration (out of this issue's authorized scope, not implemented): no transport-level test covers a populated clip-review list — the e2e environment cannot produce ClipReview rows (the documented "Known Limitations and Coverage Boundary") and the vitest transport test mirrors the reachable empty state — so populated-list rendering is covered only at the hook boundary in `ReviewPage.test.tsx`.
+
+**Superseded decision (historical record only): the 2026-10-16 Phase 7 focused re-verification of the e2e envelope-expectation correction recorded an approval at HEAD `00ee618`.** As D6 itself records, that approval covered the envelope-expectation correction only and predates the production-transport fix (D1–D6) — it never covered this fix. It was rewritten to prose on 2026-10-16 by the Tester section below so that this file carries exactly one live Tester decision, which is the file-final line of that section.
+
+---
+
+## Phase 7 — Tester Focused Re-verification (2026-10-16): production list-transport unwrap (second CI e2e failure)
+
+Executed 2026-10-16 by the independent Tester on the working tree at branch `@carlosegoulart/106/feat/clip-review-experience` (HEAD `00ee618` plus uncommitted changes). Scope: the Builder's TDD fix (D1–D6) for the production defect the second CI e2e run exposed — all nine clip-review tests failing at `expectEmptyReviewSection` (`locator('.review-header')` not found) although the pagination-envelope network assertions had passed on all nine, because the real list envelope crashed the frontend render path. Every command below was executed fresh by the Tester this session; Builder D-section claims were re-executed or verified against the actual diffs and backend source, not trusted. This section supersedes the prior approval (rewritten to prose above) and holds the single live Tester decision for PR #107 (file-final line).
+
+### W1. Fix contract vs. CI ground truth — exact match, minimally scoped
+
+The complete diff of `apps/web/src/features/clip-review/api.ts` is one hunk changing only `fetchClipReviews`: the raw `return fetchWithCsrf<ClipReviewListResponse>(...)` becomes `const json = await fetchWithCsrf<{ data: ClipReviewListResponse }>(...)` → `return json.data`, plus the contract comment. Verified against backend source truth (read-only): `ClipReviewController::index` (lines 32–34) returns `response()->json(['data' => new ClipReviewCollection(...)])` — the top-level `data` wrap the second CI run observed on the wire — and `ClipReviewCollection::toArray` (lines 12–31) serializes exactly `data` (transformed `ClipReviewResource` items), `links` (`first`/`last`/`prev`/`next`), and `meta` (`current_page`/`from`/`last_page`/`path`/`per_page`/`to`/`total`). Post-fix, `fetchClipReviews` returns the pagination object `{ data: ClipReview[], links, meta }` — exactly the unchanged `ClipReviewListResponse` (`types.ts:19–36`) — so every consumer keeps its contract: `useClipReviews`' queryFn (`hooks.ts:13`) and `ReviewPage.tsx:60` (`clipReviewsResponse?.data || []`) now genuinely receive the items array at `.data`.
+
+Single-item endpoints verified untouched and still source-correct: controller `show` (lines 43–45), `updateStatus` (66–68), and `storeFeedback` (79–81) all return `['data' => new ClipReviewResource(...)]`, matching the unchanged frontend `{ data: ClipReview }` contracts of `fetchClipReview` / `updateClipReviewStatus` / `submitClipReviewFeedback` (api.ts lines 60–82, context-identical in the diff). Only the LIST endpoint is double-wrapped, so only it needed the unwrap — no over-fix, no under-fix.
+
+### W2. Test-side delta — stub only, assertions byte-identical
+
+The complete diff of `apps/web/src/__tests__/ClipReviewSection.test.tsx` contains exactly two hunks: the list-stub body (the divergent unwrapped `{ "data": [] }` replaced by the real wrapped envelope — `data.data: []`, `links` with `first`/`last`/`prev: null`/`next: null`, `meta` with all seven pagination fields — mirroring the CI-observed body field-for-field) and a two-line comment update describing the envelope. Every `expect(...)` line appears as unchanged context; the only removed lines are the old one-line stub and the two old comment lines — zero assertion edits, and the suite count stays 260. The transport-level test now states the same CI-ground-truth contract the e2e asserts on the wire and the CI-green backend job enforces (`ClipReviewApiTest`), so the divergent-stub blind spot that kept Vitest green while CI crashed is closed. `ReviewPage.test.tsx` was correctly left alone: it mocks the hooks module with precisely the post-fix hook contract (`data: { data: clips, links: {}, meta: {} }`) and never exercises the transport — wrapping its mock would bypass the fixed transport and fail permanently. No component, hook, type, backend, or e2e-spec file is in the working-tree delta.
+
+### W3. RED honesty — failure class independently confirmed (structural reproduction)
+
+The stub change is the only test delta (W2), so the RED basis is exact. Reverting the api.ts fix (per the sanctioned structural route — the Tester does not modify production code) restores the raw return typed one nesting level short; with the new stub, `useClipReviews().data` is the raw envelope `{ data: { data: [], links, meta } }`; `ReviewPage.tsx:60` then binds `clipReviews = clipReviewsResponse?.data || []` → the pagination object (truthy, so the `|| []` fallback never fires); `ReviewPage.tsx:91` (`clipReviews.find(...)`) sits in the render body and executes during render — before the effect at lines 64–76 whose `clipReviews.some` at line 67 is the same defect class — and throws `TypeError: clipReviews.find is not a function`. With no error boundary in the production tree, React unmounts the whole tree, `.review-header` never renders, and e2e `expectEmptyReviewSection` (spec line 167) fails at its first locator — the exact CI symptom on all nine tests. The recorded RED (1 failed / 72 passed; the production-topology mount test failing with the unmounted `<body><div /></body>`, React's error-boundary advice, and the uncaught TypeError at `ReviewPage.tsx:91:42` — the line verified verbatim in the working tree) is therefore the honest production crash: an assertion-based RED for the missing production unwrap, not an environment failure. The GREEN reproduction below closes the loop.
+
+### W4. Local re-runs — every Builder D5 number reproduced exactly
+
+```bash
+cd apps/web && npx vitest run src/__tests__/ClipReviewSection.test.tsx src/features/clip-review
+# → Test Files 6 passed (6); Tests 73 passed (73)
+
+cd apps/web && npm test
+# → Test Files 17 passed (17); Tests 260 passed (260) — identical to the pre-fix baseline
+
+cd apps/web && npm run lint
+# → oxlint exit 0; 14 warnings — the identical pre-existing profile
+#   (VideoPlayer.tsx ×3, FeedbackForm.tsx ×7, ReviewPage.tsx ×4); zero diagnostics for the changed files
+
+cd apps/web && npm run build
+# → tsc -b && vite build green; 87 modules transformed
+
+cd apps/web && npx playwright test --list
+# → Total: 84 tests in 5 files; all 9 clip-review tests discovered
+#   (clip-review.spec.ts:176/227/291 × [mobile|tablet|desktop]); 84 − 9 = 75 pre-existing
+
+cd apps/web && npx playwright test e2e/clip-review.spec.ts --list
+# → Total: 9 tests in 1 file
+```
+
+### W5. Scope, governance, and decision contract
+
+- `git status --porcelain`: exactly the four expected paths — `apps/web/src/features/clip-review/api.ts`, `apps/web/src/__tests__/ClipReviewSection.test.tsx`, `specs/106-clip-review-foundation/evidence.md`, and `docs/project-state.md`. The last was verified read-only to be the Orchestrator's documentation update (M7 Slice 1 decisions/capabilities/limitations prose; no code, no Builder fingerprints) — a pre-existing dirty file outside this review's scope. Zero changes to `apps/api/**`, other `apps/web/src/**` files, the e2e spec, `tests/governance/**`, `scripts/merge_gate.py`, `.github/workflows/**`, Docker, or `.opencode/**`; no branch/commit/push/PR/issue operations.
+- Governance re-run: `python -m unittest discover -s tests/governance -p 'test_*.py'` → **Ran 173 tests, FAILED (failures=1)** — the single failure is the known human-gated `test_governance.py::test_g5_six_skills_parse` (expects 6 skills; 8 exist per AGENTS.md §16), matching the R7/V4 baseline exactly; the argparse usage strings in the output belong to passing merge-gate CLI tests. Zero new failures from this delta.
+- Decision-contract mechanics re-verified before editing: `validators.py` (lines 30–31) defines the two decision forms as plain substring constants (referenced here by constant name only, as in V4), and `validate_evidence_decision` / `validate_merge_approval` fail on both-or-neither; `scripts/merge_gate.py::DECISION_RE` is line-anchored, last-wins. Pre-edit grep confirmed exactly one decision literal in this file (the former line 805 — the approval that D6 records as predating this transport fix). That line was rewritten to prose embedding neither constant (the established convention), so this file ends with exactly one live decision line.
+
+### W6. Binding pre-merge CI obligations (unchanged venue matrix; the re-run is a confirmation, not an unknown)
+
+Full e2e execution remains CI-authoritative per the ratified plan 7.8 venue matrix; the local sandbox still cannot serve the app (the unchanged R6/V5 diagnosis — no APP_KEY for the served Laravel, every agent-available injection mechanism permission-denied), and no local e2e result is fabricated here. The binding obligations for the Orchestrator before merge:
+
+1. **CI e2e job re-run on PR #107**: all 9 clip-review tests green across mobile/tablet/desktop alongside the 75 pre-existing e2e tests. The second CI run already proved the pagination envelope arrives on the wire and the e2e network assertions pass on all nine tests; this fix makes the frontend parse exactly that envelope, so the re-run confirms a contract now verified end-to-end (backend source → wire → transport → hook → render).
+2. **CI backend `tests` job**: the unchanged R8/V5 obligation — all six `real-integration` tests selected and executed with zero skips against real PostgreSQL + MinIO; full backend suite green on the CI environment.
+3. **Human-gated governance corrections** (plan 6.6, unchanged): the skills-count test (6→8) and the `merge_gate.py` exactly-one-decision contract; `governance` and `pr-enforcement` green before merge.
+
+The lifecycle guard has now caught two real CI failures; each was root-caused, Planner-ratified where the plan itself was wrong, fixed with TDD, and independently re-verified. The Orchestrator must watch the pushed CI re-run.
+
+### W7. Verdict on the fix
+
+The CI-exposed production defect is genuinely fixed, not papered over: the root cause (the frontend transport typed one nesting level short of the real list envelope) is corrected at the exact layer where it lived, scoped to the single divergent endpoint, with the single-item contracts verified untouched against the backend source; the transport-level test now states the CI-ground-truth envelope, so the stub/production divergence that masked the defect cannot silently recur; no assertion was weakened anywhere; every locally-executable mandatory verification passes and reproduces the Builder's numbers exactly; the full Playwright run remains the binding pre-merge CI obligation per the ratified venue matrix, enforced by the merge lifecycle.
+
 Decision: APPROVE

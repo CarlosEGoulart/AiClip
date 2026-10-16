@@ -47,7 +47,14 @@ async function fetchWithCsrf<T>(
 }
 
 export async function fetchClipReviews(projectId: number): Promise<ClipReviewListResponse> {
-  return fetchWithCsrf<ClipReviewListResponse>(`${API_BASE}/projects/${projectId}/clip-reviews`);
+  // The backend wraps the pagination collection in a top-level "data" key
+  // (ClipReviewController::index: response()->json(['data' => new
+  // ClipReviewCollection(...)])). Unwrap it here so consumers receive the
+  // standard pagination object: { data: ClipReview[], links, meta }.
+  const json = await fetchWithCsrf<{ data: ClipReviewListResponse }>(
+    `${API_BASE}/projects/${projectId}/clip-reviews`
+  );
+  return json.data;
 }
 
 export async function fetchClipReview(clipReviewId: number): Promise<{ data: ClipReview }> {

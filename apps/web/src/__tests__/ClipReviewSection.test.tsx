@@ -33,7 +33,31 @@ beforeEach(() => {
     if (target === '/api/v1/auth/me') return json(200, { user });
     if (target === '/api/v1/projects') return json(200, { data: [project] });
     if (target === '/api/v1/projects/1/media') return json(200, { data: [] });
-    if (target === '/api/v1/projects/1/clip-reviews') return json(200, { data: [] });
+    // Real backend contract (ClipReviewController::index): the pagination
+    // collection is wrapped in a top-level "data" key — the CI-authoritative
+    // envelope asserted by apps/web/e2e/clip-review.spec.ts.
+    if (target === '/api/v1/projects/1/clip-reviews') {
+      return json(200, {
+        data: {
+          data: [],
+          links: {
+            first: 'http://localhost/api/v1/projects/1/clip-reviews?page=1',
+            last: 'http://localhost/api/v1/projects/1/clip-reviews?page=1',
+            prev: null,
+            next: null,
+          },
+          meta: {
+            current_page: 1,
+            from: null,
+            last_page: 1,
+            path: 'http://localhost/api/v1/projects/1/clip-reviews',
+            per_page: 20,
+            to: null,
+            total: 0,
+          },
+        },
+      });
+    }
     if (target === '/sanctum/csrf-cookie') {
       document.cookie = 'XSRF-TOKEN=test%3D; path=/';
       return json(204);
@@ -67,8 +91,9 @@ describe('embedded clip review section (production topology)', () => {
     // (no Router provider, production React Query context).
     fireEvent.click(screen.getByRole('tab', { name: 'Review Clips' }));
 
-    // The empty review section renders after the real fetch resolves
-    // {"data": []}.
+    // The empty review section renders after the real fetch resolves the
+    // real list envelope: a top-level "data" key wrapping the standard
+    // pagination object ({"data": {"data": [], "links": ..., "meta": ...}}).
     expect(await screen.findByText('Select a clip to review')).toBeVisible();
     expect(screen.getByText('No clips')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Clips to Review' })).toBeVisible();
