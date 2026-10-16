@@ -868,4 +868,205 @@ The lifecycle guard has now caught two real CI failures; each was root-caused, P
 
 The CI-exposed production defect is genuinely fixed, not papered over: the root cause (the frontend transport typed one nesting level short of the real list envelope) is corrected at the exact layer where it lived, scoped to the single divergent endpoint, with the single-item contracts verified untouched against the backend source; the transport-level test now states the CI-ground-truth envelope, so the stub/production divergence that masked the defect cannot silently recur; no assertion was weakened anywhere; every locally-executable mandatory verification passes and reproduces the Builder's numbers exactly; the full Playwright run remains the binding pre-merge CI obligation per the ratified venue matrix, enforced by the merge lifecycle.
 
+**Superseded decision (historical record only): the 2026-10-16 Phase 7 focused re-verification of the production list-transport unwrap (second CI e2e failure) recorded an approval covering that fix at HEAD `00ee618` and the overall PR regression state, with the full Playwright run as a binding pre-merge CI obligation.** As §E7 of the Builder section below records, that approval predates the e2e spec-conformance correction applied after the third CI e2e run and does not cover that delta. It was rewritten to prose on 2026-10-16 by the Tester section at the end of this file so that the file carries exactly one live Tester decision, which is the file-final line of that section.
+
+---
+
+## Builder e2e spec-conformance correction (2026-10-16) — empty-list attachment, exact back-control locator, console-mirror whitelist
+
+Third CI e2e run on PR #107 (HEAD `82dda6f`, after the transport fix verified above): the frontend transport fix WORKED — on all nine clip-review tests the pagination-envelope network assertions passed AND the review section rendered, so `.review-header` containing the project name, "No clips", "Select a clip to review", and the "Clips to Review" heading all passed (the run-2 failure class is gone). All nine tests then failed at exactly one remaining assertion — pre-edit `apps/web/e2e/clip-review.spec.ts:171`, `getByRole('list', { name: 'Clip review list' })` expected visible:
+
+```
+14 × locator resolved to <div role="list" class="space-y-3" aria-label="Clip review list"></div>
+- unexpected value "hidden"
+```
+
+Because Playwright aborts each test at its first failed assertion, every downstream assertion in all three scenarios had never executed. This section records the conformance fix for that assertion and the static + empirical audit of every downstream assertion, executed 2026-10-16 on branch `@carlosegoulart/106/feat/clip-review-experience`. Only `apps/web/e2e/clip-review.spec.ts` (plus this evidence file) changed; the component, production, backend, and all governance/planner files are untouched.
+
+### E1. Root cause — zero-size empty list vs the Playwright visibility definition; the ratified wording
+
+`ReviewPage.tsx:250` renders `<div className="space-y-3" role="list" aria-label="Clip review list">`; with zero clip reviews the div renders EMPTY — an empty bounding box. Playwright visibility is defined as a non-empty bounding box, so `toBeVisible()` correctly reported the attached element as hidden. The component behaves exactly as the ratified contract specifies.
+
+The ratified test-plan TC-E2E-01 step 4 reads: "sidebar heading 'Clips to Review' renders **with an empty list**" — it requires the empty list to RENDER (be attached) with zero items, not to satisfy Playwright's visibility definition. The e2e `toBeVisible()` over-interpreted the ratified wording. `toBeAttached()` (available in @playwright/test 1.63.0, the installed version per `npm ls`) is the assertion matching "renders with an empty list". No component change is warranted; the assertion was conformed to the already-ratified contract:
+
+```ts
+// TC-E2E-01 step 4 (ratified): the sidebar heading "Clips to Review"
+// renders "with an empty list" — the list must RENDER with zero items.
+// A zero-item list renders as an attached but empty div with an empty
+// bounding box, so Playwright visibility (non-empty bounding box) does
+// not apply to this element; attachment plus zero listitems is the
+// rendered-empty-list contract.
+await expect(page.getByRole('list', { name: 'Clip review list' })).toBeAttached();
+await expect(page.getByRole('listitem')).toHaveCount(0);
+```
+
+`grep "Clip review list"` confirms a single occurrence in the spec (the helper, now line 195) — the pattern does not repeat elsewhere. The zero-items companion assertion is byte-identical to before.
+
+### E2. Downstream audit — two more latent failures found and fixed with the same conformance rationale
+
+The static cross-check of every remaining assertion against the real markup/CSS (E5 table) plus an empirical probe of three Playwright 1.63 behaviors (E3) found exactly two more failures-in-waiting that the aborted CI runs could never reach. Both are fixed in the same spec, with no weakening of any assertion's semantics.
+
+**(a) Strict-mode ambiguity: 'Back to project' vs 'Back to projects' (clicks, pre-edit lines 218/285).** While the review tab is active, both controls coexist in the DOM: `ProjectMediaSection.tsx:35` (`aria-label="Back to projects"`, the shell-level back control) and `ReviewPage.tsx:165` (`aria-label="Back to project"`, the review section's back control). Playwright role-name matching is case-insensitive substring by default, so `getByRole('button', { name: 'Back to project' })` resolves to BOTH buttons ("Back to project" is a substring of "Back to projects") and `.click()` throws a strict mode violation — probe-verified (E3, PROBE2: ambiguous count 2, click rejected with "strict mode violation … resolved to 2 elements"; `exact: true` count 1). Both click sites now pass `exact: true`, which targets the same ratified control the test plan names ("Click the review section's 'Back to project' control", TC-E2E-02 step 5) — same element, same action, same downstream assertions; only the locator's over-broad default matching is narrowed. The unit suite's `getByRole('button', { name: 'Back to project' })` (`ReviewPage.test.tsx:142/164/291`) never hits this because RTL name matching is whole-string by default; the e2e locator now encodes the same intent.
+
+**(b) Console mirror of the whitelisted anonymous 401 (`expectClean`, all nine tests).** Every test starts signed out at `/`, and `useAuth` calls `getMe()` on mount (`apps/web/src/features/auth/hooks/index.tsx:64`) → `GET /api/v1/auth/me` → 401, the single whitelisted 4xx of the flow (response whitelist, spec lines 96–107). Chromium mirrors every non-2xx response into the console as a browser-generated network log line, and Playwright delivers it through `page.on('console')` — probe-verified (E3, PROBE1): `{"type":"error","text":"Failed to load resource: the server responded with a status of 401 (Unauthorized)","url":"http://127.0.0.1:PORT/api/v1/auth/me"}`. Without a filter, `expectClean`'s `consoleProblems` assertion would fail all nine tests on the very event the ratified whitelist expects. The console collector now skips exactly that mirror — a message must be type `error`, start with `Failed to load resource: the server responded with a status of 401`, and have a `location().url` ending in `/api/v1/auth/me` to be skipped. This is conformance to the ratified whitelist, not a weakening: the console line is the browser's own log of the same whitelisted response; the response-side whitelist still fails the run if this URL is anything but a GET 401, and every other console error or warning remains fatal (the filter cannot mask any non-whitelisted condition).
+
+### E3. Empirical probe — three load-bearing Playwright 1.63 behaviors, verified against the installed runner
+
+The audit's two uncertain behaviors (name-matching semantics, console delivery of network errors) and the E1 root cause were verified empirically rather than assumed, using a throwaway three-test Playwright probe (self-contained `node:http` fixture + `setContent` markup mirroring the app's real DOM) run against the repo-installed `@playwright/test@1.63.0` and the locally cached `chromium-1243`. The probe lived in a scratch directory, was executed once, and was then removed from the tree (verified absent; it is not part of the working tree). Key output, verbatim:
+
+```
+PROBE1 console messages: [{"type":"error","text":"Failed to load resource: the server
+  responded with a status of 401 (Unauthorized)","url":"http://127.0.0.1:45477/api/v1/auth/me"}]
+PROBE2 ambiguous count: 2          # getByRole('button', { name: 'Back to project' })
+PROBE2 reverse count: 1            # getByRole('button', { name: 'Back to projects' })
+PROBE2 exact count: 1              # ... { name: 'Back to project', exact: true }
+PROBE2 click rejected: true        # "strict mode violation ... resolved to 2 elements"
+PROBE3 list count: 1               # empty <div role="list" aria-label="Clip review list">
+PROBE3 toBeVisible rejected: true  # error contains 'hidden'
+PROBE3 toBeAttached resolved: true
+3 passed (14.5s)
+```
+
+### E4. Not changed, and why
+
+- No component change: `ReviewPage` conforms to the ratified contract (the empty list renders with zero items; `toBeVisible` on a zero-size element is a Playwright-definition mismatch, not a product defect). The historical evidence description of TC-E2E-01's empty-list step as a visibility assertion (e.g., "empty `Clip review list`" in the Phase 7 evidence above) is superseded by this section's attachment-based reading of the ratified wording; the historical text is intentionally left as written.
+- No change to the envelope assertions (lines 213–229, 258–266, 302–310): CI run 3 proved them passing on all nine tests.
+- No change to the response whitelist, the pageerror collector, or the storage assertions: audited safe (E5 rows 15–17).
+- No change to the five `FOCUS_TARGETS` CSS selectors (spec lines 39–45): attribute/ID selectors are exact by construction and all five exist verbatim in the markup.
+
+### E5. Full downstream audit table (every assertion after the former line-171 failure, current line numbers)
+
+| # | Assertion (spec line) | Markup/CSS evidence | Verdict |
+|---|---|---|---|
+| 1 | Empty list attached + zero listitems (195–196) | `ReviewPage.tsx:250` `role="list" aria-label="Clip review list"`; probe 3 (attached ✓, visible ✗ by definition) | Fixed (E1) — OK |
+| 2 | `getByRole('listitem')` count 0 (196) | Only `role="listitem"` in the app: `MediaListItem.tsx:30` (media panel, unmounted while review tab active — `ProjectMediaSection.tsx:74/90` conditional panels) and `ReviewPage.tsx:270` sidebar items (render only with reviews). `ReviewList.tsx` items are unreachable (imported only by its own test + barrel export) | OK |
+| 3 | Absence: `Clip video`, `Review actions` group, `Approve clip`/`Reject clip`/`Needs Changes clip`, `Feedback form` group (234–239, 278–281) | `VideoPlayer.tsx:223` `aria-label="Clip video"`; `ReviewActions.tsx:122` `role="group" aria-label="Review actions"`, `:144` `aria-label={`${label} clip`}`; `FeedbackForm.tsx:117` `role="group" aria-label="Feedback form"`; all render only when a clip is selected (`ReviewPage.tsx:185–214` ternary) — locators match how the components really announce themselves, so the count-0 assertions cannot silently rot | OK |
+| 4 | `Back to project` click (246, 314) | Both back controls coexist (`ProjectMediaSection.tsx:35`, `ReviewPage.tsx:165`); probe 2: default name matching is substring → 2 elements → strict mode violation; `exact: true` → 1 | Fixed (E2a) — OK |
+| 5 | `Open ${name}` visible (247, 315) | `ProjectCard.tsx:38` `aria-label={`Open ${project.name}`}`; unique on the projects list; the identical locator already passed upstream in run 3 (line 171) | OK |
+| 6 | Delete flow: `Delete ${name}` → `Confirm delete ${name}` → `/No projects yet/` (248–250) | `ProjectCard.tsx:67/:50` labels; Delete and Confirm/Cancel never coexist (`ProjectCard.tsx:43–71` ternary), so the substring overlap cannot strict-violate at resolution time; `ProjectList.tsx:23` "No projects yet. Create your first project above." | OK |
+| 7 | N/P keys leave URL unchanged, no `clipReviewId` (285–291) | Empty list → `selectedIndex` −1, length 0 → guards `-1 < length-1` and `selectedIndex > 0` both false (`ReviewPage.tsx:112–126`) → `writeClipReviewIdParam` unreachable; deep-link effect takes the no-param/length-0 path (`ReviewPage.tsx:64–76`); production `history.replaceState` exists only in `ReviewPage.tsx:28` (repo grep) | OK |
+| 8 | Media⇄Review tab round-trip (296–299) | `ProjectMediaSection.tsx:47/:61` `#media-tab`/`#review-tab` (role `tab`, names "Media"/"Review Clips" — no substring collisions); `MediaList.tsx:22` exact text "No media assets yet. Upload a video to get started." | OK |
+| 9 | No horizontal overflow (344–347) | No fixed-width review rules; `.review-title` `overflow-wrap: anywhere` (`index.css:724`); `.review-main` max-width 80rem + 16px padding (733–737); grid `1fr` + gap (739–743); header inner max-width 80rem (672–676) | OK |
+| 10 | No clipped elements (351–364) | `.review-header` full-width block (`index.css:664–670`, sticky); `.review-empty` (751–757) and `.review-sidebar` (765–770) sit inside 1fr grid columns ≥ 0 and ≤ container; all three exist attached in the empty state (`ReviewPage.tsx:158/241/248`) | OK |
+| 11 | Touch targets ≥ 44px (368–379) | `min-height: 44px` on `.back-button` (`index.css:540`), `.tab-navigation [role="tab"]` (578), `.review-back-button` (698), `.logout-button` (292); all five queried selectors exist verbatim in markup | OK |
+| 12 | Grid reflow 1↔2 columns (385–392) | `index.css:741` `grid-template-columns: 1fr`; `:745–748` `@media (min-width: 1024px)` → `2fr 1fr`; assertion `viewportWidth < 1024 ? 1 : 2` matches viewports 390/768/1440 exactly (breakpoints identical); computed-style token count is preserved when fr resolves to px | OK |
+| 13 | Focus walk + visible indicators (396–423) | DOM/tab order: back-to-projects (`ProjectMediaSection.tsx:35`) → media-tab (47) → review-tab (61) → skip link (`ReviewPage.tsx:155`, focusable, `:focus` reveal `index.css:617–635`) → review-back-button (162–170) → logout (`AuthenticatedShell.tsx:81`, rendered AFTER the media section → last focusable): 2 Shift+Tab + ≤5 Tab presses, within the 10-press budgets from either start point; `:focus-visible` `outline: 2px solid var(--accent)` for `.back-button` (558), tabs (597), `.review-back-button` (714), `.logout-button` (308) → computed `outlineWidth` 2px / `outlineStyle` solid satisfies the evaluate check | OK |
+| 14 | Empty localStorage/sessionStorage (117–124) | Storage written only by `FeedbackForm.tsx` (44/52/98, draft keys) — unmounted in the empty state (`ReviewPage.tsx:199–207`); zero `sessionStorage` in src (grep); auth uses cookies, not web storage | OK |
+| 15 | No console problems (113) | Zero `console.*` in `apps/web/src` (grep); React/Vite dev logs are info-level; `/favicon.svg` declared (`index.html:5`) and present (`public/favicon.svg`) → no 404 console/network line; the single console error of the flow is the whitelisted 401's mirror | Fixed (E2b) — OK |
+| 16 | No uncaught page errors (114) | Run 3 reached the final assertion on all nine tests — the tree renders cleanly (a pageerror would have unmounted it, as in run 2); no throwing path in the empty-review flow | OK |
+| 17 | No unexpected 4xx/5xx (115) | Only the whitelisted anonymous `GET /api/v1/auth/me` 401 (`hooks/index.tsx:64`, mounted at signed-out start); all other flow requests are 2xx/204 (register 201, csrf-cookie 204, projects 201/200, media-assets 200, clip-reviews 200, delete 2xx) | OK |
+| 18 | Every other `toBeVisible` target has text/size | 'No clips' (`p.review-counter`, `ReviewPage.tsx:173–175`), 'Select a clip to review' (`p.review-empty-text`, 242), 'Clips to Review' (`h2`, 249), `/No projects yet/`, media empty text, `Open` buttons, plus all upstream CI-proven assertions (auth headings/forms/tabs, project create/open) — no other zero-size visibility candidate exists in the empty-review state | OK |
+
+### E6. Local verification (2026-10-16, this session)
+
+```bash
+cd apps/web && npx playwright test --list
+# → Total: 84 tests in 5 files; all 9 clip-review tests discovered
+#   (clip-review.spec.ts:200/255/320 × [mobile|tablet|desktop]); 84 − 9 = 75 pre-existing
+
+cd apps/web && npm test
+# → Test Files 17 passed (17); Tests 260 passed (260) — unchanged baseline;
+#   the e2e spec is outside Vitest scope, so unit/component results are untouched
+
+cd apps/web && npm run lint
+# → oxlint exit 0; 14 warnings — the identical pre-existing profile
+#   (VideoPlayer.tsx ×3, FeedbackForm.tsx ×7, ReviewPage.tsx ×4); zero diagnostics
+#   for the changed spec
+
+cd apps/web && npm run build
+# → tsc -b && vite build green; 87 modules transformed (built in 502ms)
+```
+
+### E7. Scope, supersession, and the decision contract
+
+- `git status`: exactly one application path changed — `apps/web/e2e/clip-review.spec.ts` (plus this evidence file). Zero changes to `apps/web/src/**`, `apps/api/**`, `tests/governance/**`, `scripts/merge_gate.py`, `.github/workflows/**`, Docker, or `.opencode/**`; no branch/commit/push/PR/issue operations. The throwaway probe was removed after execution and is not part of the tree.
+- Supersession (historical record, not rewritten): the earlier evidence sections describe TC-E2E-01's empty-list step with visibility phrasing ("empty `Clip review list`" asserted visible). The ratified wording ("renders with an empty list") requires attachment with zero items; the spec now asserts exactly that. Historical sections are intentionally left as written; this section supersedes their interpretation. No component behavior changed — this correction is spec-side only.
+- Decision contract: this section embeds no decision literal. The file's single recorded approval (file-final line of the previous section) covers the production list-transport unwrap at HEAD `00ee618` and PREDATES this e2e spec-conformance correction — it does not cover this delta. Fresh independent Tester verification of this correction is required before merge (same mechanics the previous Builder section recorded for its own delta). The exactly-one-decision contract is preserved: the previous section's approval remains the file's single live decision line.
+- Residual risks the static + probe audit cannot fully exclude, for the Tester's attention: (1) rendered layout metrics at the three CI viewports — the overflow, clipping, touch-target, grid-token, and focus-indicator assertions are verified against the CSS rules and the DOM order here, but the review section's rendered metrics are only exercised by a real browser run, which remains CI-authoritative (the unchanged local-sandbox limitation: the app cannot be served locally); (2) the CI e2e environment's dev-server specifics are unchanged from the 75 passing pre-existing tests, so no new risk is introduced there. The binding obligation is unchanged: the next CI e2e run on PR #107 must pass all 9 clip-review tests across mobile/tablet/desktop alongside the 75 pre-existing e2e tests.
+
+---
+
+## Phase 7 — Tester Focused Re-verification (2026-10-16): e2e spec-conformance correction (third CI e2e failure)
+
+Executed 2026-10-16 by the independent Tester on the working tree at branch `@carlosegoulart/106/feat/clip-review-experience` (HEAD `82dda6f` plus uncommitted changes). Scope: the Builder's spec-side conformance correction (§E1–§E7) applied after the third CI e2e run — the empty-list attachment assertion, the `exact: true` disambiguation of the two "Back to project" click sites, and the console-mirror whitelist for the ratified anonymous session probe — with no production, component, backend, or governance change. Every command below was executed fresh by the Tester this session; Builder §E claims were re-executed or verified against the actual diff, the spec source, the production markup, and the governance validators, not trusted. This section supersedes the prior approval (rewritten to prose above) and holds the single live Tester decision for PR #107 (file-final line).
+
+### F1. Scope and tree hygiene — PASS
+
+- `git status --porcelain --untracked-files=all`: exactly two paths — `apps/web/e2e/clip-review.spec.ts` (the conformance delta) and `specs/106-clip-review-foundation/evidence.md` (Builder §E1–§E7 plus this Tester section). Zero untracked entries anywhere in the tree.
+- The throwaway probe is verified absent: no untracked path exists, and the only probe-named repository paths are pre-existing, unmodified production files (`services/worker/aiclip_worker/actions/probe.py`, `services/worker/tests/test_probe.py`, and a committed media-assets migration).
+- The Builder's own evidence delta is a clean single-hunk append after the prior decision line — no earlier section was rewritten by the Builder (full `git diff` of this file reviewed by the Tester).
+- Zero changes to `apps/web/src/**`, `apps/api/**`, `tests/governance/**`, `scripts/merge_gate.py`, `.github/workflows/**`, Docker, or `.opencode/**`; no branch/commit/push/PR/issue operations. `docs/project-state.md`, dirty during the previous review, is now committed at HEAD `82dda6f`.
+
+### F2. Empty-list assertion — conforms to the ratified TC-E2E-01 step 4; not a weakening — VERIFIED
+
+- Ratified wording (test-plan §6, TC-E2E-01 step 4, verbatim): "sidebar heading 'Clips to Review' renders with an empty list" — the contract is that the list RENDERS with zero items.
+- Source truth: `ReviewPage.tsx:250` renders `<div className="space-y-3" role="list" aria-label="Clip review list">` whose only children are `clipReviews.map(...)` buttons (`role="listitem"`, line 270); with zero reviews the div is attached and empty.
+- CI run 3 ground truth (recorded verbatim in §E1): on all nine tests the locator resolved to the attached empty `<div role="list">` with "unexpected value 'hidden'" — Playwright visibility requires a non-empty bounding box, which a zero-item list can never produce. The pre-edit `toBeVisible()` was therefore unsatisfiable against the ratified component behavior; conforming the assertion to the ratified wording is the only resolution that leaves the component's contract-true behavior untouched.
+- Current spec (lines 185–196): the three text-bearing assertions ('No clips', 'Select a clip to review', the 'Clips to Review' heading) remain visible-asserted; the list is asserted `toBeAttached()`; the zero-items companion `await expect(page.getByRole('listitem')).toHaveCount(0)` is byte-identical diff context. The empty-list contract is enforced by two independent assertions — attachment fails if the list is absent from the DOM, the count fails if any item renders — so `toBeAttached()` is the strongest satisfiable form here and nothing was loosened. A single-occurrence grep confirms the 'Clip review list' locator exists only in this helper.
+
+### F3. `exact: true` on both "Back to project" clicks — disambiguation to the ratified control; shell control untouched — VERIFIED
+
+- Ratified wording (TC-E2E-02 step 5, verbatim): "Click the review section's 'Back to project' control: returns to the projects list" — the named control is the review section's.
+- DOM coexistence verified in source: `ProjectMediaSection.tsx:35` (`aria-label="Back to projects"`) renders unconditionally in the section header, and while the review tab is active the panel ternary (lines 74/90) also mounts `ReviewPage`, whose own control is `ReviewPage.tsx:165` (`aria-label="Back to project"`). Playwright role-name matching is case-insensitive substring by default, so the unqualified locator resolves to both buttons and `.click()` strict-mode-violates; `exact: true` restores whole-string matching and resolves to the review section's control only — the exact control the ratified step names. Same element, same action, same downstream assertions: a locator narrowing, not a behavioral change.
+- The shell control is untouched: the `FOCUS_TARGETS` entry `button[aria-label="Back to projects"]` (attribute selector, exact by construction) and `openProject`'s `getByRole('button', { name: 'Back to projects' })` are byte-identical diff context, as are the touch-target measurements for both controls (exact attribute selectors, spec lines 372/375).
+- No other latent ambiguity site: every remaining `getByRole` locator in the spec was checked — 'Back to projects' (line 172) cannot substring-match the review control (the query is longer than that accessible name), the tab names 'Media'/'Review Clips' are not substrings of one another, and `Delete ${name}` / `Confirm delete ${name}` never coexist (ProjectCard ternary). The two fixed click sites are the only substring-collision sites in the spec.
+
+### F4. Console-mirror whitelist — cannot mask a real defect — VERIFIED
+
+- Filter predicate (spec lines 79–89, verified in the diff): a console message is skipped only when its type is exactly `error`, its text starts with the exact Chromium network-mirror prefix `Failed to load resource: the server responded with a status of 401`, and its `location().url` ends with `/api/v1/auth/me`. Every warning remains fatal, and every other error remains fatal — including 401 mirrors from every other URL (a 401 on any other endpoint fails both this collector and the response collector).
+- The response-side 4xx whitelist (spec lines 96–107) is byte-identical diff context and still enforces the single ratified event: any response with status ≥ 400 that is not exactly `GET /api/v1/auth/me` → 401 is pushed to `unexpectedHttp` and fails `expectClean`. A non-GET 401 on auth/me, a 403/419/500 on auth/me, or a 401/4xx/5xx anywhere else therefore fails the run on the response side regardless of the console filter.
+- No spoof vector: repo grep confirms zero `console.*` calls in `apps/web/src`, so no application-originated message can carry the mirror's shape; the only skippable messages are the browser's own mirrors of the response event the ratified whitelist already tolerates — the console filter's acceptance set is a subset of the response whitelist's.
+- Fail-closed property: if the mirror's real shape on CI differed from the predicate (different text form, different location URL), the mirror would land in `consoleProblems` and fail the run — the filter cannot manufacture a false green; its worst case is a loud CI failure with a precise diagnosis.
+- Residual shared blind spot (not introduced by this delta): a `GET /api/v1/auth/me` 401 occurring at an unexpected moment is tolerated by both collectors, but that tolerance is inherited from the response whitelist ratified with the original collector design (this delta introduces no new acceptance), and any such session break would fail the flow's downstream assertions (registration awaits "Signed in as", project creation asserts 201, the clip-reviews request asserts 200, and the review section must render).
+
+### F5. No collateral change — VERIFIED
+
+`git diff --numstat apps/web/e2e/clip-review.spec.ts` → +35/−6; the complete diff is exactly the four hunks reviewed above (console collector, `expectEmptyReviewSection`, and the two click sites, each with its rationale comment). A full-file read confirms everything else is byte-identical to the state ratified in R1/V2/W2: the envelope assertions at all four sites, the response whitelist, the pageerror collector, the storage assertions, `FOCUS_TARGETS`, all waits, and all other selectors and scenario logic. Zero production files in the delta; zero changes to any test other than the e2e spec.
+
+### F6. Builder probe evidence — probe removed; its load-bearing claims independently corroborated
+
+The probe is verified absent from the tree (F1), and the installed runner version was re-verified (`npm ls @playwright/test` → 1.63.0). Its three behavioral claims do not rest on the probe alone: (i) the empty-list visibility failure is CI run 3's verbatim ground truth (§E1); (ii) the strict-mode violation follows mechanically from the DOM coexistence verified in F3 plus Playwright's documented substring matching — the probe's count-2/click-rejected output is the only outcome that structure permits; (iii) the console mirror is Chromium's documented behavior for non-2xx resources, and the filter is fail-closed (F4): if the probe's recorded message shape were wrong, the CI re-run would fail loudly at the cleanliness assertion rather than pass silently. The probe-only residual risk is therefore bounded to a loud, precisely diagnosable CI failure under the unchanged venue matrix.
+
+### F7. Local re-runs — every §E6 number reproduced exactly
+
+```bash
+cd apps/web && npx playwright test --list
+# → Total: 84 tests in 5 files; all 9 clip-review tests discovered
+#   (clip-review.spec.ts:200/255/320 × [mobile|tablet|desktop]); 84 − 9 = 75 pre-existing
+
+cd apps/web && npx playwright test e2e/clip-review.spec.ts --list
+# → Total: 9 tests in 1 file
+
+cd apps/web && npm test
+# → Test Files 17 passed (17); Tests 260 passed (260)
+
+cd apps/web && npm run lint
+# → oxlint exit 0; 14 warnings — the identical pre-existing profile
+#   (VideoPlayer.tsx ×3, FeedbackForm.tsx ×7, ReviewPage.tsx ×4); zero diagnostics
+#   for the changed spec
+
+cd apps/web && npm run build
+# → tsc -b && vite build green; 87 modules transformed (built in 292ms)
+```
+
+### F8. Governance and the decision contract
+
+`python -m unittest discover -s tests/governance -p 'test_*.py'` → **Ran 173 tests, FAILED (failures=1)** — the single failure is the identical pre-existing human-gated item (`test_governance.py::test_g5_six_skills_parse`, expects 6 skills while 8 exist), matching the R7/V4/W5 baseline; the argparse usage strings in the output belong to passing merge-gate CLI tests; zero new failures from this delta. Decision-contract mechanics were re-verified against the actual validators before editing: `validators.py` (lines 30–31) defines the two decision forms as plain substring constants (referenced here by constant name only), `validate_evidence_decision` / `validate_merge_approval` fail on both-or-neither, and `scripts/merge_gate.py::DECISION_RE` is line-anchored last-wins. Pre-edit grep confirmed exactly one decision literal in this file — the prior section's file-final approval, which §E7 correctly records as covering the transport fix at HEAD `00ee618` and predating this conformance delta. That line was rewritten to prose embedding neither constant (the established supersession convention), and this section documents the mechanisms by constant name only. Post-edit verification: grep confirms exactly one occurrence of the approve-form constant in this file (the file-final line, now line 1072) and zero occurrences of the reject-form constant anywhere; the governance suite re-run after the edit shows the identical result — 173 tests, failures=1, the same human-gated skills-count item only.
+
+### F9. Local e2e venue — structurally re-verified as still blocked; CI remains authoritative
+
+The local full-e2e blocker is unchanged and re-verified structurally: `apps/api` contains no `.env` (only `.env.example` — existence checked without inspecting any secret), so the served Laravel still lacks the APP_KEY that `phpunit.xml` supplies to Pest alone; the R6/V5/W6 diagnosis (`MissingAppKeyException` on the served session probe; every agent-available injection mechanism previously permission-denied) is unaffected by this spec-side delta. No local e2e result is fabricated here; discovery-level verification (`--list`) is the locally executable portion and passes (F7).
+
+### F10. Binding pre-merge CI obligations (unchanged venue matrix)
+
+1. **CI e2e job re-run on PR #107**: all 9 clip-review tests green across mobile/tablet/desktop alongside the 75 pre-existing e2e tests. Run 3's ground truth proves every assertion upstream of the former line-171 failure now passes on all nine tests; the three corrected sites (the empty-list attachment, the two exact back-control clicks, the console-mirror filter) are the remaining unknowns, each bounded by F4's fail-closed property to a loud failure rather than a silent pass.
+2. **CI backend `tests` job**: the unchanged R8/V5/W6 obligation — all six `real-integration` tests selected and executed with zero skips against real PostgreSQL + MinIO; full backend suite green on the CI environment.
+3. **Human-gated governance corrections** (plan 6.6, unchanged): the skills-count test (6→8) and the `merge_gate.py` exactly-one-decision contract; `governance` and `pr-enforcement` green before merge.
+
+The Orchestrator must watch the pushed CI re-run; the lifecycle guard has now caught and corrected three real CI failures in sequence, each root-caused, ratified where the plan itself was wrong, fixed, and independently re-verified.
+
+### F11. Verdict on the conformance delta
+
+The third CI run's single remaining failure was an assertion over-interpreting the already-ratified contract ("renders with an empty list") against a component that behaves exactly as ratified; the Builder conformed the assertion rather than the component, and the mandated downstream audit converted two latent CI failures-in-waiting (a mechanically certain strict-mode violation on the back-control click, and the browser's console mirror of the very event the ratified whitelist expects) into precise, narrowly scoped spec corrections. No assertion was weakened: the empty-list contract is enforced by attachment plus a zero-item count where the pre-edit form was unsatisfiable rather than stronger; the exact flag targets the same ratified control the test plan names; the console filter's acceptance set is a subset of the already-ratified response whitelist and is fail-closed. Every locally-executable mandatory verification passes and reproduces the Builder's §E6 numbers exactly; governance shows only the known human-gated item; the tree carries exactly the spec plus this evidence file, with the throwaway probe verified removed. The full Playwright run remains the binding pre-merge CI obligation per the ratified plan 7.8 venue matrix, enforced by the merge lifecycle.
+
 Decision: APPROVE

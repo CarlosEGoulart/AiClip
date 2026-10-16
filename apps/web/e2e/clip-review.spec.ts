@@ -66,7 +66,25 @@ function trackCleanliness(page: Page): Cleanliness {
   };
 
   page.on('console', (message) => {
-    if (message.type() === 'error' || message.type() === 'warning') {
+    if (message.type() !== 'error' && message.type() !== 'warning') return;
+
+    // Chromium mirrors the whitelisted anonymous session probe (GET
+    // /api/v1/auth/me -> 401, the single expected 4xx of the flow, see the
+    // response whitelist below) into the console as a browser-generated
+    // network log line: "Failed to load resource: the server responded
+    // with a status of 401". That mirror is the same ratified event, not
+    // an app defect: the response collector below still fails the run if
+    // this URL is anything but a GET 401, and every other console error
+    // or warning remains fatal.
+    const url = message.location().url;
+    const isSessionProbeMirror =
+      message.type() === 'error' &&
+      message
+        .text()
+        .startsWith('Failed to load resource: the server responded with a status of 401') &&
+      url.endsWith('/api/v1/auth/me');
+
+    if (!isSessionProbeMirror) {
       cleanliness.consoleProblems.push(`${message.type()}: ${message.text()}`);
     }
   });
@@ -168,7 +186,13 @@ async function expectEmptyReviewSection(page: Page, projectName: string) {
   await expect(page.getByText('No clips')).toBeVisible();
   await expect(page.getByText('Select a clip to review')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Clips to Review' })).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Clip review list' })).toBeVisible();
+  // TC-E2E-01 step 4 (ratified): the sidebar heading "Clips to Review"
+  // renders "with an empty list" — the list must RENDER with zero items.
+  // A zero-item list renders as an attached but empty div with an empty
+  // bounding box, so Playwright visibility (non-empty bounding box) does
+  // not apply to this element; attachment plus zero listitems is the
+  // rendered-empty-list contract.
+  await expect(page.getByRole('list', { name: 'Clip review list' })).toBeAttached();
   await expect(page.getByRole('listitem')).toHaveCount(0);
 }
 
@@ -214,8 +238,12 @@ test.describe('Clip Review Section (embedded)', () => {
     await expect(page.getByRole('button', { name: 'Needs Changes clip' })).toHaveCount(0);
     await expect(page.getByRole('group', { name: 'Feedback form' })).toHaveCount(0);
 
-    // Clean up: delete the project via the UI delete flow.
-    await page.getByRole('button', { name: 'Back to project' }).click();
+    // Clean up: delete the project via the UI delete flow. exact: targets
+    // the review section's "Back to project" control only — the shell's
+    // "Back to projects" control coexists in the DOM, and Playwright
+    // role-name matching is substring-based by default, so without exact
+    // the locator resolves to both buttons (strict mode violation).
+    await page.getByRole('button', { name: 'Back to project', exact: true }).click();
     await expect(page.getByRole('button', { name: `Open ${projectName}` })).toBeVisible();
     await page.getByRole('button', { name: `Delete ${projectName}` }).click();
     await page.getByRole('button', { name: `Confirm delete ${projectName}` }).click();
@@ -281,8 +309,9 @@ test.describe('Clip Review Section (embedded)', () => {
     await expectEmptyReviewSection(page, projectName);
 
     // The review section's "Back to project" control returns to the
-    // projects list.
-    await page.getByRole('button', { name: 'Back to project' }).click();
+    // projects list. exact: disambiguates from the coexisting shell
+    // control "Back to projects" (substring role-name matching).
+    await page.getByRole('button', { name: 'Back to project', exact: true }).click();
     await expect(page.getByRole('button', { name: `Open ${projectName}` })).toBeVisible();
 
     await expectClean(page, cleanliness);
