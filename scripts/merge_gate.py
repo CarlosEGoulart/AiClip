@@ -193,10 +193,13 @@ def validate_tester_approval(
 
     decisions = DECISION_RE.findall(text)
 
+    if len(decisions) > 1:
+        raise GateBlock("TESTER_CONFLICTING_DECISIONS")
+
     if not decisions:
         raise GateBlock("TESTER_NOT_APPROVED")
 
-    if decisions[-1].upper() != "APPROVE":
+    if decisions[0].upper() == "REJECT":
         raise GateBlock("TESTER_REJECTED")
 
 
