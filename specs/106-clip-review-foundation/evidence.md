@@ -1069,4 +1069,201 @@ The Orchestrator must watch the pushed CI re-run; the lifecycle guard has now ca
 
 The third CI run's single remaining failure was an assertion over-interpreting the already-ratified contract ("renders with an empty list") against a component that behaves exactly as ratified; the Builder conformed the assertion rather than the component, and the mandated downstream audit converted two latent CI failures-in-waiting (a mechanically certain strict-mode violation on the back-control click, and the browser's console mirror of the very event the ratified whitelist expects) into precise, narrowly scoped spec corrections. No assertion was weakened: the empty-list contract is enforced by attachment plus a zero-item count where the pre-edit form was unsatisfiable rather than stronger; the exact flag targets the same ratified control the test plan names; the console filter's acceptance set is a subset of the already-ratified response whitelist and is fail-closed. Every locally-executable mandatory verification passes and reproduces the Builder's §E6 numbers exactly; governance shows only the known human-gated item; the tree carries exactly the spec plus this evidence file, with the throwaway probe verified removed. The full Playwright run remains the binding pre-merge CI obligation per the ratified plan 7.8 venue matrix, enforced by the merge lifecycle.
 
+**Superseded decision (historical record only): the 2026-10-16 Phase 7 focused re-verification of the e2e spec-conformance correction recorded an approval covering that correction at HEAD `82dda6f` and the overall PR regression state, with the full Playwright run as a binding pre-merge CI obligation.** As §P6 of the Builder section below records, that approval predates the phantom-method fix applied after the fourth CI e2e run and does not cover that delta. It was rewritten to prose on 2026-10-16 by the Tester section at the end of this file so that the file carries exactly one live Tester decision, which is the file-final line of that section.
+
+---
+
+## Builder phantom-method fix (2026-10-16) — `getByLabelText` → `getByLabel`; full API-existence audit of the clip-review e2e spec
+
+Fourth CI e2e run on PR #107 (HEAD `131bc2b`, after the spec-conformance correction re-verified above): **81 passed, 3 failed**. The transport fix (D1–D6) and the conformance corrections (E1–E2) are now verified end-to-end in real CI browsers: TC-E2E-02 and TC-E2E-03 pass on ALL three viewport projects (75 pre-existing + 6 clip-review = 81 green), including every cleanliness collector, the keyboard walks, the grid-reflow and touch-target checks, and all pagination-envelope assertions. The only remaining failures are TC-E2E-01 × 3 viewports, every one aborting at the same call — `apps/web/e2e/clip-review.spec.ts:234:23`:
+
+```
+TypeError: page.getByLabelText is not a function
+```
+
+Because Playwright aborts a test at its first failure, this single call was the only remaining defect in the spec: every assertion before it (registration, project create, tab open, the real CSRF 204 + clip-reviews 200 envelope, the full empty-section rendering) had already passed on all nine tests. This section records the root cause, the one-word fix, the complete method-existence audit of the entire spec against the installed `@playwright/test@1.63.0`, the probe evidence, and the local verification. Executed 2026-10-16 on branch `@carlosegoulart/106/feat/clip-review-experience`.
+
+### P1. Root cause — a method that does not exist in Playwright
+
+`getByLabelText` is **Testing Library** terminology. Playwright's Page has no such method:
+
+- Installed typings: `grep getByLabelText` across `playwright-core/types/*.d.ts` and `playwright/types/*.d.ts` → **zero matches** (the Page interface declares `getByLabel` at `playwright-core/types/types.d.ts:3112`; no label-text variant exists anywhere in 1.63.0).
+- Runtime: probe-verified `typeof page.getByLabelText` → `"undefined"` (P4).
+- The correct name is already this repository's own convention: the CI-green `apps/web/e2e/media.spec.ts` uses `page.getByLabel('Project Name')` (line 53) and `page.getByLabel('Name'/'Email'/'Password')` (lines 38–41).
+
+Why no gate caught it: the e2e specs are outside every TypeScript project in `apps/web` — `tsconfig.app.json` has `include: ["src"]` and `tsconfig.node.json` has `include: ["vite.config.ts", "vitest.config.ts", "playwright.config.ts"]` — so `tsc -b` (the `npm run build` first step) never type-checks `e2e/*.spec.ts`, and oxlint does not resolve Playwright's Page type, so the phantom method sailed through both gates until a real browser run executed it. The prior audits (§E3 probe, §E5 table) verified markup/CSS conformance and Playwright *behavioral* semantics (the visibility definition, strict-mode name matching, console delivery) but never diffed the spec's called-method surface against the installed typings — exactly the audit dimension this failure exposes, now performed in P3.
+
+The label target itself is correct and unchanged: `VideoPlayer.tsx:223` renders the video element with `aria-label="Clip video"`, and Playwright 1.63's `getByLabel` matches `aria-label` (the installed docs at `types.d.ts:3095–3107` demonstrate `getByLabel('Username')` matching `<input aria-label="Username">`). Proven empirically on the exact `<video aria-label="Clip video">` markup by the probe (P4): count 1 when present, 0 when absent — the corrected locator is NOT vacuous; it preserves the old assertion's full strength.
+
+### P2. The fix — one word, same locator semantics
+
+`git diff` of `apps/web/e2e/clip-review.spec.ts` is exactly +1/−1, one line:
+
+```diff
+     // No video player, review action buttons, or feedback form are rendered.
+-    await expect(page.getByLabelText('Clip video')).toHaveCount(0);
++    await expect(page.getByLabel('Clip video')).toHaveCount(0);
+```
+
+The locator's target, argument, and matcher (`toHaveCount(0)`) are byte-identical — same element semantics, corrected API name only. The assertion still fails if any element labeled "Clip video" renders and passes only in the genuinely player-less empty state. Post-fix grep: zero `getByLabelText` occurrences remain in the spec.
+
+### P3. Full API-existence audit — every distinct Playwright API used by the spec
+
+Method: full read of the spec; every distinct API cross-checked against the installed `@playwright/test@1.63.0` typings (`playwright-core/types/types.d.ts` for Page/Locator/Response/Request/ConsoleMessage, `playwright/types/test.d.ts` for the `expect` matchers). Runtime evidence: the probe below (P4, executed once then deleted) and the 81 CI-green tests on `131bc2b` — TC-E2E-02/03 green on all three viewports exercise nearly the whole surface, and TC-E2E-01 executed lines 1–233 before aborting at the phantom.
+
+| API | Spec sites (post-fix lines) | 1.63.0 declaration | Runtime evidence | Verdict |
+|---|---|---|---|---|
+| `page.getByRole(role, options?)` | 131–132, 138, 140, 150, 161, 171–173, 180, 188, 196, 235–239, 246–249, 279–281, 296, 314–315 | types.d.ts:3190 (role union includes heading/button/tab/group/list/listitem) | Probe `typeof` "function"; CI-green (all roles) | EXISTS — verified |
+| `page.getByText(text)` | 151, 166, 186, 187, 250, 298 | types.d.ts:3353 | Probe "function" + toBeVisible/toContainText exercised; CI-green | EXISTS — verified |
+| `page.getByLabel(text, options?)` | 146–149, 155, **234 (the fix)** | types.d.ts:3112 (docs 3095–3107: aria-label is matched) | Probe "function"; label-for fill exercised; `<video aria-label>` count 1 present / 0 absent; CI-green (sibling media.spec.ts:38–53) | EXISTS — verified |
+| `page.getByLabelText(...)` | ~~234~~ (pre-fix) | **zero declarations anywhere in the installed typings** | Probe: `typeof` `"undefined"` — the exact CI TypeError | **PHANTOM — fixed** |
+| `page.locator(selector)` | 185 | types.d.ts:3979 | Probe "function"; CI-green (`.review-header` toContainText) | EXISTS — verified |
+| `locator.or(locator)` | 132 | types.d.ts:16449 (interface Locator, 14240) | Probe: or-locator count 2 | EXISTS — verified |
+| `locator.isVisible(options?)` | 139 | types.d.ts:16335 | Probe: resolves `true`; CI-green (register-heading guard) | EXISTS — verified |
+| `locator.click(options?)` | 140, 150, 161, 171, 180, 246, 248, 249, 296, 314 | types.d.ts:14897 | Probe: real click executed; CI-green | EXISTS — verified |
+| `locator.fill(value, options?)` | 146–149, 155 | types.d.ts:15459 | Probe: real fill executed; CI-green | EXISTS — verified |
+| `page.on('console', listener)` | 68 | types.d.ts:1007 | Probe: captured a real message | EXISTS — verified |
+| `page.on('pageerror', listener)` | 92 | types.d.ts:1118 | CI-green (expectClean in all 6 TC-E2E-02/03 runs) | EXISTS — verified |
+| `page.on('response', listener)` | 96 | types.d.ts:1185 | CI-green (the 4xx collector whitelists the ratified 401) | EXISTS — verified |
+| `page.goto(url)` | 128 | types.d.ts:3513 | Probe "function"; CI-green (every test) | EXISTS — verified |
+| `page.waitForResponse(urlOrPredicate)` | 156, 177, 215 | types.d.ts:5708 | Probe "function"; CI-green (201/204/200 awaits) | EXISTS — verified |
+| `page.evaluate(pageFunction, arg?)` | 119, 343, 351, 368, 385, 398 | types.d.ts:5962/6011 | Probe: emitted console.error; CI-green (overflow/grid/focus/storage checks) | EXISTS — verified |
+| `page.keyboard.press(key)` | 286–289, 411, 416 | types.d.ts:5819 (`keyboard: Keyboard`) + 21976 (`Keyboard.press`) | Probe "function"; CI-green (n/N/p/P + Tab/Shift+Tab walks) | EXISTS — verified |
+| `page.url()` | 285, 290, 291 | types.d.ts:5283 | Probe "function"; CI-green (TC-E2E-02 URL-unchanged) | EXISTS — verified |
+| `page.viewportSize()` | 391 | types.d.ts:5291 | Probe "function"; CI-green (TC-E2E-03 grid-column assertion) | EXISTS — verified |
+| `response.url()` | 53, 100 | types.d.ts:22695 (interface Response, 22545) | CI-green (isGet predicate + collector) | EXISTS — verified |
+| `response.status()` | 97, 102, 105, 163, 218–219, 267, 301, 332 | types.d.ts:22680 | CI-green | EXISTS — verified |
+| `response.json()` | 164, 223, 268, 302, 333 | types.d.ts:22621 | CI-green (envelope parsing on all six green runs) | EXISTS — verified |
+| `response.request()` | 53, 99, 102, 159 | types.d.ts:22631 | CI-green | EXISTS — verified |
+| `request.method()` | 53, 102, 105, 159 | types.d.ts:22351 | CI-green | EXISTS — verified |
+| `ConsoleMessage.type()` | 69, 81, 88 | types.d.ts:20660 ('error'/'warning' in the union) | Probe: returned `"error"` | EXISTS — verified |
+| `ConsoleMessage.text()` | 83, 88 | types.d.ts:20653 | Probe: returned the emitted text | EXISTS — verified |
+| `ConsoleMessage.location().url` | 79 | types.d.ts:20618–20643 — `location(): { url: string; line; column; lineNumber; columnNumber }` | Probe: `locationUrl` delivered as a string (`""` for evaluate-originated messages) | EXISTS — verified (see below) |
+| `expect().toBeVisible` | 133, 141, 151, 166, 172–173, 187–188, 247, 250, 299, 315 | test.d.ts:9346 | Probe + CI-green | EXISTS — verified |
+| `expect().toBeAttached` | 195 | test.d.ts:9058 | Probe + CI-green (all 6 TC-E2E-02/03 runs) | EXISTS — verified |
+| `expect().toHaveCount` | 196, 234–239, 278–281 | test.d.ts:9717 | Probe (count 1 and 0) + CI-green | EXISTS — verified |
+| `expect().toContainText` | 185 | test.d.ts:9467 | Probe + CI-green | EXISTS — verified |
+| `expect().toBe` | 123–124, 218–219, 226–229, 290, 292, 364, 380, 392, 423 | test.d.ts:8380 | Probe + CI-green | EXISTS — verified |
+| `expect().toEqual` (incl. the custom-message form) | 113–115, 224–229, 269–274, 303–308, 334–339 | test.d.ts:8652 | Probe (custom-message form) + CI-green | EXISTS — verified |
+| `expect().toBeNull` | 228–229, 273–274, 307–308, 338–339, 291 | test.d.ts:8512 | Probe + CI-green | EXISTS — verified |
+| `expect().toBeDefined` | 165 | test.d.ts:8408 | Probe + CI-green | EXISTS — verified |
+| `expect().toHaveLength` | 421 | test.d.ts:8667 | Probe + CI-green (focus-target count) | EXISTS — verified |
+| `expect().toBeLessThanOrEqual` | 347 | test.d.ts:8488 | Probe + CI-green (overflow) | EXISTS — verified |
+| `expect().toBeGreaterThanOrEqual` | 380 | test.d.ts:8447 | Probe + CI-green (touch targets) | EXISTS — verified |
+
+Runner API: `test.describe`, `test(title, fn)` with the `{ page }` fixture, and the `test`/`expect` imports — exercised by all 84 discovered tests / 81 CI-green runs. Type-only imports (`type Page`, `type Response`) are erased at runtime.
+
+**Inventoried as expected but NOT used (grep-verified absent from the spec):** `getByTestId` (exists at types.d.ts:3307), `page.waitForURL` (exists at types.d.ts:5764), `page.reload`, `page.setViewportSize`, and locator `.boundingBox()` — zero occurrences in `clip-review.spec.ts`. The TC-E2E-03 geometry/styling checks run entirely inside `page.evaluate` with raw DOM APIs (`document.documentElement.scrollWidth`, `window.innerWidth`, `getBoundingClientRect`, `getComputedStyle`, `document.activeElement`) — browser APIs, not Playwright methods — and were already exercised green in CI on all three viewports. `page.setViewportSize` is intentionally absent: viewports come from the three configured projects (spec header comment, lines 20–25). No other phantom API exists in the spec: `getByLabelText` was the only called method absent from the installed 1.63.0 surface.
+
+**`ConsoleMessage.location().url` — confirmed the correct accessor.** The installed declaration returns `{ url: string; line: number; column: number; lineNumber; columnNumber }`, so the console filter's `message.location().url` is valid in 1.63.0. The probe additionally shows evaluate-originated messages deliver `locationUrl: ""` — which keeps the whitelist strictly fail-closed for app-emitted messages (`''.endsWith('/api/v1/auth/me')` is false, so they can never be skipped), while browser network mirrors carry the real resource URL (§E3 PROBE1: `"url":"http://127.0.0.1:PORT/api/v1/auth/me"`).
+
+**Residual never-yet-executed segment (honest scope note):** because Playwright aborts at the first failure, TC-E2E-01's steps after line 234 — the UI delete-cleanup flow (lines 246–250: the `Back to project` exact click, `Delete`/`Confirm delete`, `/No projects yet/`) and `expectClean` (line 252) — have never executed in any CI run. Every API they call is existence-verified in the table and runtime-green in the sibling scenarios (the exact-click pattern is CI-green at line 314 in TC-E2E-02; `expectClean`'s `page.evaluate` ran green in all six TC-E2E-02/03 runs), and their markup targets were ratified in the §E5 audit (rows 5–6). Their first real execution lands in the next CI run.
+
+### P4. Empirical probe — verbatim output; probe deleted
+
+A throwaway single-test probe (`apps/web/e2e/tmp-api-audit-probe.spec.ts`; self-contained `setContent` markup mirroring the real targets — `<video aria-label="Clip video">`, both back controls, a `label for` + input pair) was executed once against the repo-installed runner and then deleted from the tree (verified absent: `apps/web/e2e/` contains exactly the 5 committed spec files; repo-wide search for the probe name → no matches; `git status` shows no untracked files).
+
+```
+$ npx playwright test e2e/tmp-api-audit-probe.spec.ts --project=desktop
+
+Running 1 test using 1 worker
+
+PROBE constructors: {"getByRole":"function","getByText":"function","getByLabel":"function","locator":"function"}
+PROBE page methods: {"on":"function","goto":"function","waitForResponse":"function","evaluate":"function","keyboard.press":"function","url":"function","viewportSize":"function"}
+PROBE phantom getByLabelText typeof: "undefined"
+PROBE getByLabel('Clip video') count with player present: 1
+PROBE console message: {"type":"error","text":"probe-console-error","locationUrl":""}
+PROBE getByLabel('Clip video') count with player absent: 0
+  ✓  1 [desktop] › e2e/tmp-api-audit-probe.spec.ts:17:1 › probe: clip-review.spec.ts page API surface exists in @playwright/test 1.63.0 (1.2s)
+
+  1 passed (10.3s)
+```
+
+The probe asserted `typeof` for every page-level constructor/method, exercised `getByLabel` (label-for fill plus the aria-label `<video>` match — the exact fixed line's target and call shape), `or`, `isVisible`, `click`, the console listener (`type()`/`text()`/`location().url`), and all eleven matchers the spec uses. Every check passed. The two load-bearing results for this fix: `getByLabelText` is `undefined` at runtime (the CI failure reproduced in isolation), and `getByLabel('Clip video')` resolves to 1 on the real target markup and 0 in its absence — proving the corrected assertion is both real and satisfiable.
+
+### P5. Local verification (2026-10-16, this session)
+
+```bash
+cd apps/web && npx playwright test --list
+# → Total: 84 tests in 5 files; all 9 clip-review tests discovered
+#   (clip-review.spec.ts:200/255/320 × [mobile|tablet|desktop]); 84 − 9 = 75 pre-existing
+
+cd apps/web && npm test
+# → Test Files 17 passed (17); Tests 260 passed (260) — unchanged baseline
+#   (the e2e spec is outside Vitest scope)
+
+cd apps/web && npm run lint
+# → oxlint exit 0; 14 warnings — the identical pre-existing profile
+#   (VideoPlayer.tsx ×3, FeedbackForm.tsx ×7, ReviewPage.tsx ×4); zero diagnostics for the spec
+
+cd apps/web && npm run build
+# → tsc -b && vite build green; 87 modules transformed, built in 321ms
+```
+
+### P6. Scope and the decision contract
+
+- `git status --porcelain --untracked-files=all`: exactly one application path — `apps/web/e2e/clip-review.spec.ts` (one word changed; +1/−1) — plus this evidence file. The probe was executed once and deleted (verified absent, P4). Zero changes to `apps/web/src/**`, `apps/api/**`, `tests/governance/**`, `scripts/merge_gate.py`, `.github/workflows/**`, Docker, the Planner-owned bundle files, or `.opencode/**`; no branch/commit/push/PR/issue operations.
+- This section embeds no decision literal. The previous section's recorded approval (that section's final line — the file's single decision literal) covers the e2e spec-conformance correction at HEAD `82dda6f` and PREDATES this phantom-method fix; it does not cover this delta. Fresh independent Tester verification of this correction is required before merge (the same mechanics the previous Builder sections recorded for their own deltas). The exactly-one-decision contract is preserved: no second decision literal is introduced, and the existing one remains the file's only occurrence.
+- Binding obligation (unchanged venue matrix): the next CI e2e run on PR #107 must pass all 9 clip-review tests across mobile/tablet/desktop alongside the 75 pre-existing e2e tests. With the phantom call corrected, TC-E2E-01's CI-proven prefix (lines 1–233) plus the existence-verified API surface leave no known unknowns in the spec itself; the never-yet-executed cleanup segment (P3 residual) is the only first-time execution, built entirely from CI-green patterns and §E5-ratified markup targets.
+
+---
+
+## Phase 7 — Tester Focused Re-verification (2026-10-16): phantom-method fix and the spec API-existence audit (fourth CI e2e failure)
+
+Executed 2026-10-16 by the independent Tester on the working tree at branch `@carlosegoulart/106/feat/clip-review-experience` (HEAD `131bc2b` plus uncommitted changes). Scope: the Builder's phantom-method fix (§P1–§P6) applied after the fourth CI e2e run on PR #107 — 81 passed, 3 failed: TC-E2E-02 and TC-E2E-03 fully green on all three viewport projects (the production list-transport fix and the spec-conformance corrections thereby verified end-to-end in real CI browsers), with every TC-E2E-01 failure aborting at `clip-review.spec.ts:234` on `TypeError: page.getByLabelText is not a function` — i.e. the one-word correction to the Playwright-correct method name, plus the Builder's complete API-existence audit of the spec against the installed `@playwright/test@1.63.0`. Every command below was executed fresh by the Tester this session; Builder §P claims were re-executed or independently verified against the actual diff, the installed typings, the production markup, and the governance validators, not trusted. This section supersedes the prior approval (rewritten to prose above) and holds the single live Tester decision for PR #107 (file-final line).
+
+### G1. Diff verification — exactly the one-word correction; locator non-vacuous — VERIFIED
+
+- `git diff --numstat apps/web/e2e/clip-review.spec.ts` → **+1/−1**; the complete diff is one line (234, same line pre- and post-fix): `page.getByLabelText('Clip video')` → `page.getByLabel('Clip video')`. The locator's target, argument, and `toHaveCount(0)` matcher are byte-identical diff context; no other line of the spec and no other application file changed.
+- Non-vacuity independently verified: `VideoPlayer.tsx:223` renders the video element with `aria-label="Clip video"` (grep), and the installed typings' own documentation block (types.d.ts:3096–3106) demonstrates `getByLabel('Username')` matching `<input aria-label="Username">` — `getByLabel` matches `aria-label` in 1.63.0. Per the ratified component topology (§E5 row 3, previously verified), the player renders only when a clip is selected, so the corrected locator resolves to exactly 1 when a player is present and 0 in the player-less empty state the test asserts — the assertion retains the pre-fix intent's full strength and fails if any element labeled "Clip video" renders.
+- The `getByLabelText` occurrences under `apps/web/src` (`ReviewPage.test.tsx`, `ClipReviewSection.test.tsx`) are Testing Library (RTL) unit tests — the correct API for that library — and are untouched by this delta (verified by `git status`: no `src/**` path is modified).
+- Convention claim verified: the CI-green `apps/web/e2e/media.spec.ts` uses `page.getByLabel(...)` at lines 38–41 and 53.
+- Gate-escape explanation verified: `tsconfig.app.json` has `include: ["src"]` and `tsconfig.node.json` has `include: ["vite.config.ts", "vitest.config.ts", "playwright.config.ts"]` — `e2e/*.spec.ts` is outside every TypeScript project, so `tsc -b` (the build gate's first step) never type-checks the e2e spec, and oxlint does not resolve Playwright's Page type. A phantom method could therefore only be caught by a real browser execution — which is exactly what the fourth CI run did. No repository gate is misconfigured or weakened; this is the known, accepted e2e-typegap.
+
+### G2. Independent typings audit — phantom confirmed absent; §P3 table accurate at every checked declaration — VERIFIED
+
+- Installed version re-verified: `npm ls @playwright/test` → `@playwright/test@1.63.0` (playwright + playwright-core 1.63.0).
+- The phantom: grep for `getByLabelText` across BOTH installed typings trees (`playwright-core/types/` and `playwright/types/`) → **zero matches** — no such method exists anywhere in the installed 1.63.0 surface; the CI TypeError was the only possible outcome of that call. Post-fix grep of `apps/web/e2e/` → zero residual occurrences.
+- The Tester independently verified **37** distinct declarations cited in the §P3 audit table, every one matching the installed typings exactly: Page (`getByRole` types.d.ts:3190 — role union includes heading/button/tab/group/list/listitem; `getByText`:3353; `getByLabel`:3112; `locator`:3979; `goto`:3513; `url`:5283; `viewportSize`:5291; `waitForResponse`:5708; `evaluate`:5962; `on('console')`:1007; `on('pageerror')`:1118; `on('response')`:1185; `keyboard`:5819 with `Keyboard.press`:21976), Locator (`or`:16449; `isVisible`:16335; `click`:14897; `fill`:15459), Response (`url`:22695; `status`:22680; `json`:22621; `request`:22631), Request (`method`:22351), ConsoleMessage (`location()`:20618 returning the `{ url; line; column; … }` object the console filter dereferences; `text()`:20653; `type()`:20660 with `error`/`warning` in the union), and the eleven matchers in `playwright/types/test.d.ts` (`toBe`:8380; `toEqual`:8652; `toBeDefined`:8408; `toBeNull`:8512; `toBeVisible`:9346; `toBeAttached`:9058; `toHaveCount`:9717; `toContainText`:9467; `toBeLessThanOrEqual`:8488; `toBeGreaterThanOrEqual`:8447; `toHaveLength`:8667).
+- The spec's complete called-method surface — from the Tester's own full-file read: every `page.*` call (constructors, `on`, `goto`, `waitForResponse`, `evaluate`, `keyboard.press`, `url`, `viewportSize`), every locator chain method (`or`, `isVisible`, `click`, `fill`), every `response.*`/`request.*`/`ConsoleMessage.*` call, and every matcher at every site — is covered by the §P3 table; no called method is absent from the installed 1.63.0 surface, and no other phantom exists. The audit's present-but-unused inventory (`getByTestId`, `waitForURL`, `reload`, `setViewportSize`, `.boundingBox()`) and its note that the TC-E2E-03 geometry checks run on raw DOM APIs inside `page.evaluate` are consistent with the spec source the Tester read.
+- Probe claims corroborated structurally, without relying on the deleted probe: the phantom's nonexistence is typing-verified above (zero declarations), and the corrected locator's match semantics are typing-verified (the installed docs' aria-label example) plus markup-verified (`VideoPlayer.tsx:223`). The probe file itself is verified absent (G4). The probe's recorded runtime outputs are consistent with both typings facts and the CI ground truth.
+
+### G3. Local re-runs — every §P5 number reproduced exactly
+
+```bash
+cd apps/web && npx playwright test --list
+# → Total: 84 tests in 5 files; all 9 clip-review tests discovered
+#   (clip-review.spec.ts:200/255/320 × [mobile|tablet|desktop]); 84 − 9 = 75 pre-existing
+
+cd apps/web && npm test
+# → Test Files 17 passed (17); Tests 260 passed (260) — unchanged baseline
+#   (the e2e spec is outside Vitest scope)
+
+cd apps/web && npm run lint
+# → oxlint exit 0; 14 warnings — the identical pre-existing profile
+#   (VideoPlayer.tsx ×3, FeedbackForm.tsx ×7, ReviewPage.tsx ×4); zero diagnostics for the spec
+
+cd apps/web && npm run build
+# → tsc -b && vite build green; 87 modules transformed (built in 400ms)
+```
+
+### G4. Scope, tree hygiene, governance, and the decision contract — PASS
+
+- `git status --porcelain --untracked-files=all`: exactly the two expected paths — `apps/web/e2e/clip-review.spec.ts` (the one-word fix) and `specs/106-clip-review-foundation/evidence.md` (Builder §P1–§P6 plus this Tester section). Zero untracked entries; zero changes to `apps/web/src/**`, `apps/api/**`, `tests/governance/**`, `scripts/merge_gate.py`, `.github/workflows/**`, Docker, the Planner-owned bundle files, or `.opencode/**`; no branch/commit/push/PR/issue operations. The Builder's evidence delta as found was a clean append after the prior decision line (full diff reviewed); the only touch to a pre-existing line was that line's trailing-newline normalization. `docs/project-state.md`, dirty during earlier reviews, is committed at HEAD and absent from the working tree.
+- Probe verified absent: `apps/web/e2e/` contains exactly the 5 committed spec files (auth, clip-review, health, media, projects); a repo-wide search for the probe name matches only this evidence file's prose (the Builder's own record of the throwaway probe).
+- Governance: `python -m unittest discover -s tests/governance -p 'test_*.py'` → **Ran 173 tests, FAILED (failures=1)** — the single failure is the identical pre-existing human-gated item (`test_governance.py::test_g5_six_skills_parse`, expects 6 skills while 8 exist per AGENTS.md §16), matching the R7/V4/W5/F8 baseline exactly; the argparse usage strings and the merge-simulation output in the stream belong to passing merge-gate CLI tests. Zero new failures from this delta.
+- Decision-contract mechanics re-verified against the actual validators before editing: `validators.py` (lines 30–31) defines the two decision forms as plain substring constants (referenced here by constant name only), `validate_evidence_decision` (line 97) and `validate_merge_approval` (line 164) fail on both-forms-or-neither presence, and `scripts/merge_gate.py::DECISION_RE` (line 37) is line-anchored, case-insensitive, and last-wins. Pre-edit grep confirmed exactly one occurrence of the approve-form literal in this file (the prior section's file-final line) and zero occurrences of the reject-form literal anywhere. That line was rewritten to prose embedding neither form (the established supersession convention), and this section ends with the file's single live decision line. Post-edit verification: G6.
+
+### G5. Binding pre-merge CI obligations (unchanged venue matrix; honest first-execution note)
+
+1. **CI e2e job re-run on PR #107**: all 9 clip-review tests green across mobile/tablet/desktop alongside the 75 pre-existing e2e tests. The fourth CI run proved TC-E2E-02/03 fully green on all three viewports (transport and conformance corrections verified end-to-end, including every cleanliness collector, keyboard walk, grid-reflow and touch-target check) and proved TC-E2E-01's entire prefix through line 233 (registration, project create, tab open, the real CSRF 204 + clip-reviews 200 pagination envelope, the full empty-section rendering). Honest first-execution note: TC-E2E-01's segment after line 234 — the cleanup delete flow (lines 246–250: the `exact: true` back-control click, `Delete`/`Confirm delete`, `/No projects yet/`) and `expectClean` (line 252) — has never executed in any CI run (runs 1–3 aborted earlier in the flow; run 4 aborted at the phantom itself). Every API it calls is existence-verified (G2) and runtime-green in sibling CI scenarios — the identical `exact: true` back-control click is CI-green at line 314 in TC-E2E-02; the identical `Delete`/`Confirm delete` click pattern is CI-green in `projects.spec.ts:83/85` ("user can delete own project", among the 75 green); `expectClean`'s `page.evaluate` and collectors ran green in all six TC-E2E-02/03 runs; the `No projects yet` target was ratified in §E5 row 6 (`ProjectList.tsx:23`) — but the composed segment's first real execution lands in this binding re-run.
+2. **CI backend `tests` job**: the unchanged R8/V5/W6/F10 obligation — all six `real-integration` tests selected and executed with zero skips against real PostgreSQL + MinIO; full backend suite green on the CI environment.
+3. **Human-gated governance corrections** (plan 6.6, unchanged): the skills-count test (6→8) and the `merge_gate.py` exactly-one-decision contract; `governance` and `pr-enforcement` green before merge.
+
+The local full-e2e venue remains structurally blocked (the unchanged R6/V5/F9 diagnosis: the served Laravel has no APP_KEY in this sandbox — no `.env` exists and every agent-available injection mechanism is permission-denied); no local e2e result is fabricated here, and discovery-level verification (`--list`) is the locally executable portion. The Orchestrator must watch the pushed CI re-run; the lifecycle guard has now caught and corrected four real CI failures in sequence, each root-caused, Planner-ratified where the plan itself was wrong, fixed, and independently re-verified.
+
+### G6. Verdict on the phantom-method fix
+
+The fourth CI run's only remaining defect was a Testing-Library-named method that does not exist on Playwright's Page in the installed 1.63.0 — verified absent from every typings file in both installed typings trees, with the CI TypeError its only possible outcome. The fix is the minimal correct one-word rename: same locator target, same argument, same matcher; non-vacuous against the real `aria-label="Clip video"` markup per the installed typings' own matching documentation; consistent with the repository's own CI-green convention. The mandated full API-existence audit is genuine and accurate — all 37 declarations the Tester independently checked match the installed typings exactly, no other phantom exists in the spec's called surface, and the audit's honest residual note correctly identifies TC-E2E-01's cleanup segment as the only never-yet-executed code, whose first CI execution is part of the binding re-run. No assertion was weakened anywhere; every locally-executable mandatory verification passes and reproduces the Builder's §P5 numbers exactly; governance shows only the known human-gated item; the tree carries exactly the spec plus this evidence file, with the throwaway probe verified removed. The full Playwright run remains the binding pre-merge CI obligation per the ratified plan 7.8 venue matrix, enforced by the merge lifecycle.
+
 Decision: APPROVE

@@ -231,7 +231,7 @@ test.describe('Clip Review Section (embedded)', () => {
     await expectEmptyReviewSection(page, projectName);
 
     // No video player, review action buttons, or feedback form are rendered.
-    await expect(page.getByLabelText('Clip video')).toHaveCount(0);
+    await expect(page.getByLabel('Clip video')).toHaveCount(0);
     await expect(page.getByRole('group', { name: 'Review actions' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Approve clip' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Reject clip' })).toHaveCount(0);
