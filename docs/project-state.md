@@ -60,6 +60,15 @@ M6.2 Slices 3A–3E — Caption Flow Integration (Issues #81, #81B, #87, #89, #1
 - **Slice 3D (Issue #89 / PR #90)**: `RenderMediaClip` job integrates caption flow — fetches `STATUS_COMPLETED` transcripts, projects segments, generates SRT, stores caption file, includes `caption_file` in contract only when projection yields content. Backward compatible: caption_file omitted when no transcript, status not completed, or empty projection.
 - **Slice 3E (Issue #101 / PR #103)**: End-to-end caption flow integration test — validates complete pipeline: upload → transcribe → detect scenes → recommend → render with captions → validate output → persist. Uses real MinIO, FFmpeg, Python worker, FFprobe. No mocks for storage, worker, or FFmpeg.
 
+M7 Slice 1 decisions (Issue #106, PR #107): clip-review video playback
+issues time-limited (1 hour) signed API URLs that redirect to presigned
+storage URLs; invalid, expired, or tampered signatures return 403 before
+any ownership check, unsigned requests fall back to ownership 401/404, and
+non-owners always receive 404 so no ownership information leaks. Review
+list endpoints return the standard Laravel pagination envelope. The
+frontend is a single-page shell with no client-side router library;
+deep-link state uses the native History API.
+
 # Known Limitations
 
 E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
@@ -69,7 +78,11 @@ faster-whisper optional dependency and model download. Real runtime scene
 detection requires the scenedetect[opencv-headless] optional dependency.
 Mandatory CI contains deterministic worker/unit coverage, mocked PySceneDetect
 adapter coverage, AND real FFmpeg-generated video + real PySceneDetect
-integration coverage. Rendering and social features do not exist yet. Semantic
+integration coverage. The signed clip-review video redirect requires S3-compatible storage; the
+local filesystem driver fails closed with 500. Full approve/reject/
+video-workflow e2e coverage is deferred until rendered-clip fixtures can
+exist in the e2e environment; the reachable review states are covered
+instead. Social features do not exist yet. Semantic
 clip ranking ships in the mainline via `rank_clips` v1.0.0 while
 `scene_timing_baseline` v1.0.0 remains the deterministic M4 scoring; there is
 no recommendation UI or public recommendation API. The agent
@@ -99,12 +112,28 @@ REC-04 (Issue #94): E2E caption flow integration test gap resolved; Slice 3E imp
 
 REC-05 (Issue #95): Governance automation audit completed; GOV-01 through GOV-04 follow-up issues defined.
 
+M7 Slice 1 — Clip Review Experience foundation (Issue #106, PR #107):
+ClipReview model with status enum (pending, approved, rejected,
+needs_changes), review API (project-scoped paginated list, show, status
+update with idempotent transitions, feedback submission, dual-gate signed
+video URL), `ProcessClipReview` queue job with event dispatch, automatic
+ClipReview creation when a rendered DerivedAsset completes, and per-endpoint
+rate limiting. Frontend delivers the embedded review experience inside
+ProjectMediaSection: VideoPlayer, ReviewActions, FeedbackForm, ReviewList,
+and ReviewPage with native History API URL sync (no client-side router
+library), a root React Query provider, 44px touch targets, and visible
+focus indicators. Verification: backend Pest suites, a `real-integration`
+group executing real MinIO presigned round trips and a real-database
+rollback case, Vitest component suites, and Playwright e2e covering the
+reachable review states at three viewports.
+
 # Next Architectural Goal
 
-M6.2+ remaining — Vertical Clip Rendering enhancements (multi-candidate batch
-rendering, render profiles beyond `vertical_v1`) and M7 — Clip Review
-Experience are the next architectural goals. They are not active, not
-authorized, and not implemented; planning and implementing them require
-separate explicit authorization. A standalone queue-consuming Python service
+M7 — Clip Review Experience continues beyond Slice 1: remaining slices
+(approval-driven downstream actions, editor integrations, publishing hooks)
+require separate explicit authorization and are not active. M6.2+ remaining —
+Vertical Clip Rendering enhancements (multi-candidate batch rendering,
+render profiles beyond `vertical_v1`) likewise remain future work, not
+active, and not implemented. A standalone queue-consuming Python service
 remains a future architectural evolution, not the current CLI execution
 topology.
