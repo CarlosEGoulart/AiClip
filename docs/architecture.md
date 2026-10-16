@@ -253,6 +253,13 @@ Long-video clipping does NOT require generative video models. The primary pipeli
 - `POST /api/v1/projects/{id}/clips/{clipId}/approve`
 - `PUT /api/v1/clips/{id}`
 
+**Clip Review**:
+- `GET /api/v1/projects/{project}/clip-reviews` — paginated list of clip reviews for a project
+- `GET /api/v1/clip-reviews/{clipReview}` — single clip review detail
+- `PATCH /api/v1/clip-reviews/{clipReview}/status` — status update with idempotent transitions
+- `POST /api/v1/clip-reviews/{clipReview}/feedback` — feedback submission
+- `GET /api/v1/clip-reviews/{clipReview}/video` — dual-gate signed video URL (1-hour expiry; invalid/expired/tampered → 403; unsigned → ownership 401/404)
+
 **Images**:
 - `POST /api/v1/images/generate`
 - `GET /api/v1/images`
@@ -300,6 +307,13 @@ Long-video clipping does NOT require generative video models. The primary pipeli
 - Captions text
 - Approval status
 - Publishing status
+
+**ClipReview**
+- Status enum: `pending`, `approved`, `rejected`, `needs_changes`
+- `reviewer_id` — foreign key to User
+- `feedback` — text for rejected/needs_changes decisions
+- Foreign keys to `DerivedAsset` (rendered clip) and `User` (reviewer)
+- Unique constraint on `[derived_asset_id, reviewer_id]`
 
 **Image**
 - Generated from prompts
