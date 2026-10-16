@@ -298,14 +298,15 @@ class TestMergeGate(unittest.TestCase):
         )
 
         with self.patched():
-            result = merge_gate.validate(
-                44,
-                self.root,
-            )
+            with self.assertRaises(merge_gate.GateBlock) as ctx:
+                merge_gate.validate(
+                    44,
+                    self.root,
+                )
 
         self.assertEqual(
-            result["issue_number"],
-            43,
+            ctx.exception.args[0],
+            "TESTER_CONFLICTING_DECISIONS"
         )
 
     def test_missing_required_check_blocks(self):

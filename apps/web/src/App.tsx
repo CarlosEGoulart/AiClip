@@ -1,6 +1,16 @@
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth, LoginForm, RegisterForm, AuthenticatedShell } from './features/auth';
 import HealthCheck from './components/HealthCheck';
+
+/*
+ * Shared React Query client for the application's data hooks (the embedded
+ * clip-review feature is the first consumer). One root provider keeps a
+ * single cache alive across the authenticated session; without it, every
+ * React Query hook throws on mount and unmounts the whole application
+ * (no error boundary exists — see plan Phase 7.5 defect class).
+ */
+const queryClient = new QueryClient();
 
 function AuthEntry() {
   const [view, setView] = React.useState<'login' | 'register'>('login');
@@ -105,9 +115,11 @@ function App() {
   }
 
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

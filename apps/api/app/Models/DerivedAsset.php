@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DerivedAsset extends Model
 {
+    use HasFactory;
+
     const TYPE_AUDIO_NORMALIZED = 'audio_normalized';
 
     const TYPE_RENDERED_CLIP = 'clip_rendered';
@@ -79,6 +84,16 @@ class DerivedAsset extends Model
     public function scopeRenderedClips($query)
     {
         return $query->where('type', self::TYPE_RENDERED_CLIP);
+    }
+
+    public function clipReview(): HasOne
+    {
+        return $this->hasOne(ClipReview::class);
+    }
+
+    public function scopeWithReviewStatus(Builder $query): Builder
+    {
+        return $query->with(['clipReview' => fn ($q) => $q->with('reviewer')]);
     }
 
     public static function isValidTransition(string $from, string $to): bool

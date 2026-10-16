@@ -30,7 +30,7 @@ class DerivedAssetFactory extends Factory
             'media_asset_id' => MediaAsset::factory(),
             'type' => DerivedAsset::TYPE_AUDIO_NORMALIZED,
             'storage_disk' => config('media.disk', 'media'),
-            'storage_key' => Str::uuid() . '.wav',
+            'storage_key' => Str::uuid().'.wav',
             'mime_type' => 'audio/wav',
             'size_bytes' => fake()->numberBetween(1024, 104857600),
             'duration_ms' => fake()->numberBetween(1000, 300000),
@@ -47,11 +47,11 @@ class DerivedAssetFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'type' => DerivedAsset::TYPE_RENDERED_CLIP,
-            'status' => DerivedAsset::STATUS_PENDING,
+            'render_status' => DerivedAsset::RENDER_STATUS_COMPLETED,
             'candidate_index' => 0,
             'render_profile_version' => 'ffmpeg_vertical_baseline:1.0.0',
             'storage_disk' => config('media.disk', 'media'),
-            'storage_key' => 'renders/' . Str::uuid() . '.mp4',
+            'storage_key' => 'renders/'.Str::uuid().'.mp4',
             'mime_type' => 'video/mp4',
             'size_bytes' => 0,
         ]);
