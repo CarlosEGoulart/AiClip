@@ -48,6 +48,8 @@ auth hooks with generation-based race-condition protection. Storage uses
 `filter_var(..., FILTER_VALIDATE_BOOLEAN)` for boolean casting in PHPUnit.
 CSRF exceptions for media upload routes.
 
+M7 Slice 1 — Clip Review Experience foundation (Issue #106, PR #107) was merged manually via GitHub UI (commit 4c65c80), not via `scripts/merge_gate.py` as required by AGENTS.md §4.1. This governance exception is recorded here; all future PRs must use the deterministic merge gate.
+
 M6.1 baseline vertical clip rendering (`ffmpeg_vertical_baseline` v1.0.0,
 profile `vertical_v1`) is the first M6 slice; it is explicitly invoked via
 dedicated render job, not an automatic stage in `ProcessMediaAsset`. Render

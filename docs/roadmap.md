@@ -81,12 +81,18 @@ Completed slices:
 
 - **Slice 3E (Issue #101, PR #103 — merged; issue closed)**: End-to-end caption flow integration test — validates complete pipeline: upload → transcribe → detect scenes → recommend → render with captions → validate output → persist. Uses real MinIO, FFmpeg, Python worker, FFprobe. No mocks for storage, worker, or FFmpeg. 7 E2E test scenarios covering happy path, no transcript, pending transcript, empty projection, malformed segments, idempotency, and transcript change triggering new render.
 
+## M7 — Clip Review Experience (Slice 1 completed)
+
+Completed slices:
+
+- **Slice 1 — Clip Review Experience foundation (Issue #106, PR #107 — merged; issue closed)**: ClipReview model with status enum (`pending`, `approved`, `rejected`, `needs_changes`), review API (project-scoped paginated list, show, status update with idempotent transitions, feedback submission, dual-gate signed video URL), `ProcessClipReview` queue job with event dispatch, automatic ClipReview creation when a rendered DerivedAsset completes, and per-endpoint rate limiting. Frontend delivers the embedded review experience inside ProjectMediaSection: VideoPlayer, ReviewActions, FeedbackForm, ReviewList, and ReviewPage with native History API URL sync (no client-side router library), a root React Query provider, 44px touch targets, and visible focus indicators. Verification: backend Pest suites, a `real-integration` group executing real MinIO presigned round trips and a real-database rollback case, Vitest component suites, and Playwright E2E covering the reachable review states at three viewports.
+
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
 | M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2 Slices 3A–3E completed) |
-| M7 | Clip Review Experience |
+| M7 | Clip Review Experience (Slice 1 Complete — Issue #106, PR #107) |
 | M8 | AI Image Studio |
 | M9 | Social Connection Framework |
 | M10 | YouTube Publishing |
