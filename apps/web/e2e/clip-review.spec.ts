@@ -432,27 +432,35 @@ test.describe('Clip Review Section (embedded)', () => {
    */
 
   async function seedClipReview(page: Page, projectId: number) {
-    const cookies = await page.context().cookies();
-    const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
+    // Use page.evaluate(fetch) instead of page.request.post(): the browser
+    // context sends the session cookie (HttpOnly, SameSite=Lax) automatically,
+    // while page.request.post() does not include SameSite=Lax cookies for
+    // non-navigation requests, resulting in 401 from auth:sanctum.
+    const result = await page.evaluate(async (pid) => {
+      const cookieMap: Record<string, string> = {};
+      for (const part of document.cookie.split(';')) {
+        const eq = part.indexOf('=');
+        if (eq === -1) continue;
+        cookieMap[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
+      }
+      const xsrf = cookieMap['XSRF-TOKEN'] || '';
+      const res = await fetch('/api/v1/test/clip-reviews/seed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-XSRF-TOKEN': decodeURIComponent(xsrf),
+        },
+        body: JSON.stringify({ project_id: pid }),
+      });
+      const body = await res.json();
+      return { status: res.status, body };
+    }, projectId);
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    if (xsrfCookie) {
-      headers['X-XSRF-TOKEN'] = xsrfCookie.value;
-    }
-
-    const response = await page.request.post('/api/v1/test/clip-reviews/seed', {
-      headers,
-      data: { project_id: projectId },
-    });
-
-    expect(response.status(), 'seed route status').toBe(200);
-    const body = await response.json();
-    expect(body.data.status).toBe('pending');
-    expect(body.data.video_url).toBeDefined();
-    return body.data.id as number;
+    expect(result.status, 'seed route status').toBe(200);
+    expect(result.body.data.status).toBe('pending');
+    expect(result.body.data.video_url).toBeDefined();
+    return result.body.data.id as number;
   }
 
   async function selectClipAndVerifyPending(page: Page, clipReviewId: number) {
