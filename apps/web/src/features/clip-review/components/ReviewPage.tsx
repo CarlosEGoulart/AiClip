@@ -55,6 +55,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
 }) => {
   const [selectedClipReviewId, setSelectedClipReviewId] = useState<number | null>(null);
   const [hasUnsavedFeedback, setHasUnsavedFeedback] = useState(false);
+  const [cachedVideoUrl, setCachedVideoUrl] = useState<string | null>(null);
 
   const { data: clipReviewsResponse, isLoading, refetch } = useClipReviews(projectId);
   const clipReviews = clipReviewsResponse?.data || [];
@@ -87,6 +88,12 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedFeedback]);
+
+  // Memoize video_url per clipReviewId so refetches (which rotate the signed
+  // URL) do not change <video src> and trigger a browser video reload / 404.
+  useEffect(() => {
+    setCachedVideoUrl(selectedClipReview?.video_url || null);
+  }, [selectedClipReviewId]);
 
   const selectedClipReview = clipReviews.find((cr) => cr.id === selectedClipReviewId);
   const selectedIndex = clipReviews.findIndex((cr) => cr.id === selectedClipReviewId);
@@ -185,7 +192,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             {selectedClipReview ? (
               <>
                 <VideoPlayer
-                  videoUrl={selectedClipReview.video_url}
+                  videoUrl={cachedVideoUrl || selectedClipReview?.video_url}
                   poster={selectedClipReview.thumbnail_url || undefined}
                 />
 

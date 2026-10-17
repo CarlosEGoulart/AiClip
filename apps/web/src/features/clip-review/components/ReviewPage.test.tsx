@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReviewPage } from './ReviewPage';
@@ -291,5 +291,87 @@ describe('ReviewPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Back to project' }));
 
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it('calls refetch after successful status change', async () => {
+    const refetch = vi.fn();
+    (useClipReviews as Mock).mockReturnValue({
+      data: { data: [clipTwo], links: {}, meta: {} },
+      isLoading: false,
+      refetch,
+    });
+
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /approve clip/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirm approve/i }));
+
+    await waitFor(() => {
+      expect(refetch).toHaveBeenCalled();
+    });
+  });
+
+  it('updates status badge after successful status change', async () => {
+    const pendingClip = makeClip({
+      id: 11,
+      status: 'pending',
+    });
+    const approvedClip = makeClip({
+      id: 11,
+      status: 'approved',
+    });
+
+    (useClipReviews as Mock).mockReturnValue({
+      data: { data: [pendingClip], links: {}, meta: {} },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+
+    window.history.replaceState(null, '', `/?clipReviewId=${pendingClip.id}`);
+    renderPage();
+
+    expect(screen.getByRole('button', { name: 'Approve clip' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /approve clip/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirm approve/i }));
+
+    await waitFor(() => {
+      expect((useUpdateClipReviewStatus as Mock).mock.results[0]?.value.mutateAsync).toHaveBeenCalledWith(
+        { clipReviewId: pendingClip.id, status: 'approved' }
+      );
+    });
+
+    cleanup();
+    window.history.replaceState(null, '', `/?clipReviewId=${approvedClip.id}`);
+
+    (useClipReviews as Mock).mockReturnValue({
+      data: { data: [approvedClip], links: {}, meta: {} },
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    renderPage();
+
+    expect(screen.getByRole('button', { name: 'Approve clip' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+  });
+
+  it('shows feedback form for rejected status but not for pending', async () => {
+    const rejectedClip = makeClip({
+      id: 44,
+      status: 'rejected',
+      candidate_index: 3,
+      video_url: '/api/v1/clip-reviews/44/video?signature=signature-44&expires=4444444444',
+    });
+
+    window.history.replaceState(null, '', `/?clipReviewId=${rejectedClip.id}`);
+    mockLoaded([clipOne, rejectedClip]);
+    renderPage();
+
+    expect(screen.getByRole('group', { name: 'Feedback form' })).toBeInTheDocument();
   });
 });

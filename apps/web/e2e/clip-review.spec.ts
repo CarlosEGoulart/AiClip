@@ -425,4 +425,299 @@ test.describe('Clip Review Section (embedded)', () => {
 
     await expectClean(page, cleanliness);
   });
+
+  /*
+   * Slice 2 helpers: seed a pending ClipReview via the test-seeding route,
+   * then drive the full approve / reject / needs_changes UI workflow.
+   */
+
+  async function seedClipReview(page: Page, projectId: number) {
+    // Use page.evaluate(fetch) instead of page.request.post(): the browser
+    // context sends the session cookie (HttpOnly, SameSite=Lax) automatically,
+    // while page.request.post() does not include SameSite=Lax cookies for
+    // non-navigation requests, resulting in 401 from auth:sanctum.
+    const result = await page.evaluate(async (pid) => {
+      const cookieMap: Record<string, string> = {};
+      for (const part of document.cookie.split(';')) {
+        const eq = part.indexOf('=');
+        if (eq === -1) continue;
+        cookieMap[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
+      }
+      const xsrf = cookieMap['XSRF-TOKEN'] || '';
+      const res = await fetch('/api/v1/test/clip-reviews/seed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-XSRF-TOKEN': decodeURIComponent(xsrf),
+        },
+        body: JSON.stringify({ project_id: pid }),
+      });
+      const body = await res.json();
+      return { status: res.status, body };
+    }, projectId);
+
+    expect(result.status, 'seed route status').toBe(200);
+    expect(result.body.data.status).toBe('pending');
+    expect(result.body.data.video_url).toBeDefined();
+    return result.body.data.id as number;
+  }
+
+  async function selectClipAndVerifyPending(page: Page, clipReviewId: number) {
+    // The clip appears in the "Clips to Review" sidebar list
+    await expect(page.getByRole('listitem')).toHaveCount(1);
+
+    // Click the clip to open it for review
+    await page.getByRole('listitem').first().click();
+
+    // Video player mounts with the clip's video URL
+    await expect(page.getByLabel('Clip video')).toBeVisible();
+
+    // Review actions are present
+    await expect(page.getByRole('group', { name: 'Review actions' })).toBeVisible();
+
+    // Pending state: Approve button is not pressed (aria-pressed="false")
+    await expect(page.getByRole('button', { name: 'Approve clip' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+
+    // Sidebar listitem shows "Pending" badge
+    await expect(page.getByRole('listitem').first()).toContainText('Pending');
+
+    // clipReviewId deep-link param is present
+    expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId));
+  }
+
+  async function approveClip(page: Page, clipReviewId: number) {
+    // Click Approve → confirmation dialog opens
+    await page.getByRole('button', { name: 'Approve clip' }).click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /confirm approve/i })).toBeVisible();
+
+    // Click Confirm
+    await page.getByRole('button', { name: /confirm approve/i }).click();
+
+    // Dialog closes
+    await expect(page.getByRole('alertdialog')).not.toBeVisible();
+
+    // Status badge transitions: Approve button is now pressed + disabled (approved = terminal)
+    await expect(page.getByRole('button', { name: 'Approve clip' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    await expect(page.getByRole('button', { name: 'Approve clip' })).toBeDisabled();
+
+    // Sidebar badge shows Approved
+    await expect(page.getByRole('listitem').first()).toContainText('Approved');
+
+    // clipReviewId deep-link param remains consistent
+    expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId));
+  }
+
+  async function rejectClipWithFeedback(page: Page, clipReviewId: number) {
+    // Click Reject → confirmation dialog opens
+    await page.getByRole('button', { name: 'Reject clip' }).click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /confirm reject/i })).toBeVisible();
+    await expect(page.getByText(/feedback will be required/i)).toBeVisible();
+
+    // Click Confirm → dialog closes, feedback form appears
+    await page.getByRole('button', { name: /confirm reject/i }).click();
+    await expect(page.getByRole('alertdialog')).not.toBeVisible();
+
+    // Feedback form appears (required for rejected)
+    await expect(page.getByRole('group', { name: 'Feedback form' })).toBeVisible();
+
+    // Submit button is disabled when feedback is empty (< 10 chars)
+    await expect(page.getByRole('button', { name: 'Submit Feedback' })).toBeDisabled();
+
+    // Enter feedback (>= 10 chars) and submit
+    await page.locator('#feedback').fill('This clip needs better audio levels.');
+    await expect(page.getByRole('button', { name: 'Submit Feedback' })).toBeEnabled();
+    await page.getByRole('button', { name: 'Submit Feedback' }).click();
+
+    // Status badge transitions: Reject button pressed + disabled
+    await expect(page.getByRole('button', { name: 'Reject clip' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    await expect(page.getByRole('button', { name: 'Reject clip' })).toBeDisabled();
+
+    // Sidebar badge shows Rejected
+    await expect(page.getByRole('listitem').first()).toContainText('Rejected');
+
+    // clipReviewId deep-link param remains consistent
+    expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId));
+  }
+
+  async function needsChangesClipWithFeedback(page: Page, clipReviewId: number) {
+    // Click Needs Changes → confirmation dialog opens
+    await page.getByRole('button', { name: 'Needs Changes clip' }).click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /confirm needs changes/i })).toBeVisible();
+    await expect(page.getByText(/feedback will be required/i)).toBeVisible();
+
+    // Click Confirm → dialog closes, feedback form appears
+    await page.getByRole('button', { name: /confirm needs changes/i }).click();
+    await expect(page.getByRole('alertdialog')).not.toBeVisible();
+
+    // Feedback form appears (required for needs_changes)
+    await expect(page.getByRole('group', { name: 'Feedback form' })).toBeVisible();
+
+    // Enter feedback (>= 10 chars) and submit
+    await page.locator('#feedback').fill('Please adjust the transition timing.');
+    await page.getByRole('button', { name: 'Submit Feedback' }).click();
+
+    // Status badge transitions: Needs Changes button pressed + disabled
+    await expect(
+      page.getByRole('button', { name: 'Needs Changes clip' })
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Needs Changes clip' })).toBeDisabled();
+
+    // Sidebar badge shows Needs Changes
+    await expect(page.getByRole('listitem').first()).toContainText('Needs Changes');
+
+    // clipReviewId deep-link param remains consistent
+    expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId));
+  }
+
+  async function cleanupProject(page: Page, projectName: string) {
+    await page.getByRole('button', { name: 'Back to project', exact: true }).click();
+    await expect(page.getByRole('button', { name: `Open ${projectName}` })).toBeVisible();
+    await page.getByRole('button', { name: `Delete ${projectName}` }).click();
+    await page.getByRole('button', { name: `Confirm delete ${projectName}` }).click();
+    await expect(page.getByText(/No projects yet/)).toBeVisible({ timeout: 10000 });
+  }
+
+  test('TC-E2E-05 approve happy path', async ({ page }) => {
+    const cleanliness = trackCleanliness(page);
+
+    const email = uniqueEmail();
+    await waitForAuthReady(page);
+    await registerUser(page, 'Clip Approver', email);
+
+    const projectName = 'Approve Project';
+    const projectId = await createProjectViaUi(page, projectName);
+
+    await openProject(page, projectName);
+
+    // Seed a pending review via the test-seeding route
+    const clipReviewId = await seedClipReview(page, projectId);
+
+    // Open the Review Clips tab
+    const clipReviewsResponse = await openReviewTab(page, projectId);
+    expect(clipReviewsResponse.status()).toBe(200);
+    const body = await clipReviewsResponse.json();
+    expect(body.data.data).toHaveLength(1);
+    expect(body.data.meta.total).toBe(1);
+
+    // Select the clip and verify pending state
+    await selectClipAndVerifyPending(page, clipReviewId);
+
+    // Approve the clip
+    await approveClip(page, clipReviewId);
+
+    // Clean up
+    await cleanupProject(page, projectName);
+
+    await expectClean(page, cleanliness);
+  });
+
+  test('TC-E2E-06 reject happy path (with feedback)', async ({ page }) => {
+    const cleanliness = trackCleanliness(page);
+
+    const email = uniqueEmail();
+    await waitForAuthReady(page);
+    await registerUser(page, 'Clip Rejecter', email);
+
+    const projectName = 'Reject Project';
+    const projectId = await createProjectViaUi(page, projectName);
+
+    await openProject(page, projectName);
+
+    // Seed a pending review
+    const clipReviewId = await seedClipReview(page, projectId);
+
+    // Open the Review Clips tab
+    await openReviewTab(page, projectId);
+
+    // Select the clip and verify pending state
+    await selectClipAndVerifyPending(page, clipReviewId);
+
+    // Reject the clip with feedback
+    await rejectClipWithFeedback(page, clipReviewId);
+
+    // Clean up
+    await cleanupProject(page, projectName);
+
+    await expectClean(page, cleanliness);
+  });
+
+  test('TC-E2E-07 needs_changes happy path (with feedback)', async ({ page }) => {
+    const cleanliness = trackCleanliness(page);
+
+    const email = uniqueEmail();
+    await waitForAuthReady(page);
+    await registerUser(page, 'Clip Requester', email);
+
+    const projectName = 'Needs Changes Project';
+    const projectId = await createProjectViaUi(page, projectName);
+
+    await openProject(page, projectName);
+
+    // Seed a pending review
+    const clipReviewId = await seedClipReview(page, projectId);
+
+    // Open the Review Clips tab
+    await openReviewTab(page, projectId);
+
+    // Select the clip and verify pending state
+    await selectClipAndVerifyPending(page, clipReviewId);
+
+    // Request changes with feedback
+    await needsChangesClipWithFeedback(page, clipReviewId);
+
+    // Clean up
+    await cleanupProject(page, projectName);
+
+    await expectClean(page, cleanliness);
+  });
+
+  test('TC-E2E-08 terminal state — no further transition after approve', async ({ page }) => {
+    const cleanliness = trackCleanliness(page);
+
+    const email = uniqueEmail();
+    await waitForAuthReady(page);
+    await registerUser(page, 'Clip Terminal', email);
+
+    const projectName = 'Terminal Project';
+    const projectId = await createProjectViaUi(page, projectName);
+
+    await openProject(page, projectName);
+
+    // Seed a pending review
+    const clipReviewId = await seedClipReview(page, projectId);
+
+    // Open the Review Clips tab
+    await openReviewTab(page, projectId);
+
+    // Select the clip
+    await selectClipAndVerifyPending(page, clipReviewId);
+
+    // Approve the clip (terminal state)
+    await approveClip(page, clipReviewId);
+
+    // With status "approved", Reject and Needs Changes buttons are disabled
+    await expect(page.getByRole('button', { name: 'Reject clip' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Needs Changes clip' })).toBeDisabled();
+
+    // Status remains approved
+    await expect(page.getByRole('listitem').first()).toContainText('Approved');
+
+    // Clean up
+    await cleanupProject(page, projectName);
+
+    await expectClean(page, cleanliness);
+  });
 });

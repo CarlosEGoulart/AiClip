@@ -22,6 +22,11 @@ export default defineConfig({
       url: `${API_HOST}/api/v1/health`,
       reuseExistingServer: false,
       timeout: 60000,
+      env: {
+        APP_ENV: 'testing',
+        QUEUE_CONNECTION: 'sync',
+        MEDIA_DISK: 'local',
+      },
     },
     {
       command: 'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort',
