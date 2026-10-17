@@ -23,6 +23,7 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 60000,
       env: {
+        APP_ENV: 'testing',
         QUEUE_CONNECTION: 'sync',
       },
     },
