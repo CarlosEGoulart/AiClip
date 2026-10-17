@@ -157,4 +157,32 @@ describe('ReviewActions', () => {
     expect(focusableElements.length).toBeGreaterThan(0);
     expect(focusableElements[0]).toHaveFocus();
   });
+
+  it('announces error via aria-live when status change fails', async () => {
+    const failingOnStatusChange = vi.fn().mockRejectedValue(new Error('Server error'));
+    render(<ReviewActions currentStatus="pending" onStatusChange={failingOnStatusChange} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /approve clip/i }));
+    await userEvent.click(screen.getByRole('button', { name: /confirm approve/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/failed to .* clip/i)).toBeInTheDocument();
+    });
+  });
+
+  it('activates button with click (Enter/Space activate natively)', async () => {
+    render(<ReviewActions currentStatus="pending" onStatusChange={onStatusChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /approve clip/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+  });
+
+  it('button already applied is disabled', () => {
+    render(<ReviewActions currentStatus="approved" onStatusChange={onStatusChange} />);
+
+    expect(screen.getByRole('button', { name: /approve clip/i })).toBeDisabled();
+  });
 });
