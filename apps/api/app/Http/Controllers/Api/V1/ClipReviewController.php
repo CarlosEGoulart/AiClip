@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\ClipReviewStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ClipReviewFeedbackRequest;
 use App\Http\Requests\ClipReviewStatusUpdateRequest;
@@ -9,7 +10,10 @@ use App\Http\Resources\ClipReviewCollection;
 use App\Http\Resources\ClipReviewResource;
 use App\Jobs\ProcessClipReview;
 use App\Models\ClipReview;
+use App\Models\DerivedAsset;
+use App\Models\MediaAsset;
 use App\Models\Project;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -49,6 +53,13 @@ class ClipReviewController extends Controller
     {
         $this->authorizeOwnership($request, $clipReview);
 
+        // Terminal-state guard: only pending reviews can transition.
+        if ($clipReview->status !== ClipReviewStatus::PENDING) {
+            return response()->json([
+                'message' => 'Cannot transition from a non-pending status.',
+            ], 422);
+        }
+
         $status = $request->validated('status');
         $action = match ($status) {
             'approved' => 'approve',
@@ -57,11 +68,57 @@ class ClipReviewController extends Controller
             default => throw new \InvalidArgumentException("Invalid status: {$status}"),
         };
 
-        // Dispatch the queue job to process the review
+        // Dispatch the queue job to process the review.
+        // With QUEUE_CONNECTION=sync (test/e2e) the job runs inline during
+        // dispatch(), so refresh() observes the new status immediately.
         ProcessClipReview::dispatch($clipReview->id, $action);
 
-        // Return the current state (job will update asynchronously)
         $clipReview->refresh();
+
+        return response()->json([
+            'data' => new ClipReviewResource($clipReview),
+        ]);
+    }
+
+    public function seed(Request $request): JsonResponse
+    {
+        if (! app()->environment('testing')) {
+            abort(Response::HTTP_NOT_FOUND);
+        }
+
+        $validated = $request->validate([
+            'project_id' => ['required', 'integer'],
+        ]);
+
+        try {
+            $project = Project::findOrFail($validated['project_id']);
+        } catch (ModelNotFoundException $e) {
+            abort(Response::HTTP_NOT_FOUND);
+        }
+
+        // Enforce project ownership (non-owner → 404, no information leak)
+        if ($project->user_id !== $request->user()->id) {
+            abort(Response::HTTP_NOT_FOUND);
+        }
+
+        $mediaAsset = MediaAsset::factory()->create([
+            'project_id' => $project->id,
+            'mime_type' => 'video/mp4',
+            'status' => 'stored',
+            'processing_status' => 'completed',
+        ]);
+
+        $derivedAsset = DerivedAsset::factory()->renderedClip()->create([
+            'media_asset_id' => $mediaAsset->id,
+        ]);
+
+        $clipReview = ClipReview::factory()->create([
+            'derived_asset_id' => $derivedAsset->id,
+            'reviewer_id' => $request->user()->id,
+            'status' => ClipReviewStatus::PENDING,
+        ]);
+
+        $clipReview->load(['derivedAsset.mediaAsset.project', 'reviewer']);
 
         return response()->json([
             'data' => new ClipReviewResource($clipReview),

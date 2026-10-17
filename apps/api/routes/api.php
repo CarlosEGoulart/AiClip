@@ -50,6 +50,13 @@ Route::prefix('v1')->group(function () {
         Route::post('/clip-reviews/{clipReview}/feedback', [ClipReviewController::class, 'storeFeedback'])
             ->middleware('throttle:clip-review-update');
 
+        // Test-seeding route: registered only in the `testing` environment.
+        // Creates a MediaAsset + rendered DerivedAsset + pending ClipReview
+        // for E2E fixtures. Never exposed outside testing.
+        if (app()->environment('testing')) {
+            Route::post('/test/clip-reviews/seed', [ClipReviewController::class, 'seed']);
+        }
+
         // Media routes
         Route::post('/projects/{project}/media/upload', [MediaAssetController::class, 'upload'])
             ->middleware('throttle:media-upload');
