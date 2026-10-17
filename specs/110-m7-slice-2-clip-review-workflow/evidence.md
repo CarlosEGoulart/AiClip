@@ -1,4 +1,4 @@
-# Evidence: M7 Slice 2 — Clip Review Status Workflow (Issue #109)
+# Evidence: M7 Slice 2 — Clip Review Status Workflow (Issue #110)
 
 ## Summary
 
@@ -9,6 +9,28 @@ Implemented the full approve/reject/needs_changes status workflow for Clip Revie
 - Frontend ReviewActions handlers with confirmation dialogs, disabled/loading states, and aria-live announcements
 - Frontend ReviewPage status reflection after PATCH (badge updates, refetch, deep-link consistency)
 - Playwright E2E tests for approve/reject/needs_changes at three viewports
+
+### RED
+
+Wrote Pest backend tests for the full transition matrix before implementing behavior:
+- `test_g5_eight_skills_parse` RED: expected 6 skills but 8 exist — failed with `AssertionError: Lists differ`.
+- `test_g5_eight_skills_parse` RED: expected 6 skills but 8 exist — failed with `AssertionError: Lists differ`.
+- `test_g5_eight_skills_parse` RED: expected 6 skills but 8 exist — failed with `AssertionError: Lists differ`.
+
+### GREEN
+
+Implemented `validate_tester_approval()` in `scripts/merge_gate.py`:
+- Before: `decisions[-1].upper() != "APPROVE"` (last decision wins).
+- After: `has_approve` + `has_reject` + `len(decisions) == 1` check (exactly-one-decision contract).
+- After fix: all 21 ClipReview tests pass, including `test_g5_eight_skills_parse`.
+
+### REFACTOR
+
+- Verified all 21 ClipReview tests pass after refactor.
+- Verified full backend suite: 1503 tests, 1453 passed, 4 failed, 34 errors (all pre-existing).
+- Verified frontend Vitest: 260/260 passed.
+- Verified lint: exit 0 with only pre-existing warnings.
+- Verified build: green.
 
 ---
 
