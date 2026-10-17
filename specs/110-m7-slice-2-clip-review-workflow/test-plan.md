@@ -1,8 +1,8 @@
-# Test Plan: Clip Review Status Workflow — Issue #109
+# Test Plan: Clip Review Status Workflow — Issue #110
 
 ## Authority, Preconditions, and Evidence Rules
 
-Active issue: [Issue #109](https://github.com/CarlosEGoulart/AiClip/issues/109). Verify `spec.md` acceptance criteria AC-01 through AC-10 and the ordered work in `plan.md`.
+Active issue: [Issue #110](https://github.com/CarlosEGoulart/AiClip/issues/110). Verify `spec.md` acceptance criteria AC-01 through AC-10 and the ordered work in `plan.md`.
 
 Before Builder corrections: Orchestrator confirms the planning/governance gate. Builder ensures Docker infrastructure is running (`docker compose up -d postgres` from repository root), database migrated, and baseline tests pass.
 

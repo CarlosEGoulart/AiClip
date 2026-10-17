@@ -1,8 +1,8 @@
-# Specification: Clip Review Status Workflow — Issue #109
+# Specification: Clip Review Status Workflow — Issue #110
 
 ## Authority and Description
 
-Active issue: [Issue #109](https://github.com/CarlosEGoulart/AiClip/issues/109).
+Active issue: [Issue #110](https://github.com/CarlosEGoulart/AiClip/issues/110).
 
 M7 Slice 1 (Issue #106, PR #107) established the Clip Review Experience foundation: the `ClipReview` model (status enum `pending`, `approved`, `rejected`, `needs_changes`), the review API (project-scoped paginated list, show, status update, feedback, dual-gate signed video URL), the `ProcessClipReview` queue job, automatic `ClipReview` creation on render completion, and the React UI (`VideoPlayer`, `ReviewActions`, `FeedbackForm`, `ReviewList`, `ReviewPage`).
 

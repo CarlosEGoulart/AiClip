@@ -1,8 +1,8 @@
-# Implementation Plan: Clip Review Status Workflow — Issue #109
+# Implementation Plan: Clip Review Status Workflow — Issue #110
 
 ## Active Scope and Working-Tree Baseline
 
-Issue: [Issue #109](https://github.com/CarlosEGoulart/AiClip/issues/109). `spec.md` is the behavior contract; `test-plan.md` defines required verification. All steps follow Laravel 13, React 19, TypeScript, Pest, Vitest, Playwright conventions.
+Issue: [Issue #110](https://github.com/CarlosEGoulart/AiClip/issues/110). `spec.md` is the behavior contract; `test-plan.md` defines required verification. All steps follow Laravel 13, React 19, TypeScript, Pest, Vitest, Playwright conventions.
 
 Planning inspected the active issue, architecture, `docs/project-state.md`, the Slice 1 implementation (`ClipReview` model/API/job, `ReviewActions`/`ReviewPage`/`FeedbackForm`/`ReviewList`/`VideoPlayer`, hooks, api client, types), the E2E topology (`App → AuthenticatedShell → ProjectMediaSection → "Review Clips" tab → embedded ReviewPage`; native History API URL sync; no client-side router), and the e2e environment constraints (real Laravel + PostgreSQL, `FILESYSTEM_DISK=local`, `QUEUE_CONNECTION=database`, no MinIO, no render worker, no queue worker).
 
@@ -20,7 +20,7 @@ No `ClipReview` behavior change is required beyond enforcing the one-way transit
 
 ## Step 0 — Repository Setup and Dependency Verification
 
-1. Verify the active issue #109 is the only implementation issue (NO_ACTIVE_ISSUE → Issue #109 active).
+1. Verify the active issue #110 is the only implementation issue (NO_ACTIVE_ISSUE → Issue #110 active).
 2. Verify `composer.json` requires no new packages (uses existing Laravel queue, validation, Sanctum).
 3. Verify `package.json` requires no new packages (uses existing React, React Query, Testing Library, Playwright).
 4. Run `docker compose up -d postgres` from repository root; verify PostgreSQL health.

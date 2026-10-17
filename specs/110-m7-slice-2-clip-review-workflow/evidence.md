@@ -12,22 +12,33 @@ Implemented the full approve/reject/needs_changes status workflow for Clip Revie
 
 ### RED
 
-Wrote Pest backend tests for the full transition matrix before implementing behavior:
-- `test_g5_eight_skills_parse` RED: expected 6 skills but 8 exist — failed with `AssertionError: Lists differ`.
-- `test_g5_eight_skills_parse` RED: expected 6 skills but 8 exist — failed with `AssertionError: Lists differ`.
-- `test_g5_eight_skills_parse` RED: expected 6 skills but 8 exist — failed with `AssertionError: Lists differ`.
+Wrote Pest backend tests for the full transition matrix before implementing behavior. Ran them against the pre-implementation controller (`git show babbebb:...ClipReviewController.php` + pre-implementation `routes/api.php`) — **8 failed, 13 passed (of 21)**:
+
+Transition-matrix failures (terminal-state guard missing):
+- `approved → rejected (terminal state)`: `Expected response status code [422] but received 200.`
+- `rejected → approved (terminal state)`: `Expected response status code [422] but received 200.`
+- `needs_changes → approved (terminal state)`: `Expected response status code [422] but received 200.`
+- `terminal state cannot transition to any other state`: `Expected response status code [422] but received 200.`
+
+Test-seeding route failures (route not registered):
+- `authenticated user seeds own project → 200`: `Expected response status code [200] but received 404.`
+- `returns resource with no storage internals exposed`: `Expected response status code [200] but received 404.`
+- `guest returns 401`: `Expected response status code [401] but received 404.`
+- `missing CSRF returns 419`: `Expected response status code [419] but received 404.`
 
 ### GREEN
 
-Implemented `validate_tester_approval()` in `scripts/merge_gate.py`:
-- Before: `decisions[-1].upper() != "APPROVE"` (last decision wins).
-- After: `has_approve` + `has_reject` + `len(decisions) == 1` check (exactly-one-decision contract).
-- After fix: all 21 ClipReview tests pass, including `test_g5_eight_skills_parse`.
+Implemented `updateStatus()` terminal-state guard and `seed()` method in `ClipReviewController`, plus the `POST /api/v1/test/clip-reviews/seed` route (testing-environment-only registration in `routes/api.php`). All 21 tests pass:
+
+```
+php artisan test tests/Feature/ClipReview/ClipReviewTransitionTest.php tests/Feature/ClipReview/ClipReviewSeedTest.php
+→ 21 passed, 120 assertions
+```
 
 ### REFACTOR
 
-- Verified all 21 ClipReview tests pass after refactor.
-- Verified full backend suite: 1503 tests, 1453 passed, 4 failed, 34 errors (all pre-existing).
+- Applied `vendor/bin/pint --dirty --format agent` — formatting fixes to `ClipReviewController.php` and `ClipReviewSeedTest.php`.
+- Verified full ClipReview suite: 85 tests, 79 passed, 6 skipped (real-integration group requiring MinIO), 0 failures.
 - Verified frontend Vitest: 260/260 passed.
 - Verified lint: exit 0 with only pre-existing warnings.
 - Verified build: green.
@@ -163,12 +174,12 @@ npm run build
 - `apps/web/src/features/clip-review/components/ReviewActions.test.tsx` — 3 new tests
 - `apps/web/src/features/clip-review/components/ReviewPage.test.tsx` — 3 new tests + import
 - `apps/web/e2e/clip-review.spec.ts` — 4 new E2E scenarios + helpers
-- `apps/web/playwright.config.ts` — `QUEUE_CONNECTION=sync` for E2E server
+- `apps/web/playwright.config.ts` — `APP_ENV=testing` + `QUEUE_CONNECTION=sync` for E2E server
 
 **New:**
 - `apps/api/tests/Feature/ClipReview/ClipReviewTransitionTest.php`
 - `apps/api/tests/Feature/ClipReview/ClipReviewSeedTest.php`
-- `specs/109-m7-slice-2-clip-review-workflow/evidence.md`
+- `specs/110-m7-slice-2-clip-review-workflow/evidence.md`
 
 ## Decision
 
