@@ -533,7 +533,7 @@ test.describe('Clip Review Section (embedded)', () => {
     await expect(page.getByRole('button', { name: 'Submit Feedback' })).toBeDisabled();
 
     // Enter feedback (>= 10 chars) and submit
-    await page.getByLabel('Feedback').fill('This clip needs better audio levels.');
+    await page.locator('#feedback').fill('This clip needs better audio levels.');
     await expect(page.getByRole('button', { name: 'Submit Feedback' })).toBeEnabled();
     await page.getByRole('button', { name: 'Submit Feedback' }).click();
 
@@ -566,7 +566,7 @@ test.describe('Clip Review Section (embedded)', () => {
     await expect(page.getByRole('group', { name: 'Feedback form' })).toBeVisible();
 
     // Enter feedback (>= 10 chars) and submit
-    await page.getByLabel('Feedback').fill('Please adjust the transition timing.');
+    await page.locator('#feedback').fill('Please adjust the transition timing.');
     await page.getByRole('button', { name: 'Submit Feedback' }).click();
 
     // Status badge transitions: Needs Changes button pressed + disabled

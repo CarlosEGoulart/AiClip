@@ -127,12 +127,16 @@ export const ReviewActions: React.FC<ReviewActionsProps> = ({
       {actions.map((action) => {
         const info = statusInfo[action.status];
         const isActive = currentStatus === action.status;
+        // Terminal states (approved/rejected/needs_changes) reject further
+        // transitions server-side (422); disable all buttons to prevent
+        // the user from triggering an unavoidable error (test-plan TC-E2E-08).
+        const isTerminal = currentStatus !== 'pending';
 
         return (
           <button
             key={action.status}
             onClick={() => handleOpenDialog(action.status)}
-            disabled={disabled || loading || isActive}
+            disabled={disabled || loading || isTerminal}
             className={`
               w-full py-3 px-4 rounded-lg font-medium transition-colors
               focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900
