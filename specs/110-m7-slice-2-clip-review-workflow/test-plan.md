@@ -57,6 +57,8 @@ Use Pest feature tests under `apps/api/tests/Feature/ClipReview/ClipReviewSeedTe
 | Scenario | Expected |
 |----------|----------|
 | Authenticated user, own project | 200, `ClipReviewResource` with `status === 'pending'`, `video_url` contains URI path `clip-reviews/{id}/video` + `signature` + `expires`; DB has pending `ClipReview` for rendered `DerivedAsset` |
+| After seed: storage object exists | A real media object exists on the configured media disk at `DerivedAsset.storage_key` (`Storage::disk(configured disk)->exists($derivedAsset->storage_key)` is true); content is the minimal fixture, non-empty |
+| After seed: `video_url` resolves | Fetching/inspecting the signed `video_url` (or the storage key it points to) yields an existing object — no 404/403; resolution succeeds (HTTP 2xx when fetched) so the browser player can load it |
 | Non-owner project | 404 |
 | Non-existent project | 404 |
 | Guest | 401 |
@@ -150,7 +152,9 @@ All scenarios run against the real embedded UI: `App → AuthenticatedShell → 
 Data setup follows the established pattern in `apps/web/e2e/media.spec.ts`: register a unique user via the UI (no magic seed users — `test@example.com` does not exist), create the project via the UI, capture the project id from the real 201 response.
 
 **E2E fixture setup (new for Slice 2):** After creating the project, seed a pending review with a real API request:
-`POST /api/v1/test/clip-reviews/seed` with `{ project_id }` (real request, no interception; authenticated via the session established by UI registration/login). This creates a MediaAsset + rendered DerivedAsset + pending ClipReview so the review UI has data to act on. No API interception of the review flow itself; every `GET /api/v1/projects/{id}/clip-reviews` and `PATCH /api/v1/clip-reviews/{id}/status` runs against the real Laravel server and must return 2xx.
+`POST /api/v1/test/clip-reviews/seed` with `{ project_id }` (real request, no interception; authenticated via the session established by UI registration/login). This creates a MediaAsset + rendered DerivedAsset + pending ClipReview so the review UI has data to act on, **and persists a real minimal media object at `DerivedAsset.storage_key` so the signed `video_url` resolves (HTTP 2xx) and the `<video>` element loads without a storage 404**. No API interception of the review flow itself; every `GET /api/v1/projects/{id}/clip-reviews` and `PATCH /api/v1/clip-reviews/{id}/status` runs against the real Laravel server and must return 2xx.
+
+**Console/network cleanliness is mandatory for TC-E2E-05 through TC-E2E-08** (and TC-E2E-09/10): no console errors and no 4xx/5xx anywhere, including media playback requests — a `video_url` request 404 (missing backing storage object) is a failure, not an acceptable warning. This applies at all three viewports.
 
 ### TC-E2E-05: Approve happy path
 
@@ -203,7 +207,7 @@ Runs on each configured Playwright viewport project (mobile 390x844, tablet 768x
 
 During TC-E2E-05 through TC-E2E-09:
 - **Browser Console**: no errors, no warnings, no uncaught exceptions
-- **Network**: `GET /sanctum/csf-cookie` → 204; review requests → 200; PATCH → 200; no unexpected 4xx/5xx anywhere (except the ratified anonymous `GET /api/v1/auth/me` 401 session probe)
+- **Network**: `GET /sanctum/csf-cookie` → 204; review requests → 200; PATCH → 200; signed `video_url` media request → 2xx (real backing object exists); no unexpected 4xx/5xx anywhere (except the ratified anonymous `GET /api/v1/auth/me` 401 session probe)
 - **API Responses**: `data.data` (review items), `data.links`, `data.meta` only; no `storage_disk`, `storage_key`, internal IDs, bucket names
 - **No secrets in browser**: no tokens/credentials in request bodies, console output, or storage
 - **Browser storage**: localStorage/sessionStorage contain no tokens or credentials (feedback draft cleared on submit)

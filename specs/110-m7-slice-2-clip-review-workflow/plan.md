@@ -82,6 +82,7 @@ Test scenarios:
 - Register `Route::post('/test/clip-reviews/seed', ...)->middleware('auth:sanctum', 'throttle:...')` inside the `auth:sanctum` group, guarded so it only exists in `testing` (e.g. `if (app()->environment('testing')) { Route::post(...) }` or a middleware that aborts 404 unless `app()->environment('testing')`).
 - Validation: `project_id` required, exists, belongs to `auth()->user()` (else 404).
 - Create `MediaAsset` (video/mp4, stored, local disk), `DerivedAsset` (`type=clip_rendered`, `render_status=completed`, candidate index, render profile version, duration/width/height), `ClipReview` (`status=pending`, `reviewer=auth user`).
+- **Write a real, browser-loadable minimal media object to the configured media disk at the created `DerivedAsset.storage_key`** (testing environment only, inside the seed path). Content may be a minimal fixture (tiny valid video bytes); the point is that the signed `video_url` resolves with HTTP 2xx so the E2E `<video>` element loads it instead of a storage 404. No storage internals (`storage_disk`, `storage_key`, bucket) are exposed in the response.
 - Return `ClipReviewResource`.
 
 ### 2.3 REFACTOR
@@ -163,7 +164,7 @@ All scenarios:
 - [ ] One-way status transition contract: `pending → approved/rejected/needs_changes` allowed; revert-to-pending and terminal-state transitions rejected (422)
 - [ ] `PATCH /api/v1/clip-reviews/{clipReview}/status`: 200 + updated resource; 422 invalid/forbidden status; 404 non-owner/non-existent; 419 missing CSRF; 401 guest; 429 rate limit
 - [ ] `ProcessClipReview` job: all 3 actions; idempotent; ownership re-validation; `ClipReviewCompleted` event; observable via synchronous queue in test/e2e
-- [ ] Test-seeding route `POST /api/v1/test/clip-reviews/seed`: `testing` only (404 elsewhere); sanctum-auth; project ownership enforced; returns `ClipReviewResource`; creates MediaAsset + rendered DerivedAsset + pending ClipReview
+- [ ] Test-seeding route `POST /api/v1/test/clip-reviews/seed`: `testing` only (404 elsewhere); sanctum-auth; project ownership enforced; returns `ClipReviewResource`; creates MediaAsset + rendered DerivedAsset + pending ClipReview **and persists a real minimal media object at `DerivedAsset.storage_key` on the configured disk so `video_url` resolves (2xx)**
 - [ ] `ReviewActions`: three actions; confirmation dialog; confirm → PATCH; disabled during loading + spinner; `aria-live="polite"` announcement; badge updates
 - [ ] `ReviewPage`: status reflection without reload; `N`/`P` navigation + `clipReviewId` deep-link consistent; feedback form for reject/needs_changes only
 - [ ] Pest backend tests: full transition matrix; no skipped tests

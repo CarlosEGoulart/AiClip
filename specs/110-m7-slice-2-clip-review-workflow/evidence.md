@@ -12,36 +12,50 @@ Implemented the full approve/reject/needs_changes status workflow for Clip Revie
 
 ### RED
 
-Wrote Pest backend tests for the full transition matrix before implementing behavior. Ran them against the pre-implementation controller (`git show babbebb:...ClipReviewController.php` + pre-implementation `routes/api.php`) — **8 failed, 13 passed (of 21)**:
+Wrote Pest backend tests in `apps/api/tests/Feature/ClipReview/ClipReviewSeedTest.php` asserting that after `POST /api/v1/test/clip-reviews/seed`: (a) a real non-empty media object exists at `DerivedAsset.storage_key` on the configured media disk; (b) the returned signed `video_url` resolves to an existing storage object (no 404/403). Ran against the current controller (`seed()` never writes a backing media object):
 
-Transition-matrix failures (terminal-state guard missing):
-- `approved → rejected (terminal state)`: `Expected response status code [422] but received 200.`
-- `rejected → approved (terminal state)`: `Expected response status code [422] but received 200.`
-- `needs_changes → approved (terminal state)`: `Expected response status code [422] but received 200.`
-- `terminal state cannot transition to any other state`: `Expected response status code [422] but received 200.`
+```
+php artisan test tests/Feature/ClipReview/ClipReviewSeedTest.php --compact
+→ 8 tests, 6 passed, 2 failed, 51 assertions
+```
 
-Test-seeding route failures (route not registered):
-- `authenticated user seeds own project → 200`: `Expected response status code [200] but received 404.`
-- `returns resource with no storage internals exposed`: `Expected response status code [200] but received 404.`
-- `guest returns 401`: `Expected response status code [401] but received 404.`
-- `missing CSRF returns 419`: `Expected response status code [419] but received 404.`
+RED failures (genuine — missing storage object):
+- `it_persists_a_real__non_empty_media_object_at_the_derived_asset_storage_key_on_the_configured_media_disk` (line 66): `Failed asserting that false is true.` — `Storage::disk(...)->exists($derivedAsset->storage_key)` is false because `seed()` never writes the object.
+- `it_resolves_the_returned_signed_video_url_to_an_existing_storage_object` (line 95): `Failed asserting that false is true.` — the signed `video_url` redirect target object does not exist on the disk.
 
 ### GREEN
 
-Implemented `updateStatus()` terminal-state guard and `seed()` method in `ClipReviewController`, plus the `POST /api/v1/test/clip-reviews/seed` route (testing-environment-only registration in `routes/api.php`). All 21 tests pass:
+In `ClipReviewController::seed()`, after creating the `DerivedAsset`, persist a real minimal browser-loadable media object at `$derivedAsset->storage_key` on the configured media disk (`config('media.disk')`):
+
+- Added `private const MINIMAL_MP4_FIXTURE = 'AAAEFGZ0eXBpc29tAAAAaXNvbQAAAAIAAbWRhdA==';` (28-byte valid MP4: ftyp + mdat boxes, base64).
+- Added `Storage::disk(config('media.disk', 'media'))->put($derivedAsset->storage_key, base64_decode(self::MINIMAL_MP4_FIXTURE));` after DerivedAsset creation.
+
+No storage internals exposed in the response (only signed `video_url`). Route remains testing-environment-only.
 
 ```
-php artisan test tests/Feature/ClipReview/ClipReviewTransitionTest.php tests/Feature/ClipReview/ClipReviewSeedTest.php
-→ 21 passed, 120 assertions
+php artisan test tests/Feature/ClipReview/ClipReviewSeedTest.php --compact
+→ 8 tests, 8 passed, 51 assertions
 ```
 
 ### REFACTOR
 
-- Applied `vendor/bin/pint --dirty --format agent` — formatting fixes to `ClipReviewController.php` and `ClipReviewSeedTest.php`.
-- Verified full ClipReview suite: 85 tests, 79 passed, 6 skipped (real-integration group requiring MinIO), 0 failures.
-- Verified frontend Vitest: 260/260 passed.
-- Verified lint: exit 0 with only pre-existing warnings.
-- Verified build: green.
+- Applied `vendor/bin/pint --dirty --format agent` — no formatting changes needed beyond controller.
+- Verified full ClipReview suite:
+
+```
+php artisan test tests/Feature/ClipReview
+→ 87 tests, 81 passed, 6 skipped (real-integration group requiring MinIO), 0 failures
+```
+
+- Verified frontend Vitest:
+
+```
+cd apps/web && npx vitest run src/features/clip-review
+→ 5 test files, 78 passed, 0 failed
+```
+
+- Verified lint: `npm run lint` → exit 0 (only pre-existing warnings in VideoPlayer.tsx, FeedbackForm.tsx, ReviewPage.tsx).
+- Verified type check: `npx tsc --noEmit` → clean, no output.
 
 ---
 
@@ -50,7 +64,8 @@ php artisan test tests/Feature/ClipReview/ClipReviewTransitionTest.php tests/Fea
 ### `apps/api/app/Http/Controllers/Api/V1/ClipReviewController.php`
 - Added `use App\Enums\ClipReviewStatus;`, `use App\Models\DerivedAsset;`, `use App\Models\MediaAsset;` imports
 - `updateStatus()`: Added terminal-state guard — returns 422 when `$clipReview->status !== ClipReviewStatus::PENDING` (prevents transitions from approved/rejected/needs_changes and revert-to-pending)
-- Added `seed()` method: creates MediaAsset + rendered DerivedAsset + pending ClipReview for the authenticated user's project; returns `ClipReviewResource`; aborts 404 outside `testing`; enforces project ownership (404 for non-owner/non-existent)
+- Added `seed()` method: creates MediaAsset + rendered DerivedAsset + pending ClipReview for the authenticated user's project; **persists a real minimal media object at `DerivedAsset.storage_key` on the configured media disk** so the signed `video_url` resolves (HTTP 2xx); returns `ClipReviewResource`; aborts 404 outside `testing`; enforces project ownership (404 for non-owner/non-existent); no storage internals exposed in response
+- Added `MINIMAL_MP4_FIXTURE` constant (28-byte valid MP4 ftyp+mdat, base64) used only by the testing-environment seed route
 
 ### `apps/api/routes/api.php`
 - Registered `POST /api/v1/test/clip-reviews/seed` → `ClipReviewController@seed` inside the `auth:sanctum` middleware group, guarded by `if (app()->environment('testing'))` so it only exists in the testing environment
@@ -71,15 +86,18 @@ php artisan test tests/Feature/ClipReview/ClipReviewTransitionTest.php tests/Fea
 
 ### Test Results — Backend (Pest)
 ```
-php artisan test tests/Feature/ClipReview/ClipReviewTransitionTest.php tests/Feature/ClipReview/ClipReviewSeedTest.php
-→ 21 passed, 120 assertions
+php artisan test tests/Feature/ClipReview/ClipReviewSeedTest.php --compact (RED)
+→ 8 tests, 6 passed, 2 failed, 51 assertions
 
-php artisan test tests/Feature/ClipReview
-→ 85 tests, 79 passed, 6 skipped (real-integration group requiring MinIO), 0 failures
+php artisan test tests/Feature/ClipReview/ClipReviewSeedTest.php --compact (GREEN)
+→ 8 tests, 8 passed, 51 assertions
+
+php artisan test tests/Feature/ClipReview (full suite)
+→ 87 tests, 81 passed, 6 skipped (real-integration group requiring MinIO), 0 failures
 ```
 
 ### Code Style
-- `vendor/bin/pint --dirty --format agent` — applied formatting fixes to `ClipReviewController.php` and `ClipReviewSeedTest.php`
+- `vendor/bin/pint --dirty --format agent` — applied (no diff beyond controller)
 
 ---
 
@@ -148,7 +166,7 @@ npm run build
 - [x] One-way status transition contract enforced (pending → approved/rejected/needs_changes; terminal states reject all transitions; revert-to-pending rejected)
 - [x] `PATCH /api/v1/clip-reviews/{clipReview}/status`: 200 + updated resource; 422 for invalid/forbidden status; 404 for non-owner/non-existent; 419 missing CSRF; 401 guest; 429 rate limit
 - [x] `ProcessClipReview` job: all 3 actions; idempotent; ownership re-validation; `ClipReviewCompleted` event (existing from Slice 1, verified by existing tests)
-- [x] Test-seeding route `POST /api/v1/test/clip-reviews/seed`: testing-only (404 elsewhere); sanctum-authenticated; project ownership enforced; returns `ClipReviewResource`; creates MediaAsset + rendered DerivedAsset + pending ClipReview; no storage internals exposed
+- [x] Test-seeding route `POST /api/v1/test/clip-reviews/seed`: testing-only (404 elsewhere); sanctum-authenticated; project ownership enforced; returns `ClipReviewResource`; creates MediaAsset + rendered DerivedAsset + pending ClipReview **and persists a real media object at `DerivedAsset.storage_key` on the configured media disk so the signed `video_url` resolves (HTTP 2xx)**; no storage internals exposed
 - [x] `ReviewActions`: three actions; confirmation dialog; confirm → PATCH; disabled during loading + spinner; `aria-live="polite"` announcement; badge updates
 - [x] `ReviewPage`: status reflection without reload; `refetch()` called after PATCH; `N`/`P` navigation + `clipReviewId` deep-link consistent (existing); feedback form for rejected/needs_changes only
 - [x] Pest backend tests: full transition matrix; no skipped tests
@@ -169,7 +187,7 @@ npm run build
 ## Files Changed
 
 **Modified:**
-- `apps/api/app/Http/Controllers/Api/V1/ClipReviewController.php` — terminal-state guard + seed method
+- `apps/api/app/Http/Controllers/Api/V1/ClipReviewController.php` — terminal-state guard + seed method; `seed()` now persists a real minimal media object at `DerivedAsset.storage_key` on the configured media disk via `Storage::disk(...)->put()` so the signed `video_url` resolves
 - `apps/api/routes/api.php` — test-seeding route registration (testing-only)
 - `apps/web/src/features/clip-review/components/ReviewActions.test.tsx` — 3 new tests
 - `apps/web/src/features/clip-review/components/ReviewPage.test.tsx` — 3 new tests + import

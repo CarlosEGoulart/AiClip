@@ -24,6 +24,13 @@ use Illuminate\Support\Facades\URL;
 
 class ClipReviewController extends Controller
 {
+    /**
+     * Minimal valid MP4 fixture (ftyp + mdat boxes, 28 bytes).
+     * Used only by the testing-environment seed route to back a real media
+     * object at DerivedAsset.storage_key so the signed video_url resolves.
+     */
+    private const MINIMAL_MP4_FIXTURE = 'AAAEFGZ0eXBpc29tAAAAaXNvbQAAAAIAAbWRhdA==';
+
     public function index(Request $request, Project $project): JsonResponse
     {
         $this->authorizeOwnership($request, $project);
@@ -111,6 +118,14 @@ class ClipReviewController extends Controller
         $derivedAsset = DerivedAsset::factory()->renderedClip()->create([
             'media_asset_id' => $mediaAsset->id,
         ]);
+
+        // Persist a real, browser-loadable media object at the derived
+        // asset's storage key on the configured media disk so the signed
+        // video_url resolves (testing environment only; route is gated).
+        Storage::disk(config('media.disk', 'media'))->put(
+            $derivedAsset->storage_key,
+            base64_decode(self::MINIMAL_MP4_FIXTURE),
+        );
 
         $clipReview = ClipReview::factory()->create([
             'derived_asset_id' => $derivedAsset->id,

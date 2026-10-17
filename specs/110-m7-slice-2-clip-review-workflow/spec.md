@@ -115,6 +115,7 @@ The PATCH endpoint accepts only `approved`, `rejected`, `needs_changes`. `pendin
   - `MediaAsset` (`mime_type=video/mp4`, status stored, local disk)
   - `DerivedAsset` (`type=clip_rendered`, `render_status=completed`, `candidate_index`, `render_profile_version`, `duration_ms`, `width`, `height`)
   - `ClipReview` (`status=pending`, `reviewer=authenticated user`, `feedback=null`)
+- **Persists a real, browser-loadable media object** on the configured media disk at the created `DerivedAsset.storage_key` (testing environment only). The object content may be a minimal fixture (tiny valid video bytes committed as test fixture data); it must be a real object, not a metadata-only row. This guarantees the returned signed `video_url` resolves successfully (HTTP 2xx) so the `<video>` element in the E2E browser can load and play it instead of hitting a storage 404. The response still exposes no storage internals (`storage_disk`, `storage_key`, bucket names) — only the signed `video_url`.
 - Returns `ClipReviewResource` (with signed `video_url`).
 - Purpose: E2E fixture setup only. Never part of production behavior.
 
@@ -182,6 +183,8 @@ Test at: **390x844** (mobile), **768x1024** (tablet), **1440x900** (desktop).
 ## Known Limitations and Coverage Boundary
 
 1. **E2E fixture data requires the test-seeding route.** The e2e CI environment runs real Laravel + PostgreSQL with `FILESYSTEM_DISK=local` and provisions neither MinIO nor the Python worker/FFmpeg render pipeline, so a `ClipReview` cannot be produced through the real render pipeline. The test-seeding route (testing environment only) creates the fixture DerivedAsset + ClipReview so E2E can exercise the full approve/reject/needs_changes UI workflow against the real running app. This route is a test boundary: it is registered only in `testing` and never exposed in production/staging.
+
+   **Fixture completeness (coverage boundary):** the seeded fixture must be complete, not metadata-only. Because E2E must play the video against the real running app, the seed route must also persist a real, browser-loadable minimal media object on the configured media disk at the `DerivedAsset.storage_key`, so `video_url` resolves with HTTP 2xx and the player can load it. A metadata row with no backing storage object is out of contract: it produces a media 404 in the browser console/network and fails console/network cleanliness. The object content may be a minimal fixture; no storage internals are exposed in any response.
 
 2. **Queue observability in E2E.** The e2e server runs with `QUEUE_CONNECTION=database` (per `.env`) and no queue worker, so a dispatched `ProcessClipReview` job would not run inline and the status transition would not be observable after the PATCH returns. Slice 2 requires the e2e server to process jobs synchronously (`QUEUE_CONNECTION=sync` for the e2e `php artisan serve` process, or an equivalent mechanism) so the PATCH response reflects the new status. This is an environment configuration requirement, not a production behavior change.
 
