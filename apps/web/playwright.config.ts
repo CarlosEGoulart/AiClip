@@ -25,6 +25,7 @@ export default defineConfig({
       env: {
         APP_ENV: 'testing',
         QUEUE_CONNECTION: 'sync',
+        MEDIA_DISK: 'local',
       },
     },
     {
