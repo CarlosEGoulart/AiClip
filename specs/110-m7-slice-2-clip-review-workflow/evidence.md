@@ -266,4 +266,64 @@ Findings (no defects):
 
 All blocking acceptance criteria (AC-01 through AC-10) are satisfied. Backend, frontend, governance suites pass with 0 failures. E2E passed in CI at all three required viewports with console/network cleanliness. Independent code review found no defects. Security (CSRF 419-before-401, ownership 404, no storage internals, no secrets), accessibility (aria-live, aria-pressed, focus trap, keyboard), and terminal-state (422 no further transitions) requirements are met.
 
+(The Tester verdict for this original review is re-affirmed below and recorded as the single `Decision:` line that terminates the follow-up section.)
+
+---
+
+## Independent Tester Re-review — e2e Refetch Sequencing Fix (commit 65e9909)
+
+### Context
+
+After the original `Independent Tester Review` above recorded approval, the PR's required `e2e` check FAILED on `[tablet] TC-E2E-07 needs_changes happy path (with feedback)` with `browser console problems` reporting a 404 (run 39288335861, 1 failed / 95 passed, head `25862ed`). Fix commit `65e9909` (`test(e2e): await feedback refetch before clip review cleanup`) was then implemented, touching only `apps/web/e2e/clip-review.spec.ts` (+41/-5). This section records the Tester's independent re-validation of that fix. Working tree verified clean (`git status --porcelain` → empty) with HEAD at `65e9909`.
+
+### Check 1 — Scope: PASS
+
+- `git diff HEAD~1 --stat` → `apps/web/e2e/clip-review.spec.ts | 46 +++++++++++----, 1 file changed, 41 insertions(+), 5 deletions(-)` — the e2e spec only. No production/app code, no `playwright.config.ts`, no CI/Docker/governance files, no Laravel/React sources.
+- The 5 deleted lines are all replaced 1:1: 1 console-problem format line, 2 helper signatures (gain `projectId: number`), 2 call sites (gain `projectId`).
+- No unrelated scope change found.
+
+### Check 2 — Strengthens rather than weakens: PASS
+
+- Two new assertions ADDED in each of `rejectClipWithFeedback` and `needsChangesClipWithFeedback` (4 total):
+  - `expect(feedbackResponse.status(), 'feedback POST status').toBe(200)`
+  - `expect(refetchResponse.status(), 'clip-reviews refetch status after feedback').toBe(200)`
+  Both via `page.waitForResponse` waiters registered BEFORE the `Submit Feedback` click, awaited immediately after it.
+- Full-file read of the 759-line spec confirms: NO assertion deleted or loosened anywhere; no timeout increase; no retry added (`playwright.config.ts` still `retries: 0` and untouched by this commit); no `.catch()` swallow introduced; no `waitForLoadState('networkidle')`-style blanket wait; `expectClean` (lines 114-127) unchanged and still strict (`toEqual([])` for console problems, page errors, unexpected 4xx/5xx, plus zero localStorage/sessionStorage entries).
+- All pre-existing assertions in `approveClip`, `selectClipAndVerifyPending`, `cleanupProject`, and TC-E2E-01/02/03/05/06/07/08 are intact.
+
+### Check 3 — Correct fix, not masking: PASS
+
+Root cause verified directly in production source (`apps/web/src/features/clip-review/components/ReviewPage.tsx`):
+
+- Both `handleStatusChange` (line 105) and `handleFeedbackSubmit` (line 114) call `refetch()` WITHOUT awaiting it — the same pattern for approve, reject, and needs_changes.
+- For approve, the sidebar `Approved` badge only appears once the refetched list lands, so `approveClip`'s badge assertion inherently blocks until the refetch settles — approve cannot race.
+- For reject/needs_changes, the sidebar badge is already `Rejected`/`Needs Changes` from the EARLIER status-PATCH refetch while the feedback step continues. Pre-fix, the helper could therefore return with the POST-feedback list refetch still in flight; `cleanupProject` then navigated away and deleted the project, and the still-pending `GET /api/v1/projects/{id}/clip-reviews` returned 404 — the test deleted its own fixture before its own action had settled.
+
+Conclusion: the 404 does NOT indicate an application bug. The feedback POST succeeded (200); the 404 is the API's correct response for a project that the TEST itself had just deleted. This was a test-sequencing race, and awaiting the two responses (with 200 assertions) before cleanup is the correct fix. It strengthens rather than masks: if the app failed to issue the refetch, `waitForResponse` would time out and fail the test; if the refetch returned a non-200, the new assertion fails immediately. A genuine post-feedback application defect remains fully detectable.
+
+Claim corroboration (root-cause artifacts): the extracted trace files exist at the supplied paths (`ls`: `/tmp/opencode/e2e-artifact/data/trace/1-trace.network` 367,068 bytes; error-context md 11,732 bytes), but this sandbox's permissions deny ALL content reads outside the workspace (`read`/`grep`/`glob` tools → `external_directory`; shell content commands → `permission.rejected`; `gh run download` of the artifact → `permission.rejected`), so the exact timestamped sequence (POST 41.925s → DELETE 204 41.974s → GET 404 42.068s, exactly one 404 in the trace) could not be re-parsed from the trace itself. The substance was independently corroborated from the authoritative CI job log instead: run 39288335861 (head `25862ed`, conclusion `failure`) job log shows exactly `1 failed` `[tablet] TC-E2E-07` / `95 passed`, with the sole failure at `expect(cleanliness.consoleProblems, 'browser console problems').toEqual([])` whose received array contains exactly ONE entry — `"error: Failed to load resource: the server responded with a status of 404 (Not Found)"` — the console mirror of a single 404 resource load. That is consistent with the supplied trace analysis and with the source-level mechanism verified above; the precise per-request timestamps are accepted as supplied.
+
+### Check 4 — Diagnostics change safe: PASS
+
+- `trackCleanliness` now records `${message.type()}: ${message.text()} (${message.location().url})`. This only affects the pushed diagnostic string.
+- The `/api/v1/auth/me` exclusion (lines 79-87) computes `url` and `isSessionProbeMirror` from the RAW `message.text()` / `message.location().url` BEFORE the push — completely unaffected.
+- `message.location()` was already called for every error/warning at line 79, so the second call adds no new failure mode.
+- `expectClean`'s emptiness checks and the localStorage/sessionStorage collectors are untouched; the richer format is inert when the array is empty and prints the failing URL when a future cleanliness failure occurs — strictly better diagnostics.
+
+### Check 5 — Local Playwright suite: N/A (environment cannot support it)
+
+Attempted independently: `cd apps/web && npx playwright test e2e/clip-review.spec.ts`.
+
+Outcome: the suite launches (Chromium is installed; Vite and `php artisan serve` start) but EVERY scenario fails at initial page load with `alert: "Server error: 500"` and the `Sign In`/`Create Account` heading never rendering (error-context artifacts produced for TC-E2E-01/05/06/07/08 across viewports, all identical). Root cause is the sandbox application environment, not the change: `apps/api` has no `.env`/`.env.testing` (Laravel boots without required configuration), PostgreSQL cannot be provisioned (`docker` permission-denied to Tester), and Tester is forbidden from creating or inspecting `.env` secrets. The identical 500 hits scenarios untouched by commit `65e9909`, confirming an environment condition rather than a defect. This is precisely the documented limitation in `docs/project-state.md` Known Limitations: "E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports 5173/8000." Local E2E is therefore recorded as N/A with that reason, relying on the independently verified CI e2e evidence below.
+
+### CI verification (independently re-confirmed with `gh`)
+
+- `gh pr view 112 --json headRefOid` → `65e990943f2cb7cdf0d666f809bd130af6b86963` (PR head = fix commit).
+- `gh pr checks 112` → all 5 required checks green, exact matches: `e2e` pass 3m13s (run 39293644312), `governance` pass 9s, `pr-enforcement` pass 7s, `test` pass 45s, `tests` pass 4m31s.
+- e2e run 39293644312 (headSha `65e9909`) job log: `Running 96 tests using 2 workers` → `96 passed (1.9m)`, including the previously failing `[tablet] TC-E2E-07 needs_changes happy path (with feedback)` ✓, across the three required viewport projects (mobile 390x844, tablet 768x1024, desktop 1440x900).
+
+### Verdict
+
+All five checks pass. The fix is scoped to the e2e spec, strictly strengthens the test (4 new 200-status assertions; no assertion, timeout, retry, catch, blanket wait, or cleanliness check weakened), correctly fixes a test-side fixture-teardown race rather than masking an application defect, and the diagnostics change is safe. Application behavior for issue #110 was validated in the original review above and is re-exercised by the 96/96 green CI e2e scenarios on the fixed head; this commit changed no production code. No defects found.
+
 Decision: APPROVE
