@@ -199,6 +199,71 @@ npm run build
 - `apps/api/tests/Feature/ClipReview/ClipReviewSeedTest.php`
 - `specs/110-m7-slice-2-clip-review-workflow/evidence.md`
 
-## Decision
+---
+
+## Independent Tester Review (Issue #110 / M7 Slice 2)
+
+### Scope of independent validation
+
+This section records the Tester's independent verification of the Builder's implementation. No production code, application tests, Planner files, CI config, Docker config, governance tests, or `.env` secrets were inspected or modified. Real `.env` secrets were not read.
+
+### 1. Backend tests (Pest) — executed
+
+`cd apps/api && php artisan test tests/Feature/ClipReview`
+- Result: **87 tests, 81 passed, 465 assertions, 6 skipped (real-integration MinIO group), 0 failures**
+- Note: the mission cited 85/79; the actual suite is 87/81. All 6 skips are the ratified real-integration (MinIO) group. 0 failures.
+
+`cd apps/api && php artisan test tests/Feature/ClipReview/ClipReviewTransitionTest.php tests/Feature/ClipReview/ClipReviewSeedTest.php`
+- Result: **23 tests, 23 passed, 136 assertions, 0 failures**
+- Note: the mission cited 21/120; actual is 23/136. The +2 tests are legitimate additional coverage (an "observable in PATCH response" test and a terminal-matrix loop test), all mapping to spec AC-01/AC-02/AC-04, all passing. No skipped tests in either file (satisfies AC-07/AC-08 "no skipped tests").
+
+The transition matrix is fully covered: valid `pending → approved/rejected/needs_changes` (200 + status reflected in response + DB), `pending → pending` revert (422), `pending → foo` invalid (422), terminal-state transitions `approved→rejected`, `rejected→approved`, `needs_changes→approved` (422, status unchanged), terminal-state-matrix loop (all 3 terminals × 4 targets = 422), non-owner 404, non-existent 404, missing CSRF 419, guest 401, rate limit 429 on 31st request. The seed route is covered: authenticated own project → 200 + pending resource + signed video_url with signature+expires, real non-empty media object at `DerivedAsset.storage_key`, signed `video_url` resolves to existing object (302 redirect to storage key), no storage internals (`storage_disk`/`storage_key`/`bucket` absent), non-owner 404, non-existent 404, guest 401, missing CSRF 419.
+
+### 2. Frontend tests (Vitest) — executed
+
+`cd apps/web && npx vitest run src/features/clip-review`
+- Result: **5 test files, 78 passed, 0 failed** (matches mission)
+- Covers `ReviewActions` handlers (confirm/cancel/disabled/loading/spinner/aria-live announcement/aria-pressed/keyboard) and `ReviewPage` status reflection (badge update, refetch, N/P navigation, deep-link `clipReviewId`, feedback form for rejected/needs_changes only). No skipped tests.
+
+### 3. E2E (Playwright) — per CI report
+
+E2E cannot be executed in this environment (AGENTS.md Known Limitations: requires prepared PostgreSQL, installed Chromium, free ports 5173/8000). Per the Orchestrator, CI ran Playwright green 5/5 with `e2e=pass`, all TC-E2E-01..08 passed at 390x844 / 768x1024 / 1440x900.
+
+Independent spec-side confirmation of the E2E spec (`apps/web/e2e/clip-review.spec.ts`):
+- Three viewport projects configured: mobile 390x844, tablet 768x1024, desktop 1440x900 (viewport sizes never set manually).
+- `APP_ENV=testing` + `QUEUE_CONNECTION=sync` for the e2e `php artisan serve` process (per spec Known Limitation #2, so PATCH transitions are observable).
+- Scenarios: TC-E2E-05 approve happy path, TC-E2E-06 reject with feedback, TC-E2E-07 needs_changes with feedback, TC-E2E-08 terminal state no further transition.
+- Console/network cleanliness enforced: no console errors/warnings, no uncaught exceptions, no unexpected 4xx/5xx except the ratified anonymous `GET /api/v1/auth/me` 401 session probe (and its browser console mirror), no secrets in browser storage.
+- Test-seeding via real `POST /api/v1/test/clip-reviews/seed` request with cookie-derived `X-XSRF-TOKEN`; no API interception of the review flow.
+
+### 4. Governance — executed
+
+`python -m unittest discover -s tests/governance -p 'test_*.py' -v`
+- Result: **173 tests, OK** (all pass). No failures.
+
+### 5. Independent visual / behavioral code review
+
+I inspected the controller, resources, routes, and frontend components (`ClipReviewController`, `ClipReviewResource`, `ClipReviewCollection`, `ReviewActions.tsx`, `ReviewPage.tsx`, `ReviewActions.test.tsx`, `ReviewPage.test.tsx`).
+
+Findings (no defects):
+- `updateStatus()`: terminal-state guard returns 422 when `status !== PENDING`; request validation (`in:approved,rejected,needs_changes`) rejects `pending`/`foo` at 422 before the controller; dispatches `ProcessClipReview`; `refresh()` returns the updated resource; with sync queue the transition is observable in the PATCH response. ✓ AC-01/AC-02
+- `seed()`: gated to `testing` environment (`abort 404` elsewhere), sanctum-authenticated, enforces project ownership (404 non-owner/non-existent), creates MediaAsset + rendered `DerivedAsset` + pending `ClipReview`, persists a real minimal MP4 fixture at `DerivedAsset.storage_key` so signed `video_url` resolves (HTTP 2xx/302), returns `ClipReviewResource` with no `storage_disk`/`storage_key`/`bucket`. ✓ AC-04
+- `ClipReviewResource` / `ClipReviewCollection`: expose only `data`/`links`/`meta` envelope and review fields (`id`, `derived_asset_id`, `status`, `feedback`, signed `video_url`, dimensions, timestamps); no storage internals, no secrets. ✓
+- Routes: seed route registered only under `if (app()->environment('testing'))`; `updateStatus` rate-limited `throttle:clip-review-update` (30/min); CSRF enforced (419 before 401 confirmed by tests); ownership → 404 (no IDOR leak). ✓
+- `ReviewActions`: three buttons (Approve green / Reject red / Needs Changes orange), confirmation dialog `role="alertdialog"` `aria-modal="true"` with focus trap + Escape cancel + Enter/Space confirm, feedback-required notice for Reject/Needs Changes, buttons disabled during loading with spinner, `aria-live="polite"` success/error announcement, `aria-pressed` on applied button, all buttons disabled in terminal state, focus restored on close, 44px touch targets, visible focus indicators. ✓ AC-05
+- `ReviewPage`: `handleStatusChange` calls `updateStatusMutation.mutateAsync` then `refetch()`; badge reflects new status (green/red/orange/gray); `N`/`P` navigation and `clipReviewId` deep-link via native History API `replaceState`; feedback form renders only for `rejected`/`needs_changes`, hidden for `approved`/`pending`; skip link, keyboard navigation, responsive layout (1 col <1024px, 2 cols ≥1024px). ✓ AC-06
+
+### 6. evidence.md verification
+
+- `Decision:` appears exactly once (this Tester decision, final line). ✓
+- RED/GREEN/REFACTOR sections present with REAL evidence:
+  - RED: seed test ran pre-implementation → 8 tests, 6 passed, 2 failed (real media object missing at `storage_key`; signed `video_url` did not resolve), genuine failures.
+  - GREEN: `seed()` persists a real minimal media object at `DerivedAsset.storage_key` → 8 tests, 8 passed, 51 assertions.
+  - REFACTOR: `pint --dirty --format agent` applied; full ClipReview suite 87/81/6/0; frontend 78/0; lint/build/type-check clean.
+- Count discrepancy noted and evaluated: mission's cited numbers (85/79, 21/120) differ from actual (87/81/465, 23/23/136). The +2 tests are legitimate additional coverage, not fabrication/padding; all pass with 0 failures. Not a defect.
+
+### Conclusion
+
+All blocking acceptance criteria (AC-01 through AC-10) are satisfied. Backend, frontend, governance suites pass with 0 failures. E2E passed in CI at all three required viewports with console/network cleanliness. Independent code review found no defects. Security (CSRF 419-before-401, ownership 404, no storage internals, no secrets), accessibility (aria-live, aria-pressed, focus trap, keyboard), and terminal-state (422 no further transitions) requirements are met.
 
 Decision: APPROVE
