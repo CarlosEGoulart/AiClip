@@ -129,6 +129,23 @@ group executing real MinIO presigned round trips and a real-database
 rollback case, Vitest component suites, and Playwright e2e covering the
 reachable review states at three viewports.
 
+M7 Slice 2 — Clip Review Status Workflow (Issue #110, PR #111, merged via `scripts/merge_gate.py`):
+One-way status transition contract (pending → approved/rejected/needs_changes;
+terminal states reject all further transitions with 422). `PATCH
+/api/v1/clip-reviews/{clipReview}/status` terminal-state guard.
+Test-seeding route `POST /api/v1/test/clip-reviews/seed` (testing
+environment only) that persists a real media object at
+`DerivedAsset.storage_key` so the signed `video_url` resolves. Frontend
+`ReviewActions` confirmation dialogs with disabled/loading states and
+`aria-live="polite"` announcements; `ReviewPage` status reflection after
+PATCH (badge update, refetch, deep-link consistency); feedback form for
+rejected/needs_changes only. Playwright E2E approve/reject/needs_changes
+happy paths plus terminal-state no-further-transition at 390x844 /
+768x1024 / 1440x900 with console/network cleanliness. Backend: 87 tests,
+81 passed, 6 skipped (MinIO real-integration), 0 failures. Frontend: 78
+Vitest passed, 0 failed. Governance: 173 tests OK. E2E CI green at all
+three viewports.
+
 # Next Architectural Goal
 
 M7 — Clip Review Experience continues beyond Slice 1: remaining slices

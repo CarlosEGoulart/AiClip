@@ -85,7 +85,9 @@ function trackCleanliness(page: Page): Cleanliness {
       url.endsWith('/api/v1/auth/me');
 
     if (!isSessionProbeMirror) {
-      cleanliness.consoleProblems.push(`${message.type()}: ${message.text()}`);
+      cleanliness.consoleProblems.push(
+        `${message.type()}: ${message.text()} (${message.location().url})`,
+      );
     }
   });
 
@@ -515,7 +517,7 @@ test.describe('Clip Review Section (embedded)', () => {
     expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId));
   }
 
-  async function rejectClipWithFeedback(page: Page, clipReviewId: number) {
+  async function rejectClipWithFeedback(page: Page, clipReviewId: number, projectId: number) {
     // Click Reject → confirmation dialog opens
     await page.getByRole('button', { name: 'Reject clip' }).click();
     await expect(page.getByRole('alertdialog')).toBeVisible();
@@ -535,7 +537,24 @@ test.describe('Clip Review Section (embedded)', () => {
     // Enter feedback (>= 10 chars) and submit
     await page.locator('#feedback').fill('This clip needs better audio levels.');
     await expect(page.getByRole('button', { name: 'Submit Feedback' })).toBeEnabled();
+
+    // Register response waiters BEFORE clicking so the app's post-feedback
+    // refetch provably settles (200) before this helper returns and before
+    // cleanupProject deletes the project — otherwise the stale refetch can
+    // outlive the project and 404 (flake root cause of TC-E2E-07 run 39288335861).
+    const feedbackSubmitted = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/v1/clip-reviews/${clipReviewId}/feedback` &&
+        response.request().method() === 'POST',
+    );
+    const listRefetched = page.waitForResponse(isGet(`/api/v1/projects/${projectId}/clip-reviews`));
+
     await page.getByRole('button', { name: 'Submit Feedback' }).click();
+
+    const feedbackResponse = await feedbackSubmitted;
+    expect(feedbackResponse.status(), 'feedback POST status').toBe(200);
+    const refetchResponse = await listRefetched;
+    expect(refetchResponse.status(), 'clip-reviews refetch status after feedback').toBe(200);
 
     // Status badge transitions: Reject button pressed + disabled
     await expect(page.getByRole('button', { name: 'Reject clip' })).toHaveAttribute(
@@ -551,7 +570,7 @@ test.describe('Clip Review Section (embedded)', () => {
     expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId));
   }
 
-  async function needsChangesClipWithFeedback(page: Page, clipReviewId: number) {
+  async function needsChangesClipWithFeedback(page: Page, clipReviewId: number, projectId: number) {
     // Click Needs Changes → confirmation dialog opens
     await page.getByRole('button', { name: 'Needs Changes clip' }).click();
     await expect(page.getByRole('alertdialog')).toBeVisible();
@@ -567,7 +586,24 @@ test.describe('Clip Review Section (embedded)', () => {
 
     // Enter feedback (>= 10 chars) and submit
     await page.locator('#feedback').fill('Please adjust the transition timing.');
+
+    // Register response waiters BEFORE clicking so the app's post-feedback
+    // refetch provably settles (200) before this helper returns and before
+    // cleanupProject deletes the project — otherwise the stale refetch can
+    // outlive the project and 404 (flake root cause of TC-E2E-07 run 39288335861).
+    const feedbackSubmitted = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/api/v1/clip-reviews/${clipReviewId}/feedback` &&
+        response.request().method() === 'POST',
+    );
+    const listRefetched = page.waitForResponse(isGet(`/api/v1/projects/${projectId}/clip-reviews`));
+
     await page.getByRole('button', { name: 'Submit Feedback' }).click();
+
+    const feedbackResponse = await feedbackSubmitted;
+    expect(feedbackResponse.status(), 'feedback POST status').toBe(200);
+    const refetchResponse = await listRefetched;
+    expect(refetchResponse.status(), 'clip-reviews refetch status after feedback').toBe(200);
 
     // Status badge transitions: Needs Changes button pressed + disabled
     await expect(
@@ -646,7 +682,7 @@ test.describe('Clip Review Section (embedded)', () => {
     await selectClipAndVerifyPending(page, clipReviewId);
 
     // Reject the clip with feedback
-    await rejectClipWithFeedback(page, clipReviewId);
+    await rejectClipWithFeedback(page, clipReviewId, projectId);
 
     // Clean up
     await cleanupProject(page, projectName);
@@ -676,7 +712,7 @@ test.describe('Clip Review Section (embedded)', () => {
     await selectClipAndVerifyPending(page, clipReviewId);
 
     // Request changes with feedback
-    await needsChangesClipWithFeedback(page, clipReviewId);
+    await needsChangesClipWithFeedback(page, clipReviewId, projectId);
 
     // Clean up
     await cleanupProject(page, projectName);
