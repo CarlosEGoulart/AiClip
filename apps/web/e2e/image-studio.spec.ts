@@ -206,7 +206,10 @@ async function openImageStudioTab(page: Page): Promise<Response> {
 
   // Fresh project: the gallery renders the empty state.
   await expect(page.getByText('No images yet')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Image Studio' })).toBeVisible();
+  // exact: true disambiguates from the opened project's own title
+  // heading ("Image Studio Project" in TC-E2E-01): role-name matching
+  // is otherwise substring-based and resolves to both headings.
+  await expect(page.getByRole('heading', { name: 'Image Studio', exact: true })).toBeVisible();
 
   return response;
 }
@@ -274,7 +277,11 @@ async function runGenerateFlow(page: Page) {
   await expect(page.getByText('Generating…')).toHaveCount(0);
   await expect(page.getByText('1080 × 1920')).toBeVisible();
   await expect(page.getByText(/KB/)).toBeVisible();
-  await expect(page.getByText(PROMPT)).toBeVisible();
+  // Scope to the gallery list: unscoped getByText(PROMPT) also matches
+  // the filled textarea's value, resolving to 2 elements in strict mode.
+  await expect(
+    page.getByRole('list', { name: 'Generated images' }).getByText(PROMPT),
+  ).toBeVisible();
   await expect(page.getByRole('listitem')).toHaveCount(1);
 }
 
