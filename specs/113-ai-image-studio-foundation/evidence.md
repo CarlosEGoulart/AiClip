@@ -2,7 +2,7 @@
 
 ## Builder Implementation Report
 
-Resumed after interruption. A previous Builder session had completed plan Steps 1–3 production code (provider seam, storage keys, data model, queue job) and had written the Step 4 endpoint/list/show RED tests plus the job tests. This session validated the pre-existing work, fixed one test-harness defect in it, and completed Steps 4–7 (API layer, frontend feature, tab wiring, Playwright spec, full verification).
+Resumed after interruption. A first Builder session had completed plan Steps 1–3 production code (provider seam, storage keys, data model, queue job) and had written the Step 4 endpoint/list/show RED tests plus the job tests. The resumed session validated the pre-existing work, fixed one test-harness defect in it, and completed Steps 4–7 (API layer, frontend feature, tab wiring, Playwright spec, full verification). After CI Round 1 ran on commit `5c7570f`, a further Builder session (interrupted by a server restart) applied the two e2e locator fixes CI had surfaced, and the present session restructured this evidence file for the `pr-enforcement` TDD-heading requirement and re-verified the spec locally (all recorded under "CI Round 1" below).
 
 ### Pre-existing work validated (Steps 1–3, completed pre-interruption)
 
@@ -19,9 +19,11 @@ Validation results for the pre-existing code (run now, at resume):
 - `php artisan test tests/Feature/ImageStudio/GenerateImageJobTest.php --compact`
   → **16 tests, 16 passed, 47 assertions** (TC-BE-08).
 
-### RED/GREEN/REFACTOR cycles completed this session
+### RED
 
-#### Step 4 — API layer (TC-BE-03..07)
+**Cycles completed pre-interruption.** The provider seam, storage keys, data model, and queue job (plan Steps 1–3) went through their RED cycles in the pre-interruption session; those original RED states were not re-run at resume. Their GREEN state was re-validated before any new implementation (35/35 and 16/16 — outputs under GREEN below and in Pre-existing work above). The Step 4 API RED tests were likewise inherited already written, with no API implementation existing at resume (see Pre-existing work above).
+
+#### API layer (Step 4, TC-BE-03..07)
 
 **RED (after fixing one inherited test-harness defect).** The inherited `GenerateImageEndpointTest` helper `generateRequest()` called `spaRequest()` (whose `$cookies` parameter is by-reference) through Pest's `test()` helper. `test()` returns a `HigherOrderTapProxy` that forwards methods via `__call`, which cannot pass by-reference arguments — 17 of 20 tests errored with `spaRequest(): Argument #3 ($cookies) must be passed by reference, value given`. Per the test plan's setup-failure rule, that is not RED. Fixed the helper to resolve the running TestCase directly (`TestSuite::getInstance()->test`, the same public accessor Pest's `test()` uses); zero call sites changed.
 
@@ -34,16 +36,7 @@ php artisan test tests/Feature/ImageStudio/GenerateImageEndpointTest.php tests/F
    (the 7 passing tests are the 404-expecting ownership/filter cases, vacuously green pre-implementation)
 ```
 
-**GREEN.** Implemented `GenerateImageRequest` (project_id required integer; prompt required string 1–1000; style_preset `in:` the fixed catalog; width/height `sometimes` integers + pair rule: both-or-neither and one of (1024,1024)/(1080,1920)/(1920,1080)), `ImageController` (generate: owned-project resolve → pending row with `StorageKeyBuilder::imageGeneration()` → `GenerateImage::dispatch` → 202 with the enqueue-time resource, no refresh after dispatch; index: user-scoped, `orderByDesc('id')`, owned `project_id` filter 404, per_page default 15 cap 100; show: route-model binding + owner 404), `ImageResource` (exact 11-field whitelist; `status` serialized as string), `ImageCollection` (standard pagination envelope under a top-level `data` key, ClipReview convention), routes under the `auth:sanctum` group with `throttle:image-generate|image-list|image-show`, and the three rate limiters in `AppServiceProvider::boot` (20/min for image-generate, 60/min for list/show, keyed by user id with ip fallback):
-
-```
-php artisan test tests/Feature/ImageStudio --compact
-→ 49 tests, 49 passed, 273 assertions
-```
-
-**REFACTOR.** `vendor/bin/pint --dirty --format agent` fixed one auto-formatting issue (`method_chaining_indentation` in `ImageListTest`); rerun **passed** (no further fixes). Route sanity: `php artisan route:list --path=api/v1/images` shows the 3 routes under `api/v1`.
-
-#### Step 5 — Frontend feature (TC-FE-01..05)
+#### Frontend feature (Step 5, TC-FE-01..05)
 
 **RED.** Wrote `GenerateImageForm.test.tsx` (16), `ImageGallery.test.tsx` (10), `ImageStudio.test.tsx` (11) mirroring the clip-review component-test conventions (pure components; `vi.mock('../hooks')` + QueryClientProvider wrapper for the composition; no Router provider). Minimal null-render stubs were created alongside so module resolution succeeds and every failure is behavioral:
 
@@ -52,6 +45,28 @@ npm test -- --run src/features/image-studio
 → 37 tests, 37 failed — all "Unable to find a label/role/text" assertions
    against the null-rendering stubs (missing behavior, not setup errors)
 ```
+
+### GREEN
+
+#### API layer (Step 4, TC-BE-03..07)
+
+**GREEN.** Implemented `GenerateImageRequest` (project_id required integer; prompt required string 1–1000; style_preset `in:` the fixed catalog; width/height `sometimes` integers + pair rule: both-or-neither and one of (1024,1024)/(1080,1920)/(1920,1080)), `ImageController` (generate: owned-project resolve → pending row with `StorageKeyBuilder::imageGeneration()` → `GenerateImage::dispatch` → 202 with the enqueue-time resource, no refresh after dispatch; index: user-scoped, `orderByDesc('id')`, owned `project_id` filter 404, per_page default 15 cap 100; show: route-model binding + owner 404), `ImageResource` (exact 11-field whitelist; `status` serialized as string), `ImageCollection` (standard pagination envelope under a top-level `data` key, ClipReview convention), routes under the `auth:sanctum` group with `throttle:image-generate|image-list|image-show`, and the three rate limiters in `AppServiceProvider::boot` (20/min for image-generate, 60/min for list/show, keyed by user id with ip fallback):
+
+```
+php artisan test tests/Feature/ImageStudio --compact
+→ 49 tests, 49 passed, 273 assertions
+```
+
+#### Pre-interruption units re-verified at resume (provider / keys / model / job)
+
+Before any new implementation, the inherited suites were re-validated green: `FakeImageGenerationProviderTest` + `StorageKeyBuilderTest` + `ImageModelTest` → **35 tests, 35 passed, 76 assertions** (TC-BE-01, TC-BE-02); `GenerateImageJobTest` → **16 tests, 16 passed, 47 assertions** (TC-BE-08). Combined with the new API layer, the issue-scoped backend total after Step 4:
+
+```
+php artisan test tests/Feature/ImageStudio tests/Feature/Models/ImageModelTest.php tests/Unit/StorageKeyBuilderTest.php tests/Unit/Services/FakeImageGenerationProviderTest.php --compact
+→ 84 tests, 84 passed, 349 assertions (TC-BE-01..08)
+```
+
+#### Frontend feature (Step 5, TC-FE-01..05)
 
 **GREEN.** Implemented `types.ts` (types + `STYLE_PRESETS`/`DIMENSION_PRESETS` constants mirroring the backend catalog), `api.ts` (`generateImage` POST, `fetchImages` GET with the top-level `data` envelope unwrapped; `fetchWithCsrf` wire-cookie pattern), `hooks.ts` (`useImages(projectId, localPendingCount)` with `refetchInterval` 2000 while the server list or a local pending entry is pending, false otherwise; `useGenerateImage` invalidating `['images']` on success), `GenerateImageForm` (labeled textarea maxLength 1000 with live `N/1000` counter and paste truncation, style/dimension preset selects, Generate button disabled while empty/whitespace or generating with spinner + `aria-busy`, polite live region for validation/server errors with typing dismissal), `ImageGallery` (always-mounted polite live region; loading/empty/error-with-retry states; entries with prompt excerpt, `width × height`, formatted size, and Pending-gray/Generated-green/Failed-red badges), `ImageStudio` (heading + description; local pending entries seeded from the 202 response prepended to the server list; server-truth merge; `grid-cols-1 lg:grid-cols-2` layout), and the "Image Studio" tab in `ProjectMediaSection` (`role="tab"`/`aria-selected`/`aria-controls`, ids `image-studio-tab`/`image-studio-panel`, M7 Slice 1 pattern; no router library).
 
@@ -71,9 +86,15 @@ npm test (full suite)
    including the production-topology ClipReviewSection mount test)
 ```
 
-**REFACTOR.** `npm run lint` (oxlint): **exit 0 — zero errors**; warnings only, all pre-existing except two `react(set-state-in-effect)` warnings in the new components — the same warning class the pre-existing clip-review components already carry (ReviewPage has identical warnings). `npm run build` (tsc -b && vite build): **passed** (93 modules, 316.53 kB / gzip 92.82 kB).
+With the feature green, `npm run lint` exited 0 and `npm run build` passed (details under REFACTOR below); the complete plan §7 command matrix is in the Full-suite verification table below.
 
-#### Step 6 — Playwright E2E (TC-E2E-01..03)
+### REFACTOR
+
+- **API.** `vendor/bin/pint --dirty --format agent` fixed one auto-formatting issue (`method_chaining_indentation` in `ImageListTest`); rerun **passed** (no further fixes). Route sanity: `php artisan route:list --path=api/v1/images` shows the 3 routes under `api/v1`.
+- **Frontend.** `npm run lint` (oxlint): **exit 0 — zero errors**; warnings only, all pre-existing except two `react(set-state-in-effect)` warnings in the new components — the same warning class the pre-existing clip-review components already carry (ReviewPage has identical warnings). `npm run build` (tsc -b && vite build): **passed** (93 modules, 316.53 kB / gzip 92.82 kB).
+- **Post-refactor stability.** After each refactor pass the affected suites were re-run and remained green: backend issue-scoped 84/84, frontend feature 37/37, full frontend suite 303/303.
+
+### Playwright E2E spec (Step 6 — TC-E2E-01..03)
 
 Wrote `apps/web/e2e/image-studio.spec.ts` (inside `testDir: './e2e'`): TC-E2E-01 generate flow and TC-E2E-02 responsive/touch-target/focus scenario, both with TC-E2E-03 cleanliness enforced inside (console/pageerror collectors with the ratified anonymous `auth/me` 401 probe mirror whitelisted, 4xx/5xx whitelist, storage/bucket request collector, empty localStorage/sessionStorage), reusing the clip-review `trackCleanliness`/`expectClean` helper pattern and the media.spec data setup (register unique user via UI, create project via UI, capture id from the real 201). Flow assertions: 202 with `body.data.status === 'pending'` and the exact 11-field whitelist; best-effort pending-badge snapshot (documented in the spec: the sync-queue window is one refetch round trip; the deterministic local-pending behavior is covered by TC-FE-04); refetch 200 with pagination envelope; convergence to exactly one entry with the green Generated badge, `1080 × 1920`, non-zero KB size, and the prompt excerpt. TC-E2E-02 adds: no horizontal overflow; 1 column with form above gallery below 1024px and side-by-side from 1024px; no viewport clipping; ≥44px touch targets (including the Image Studio tab via the `.tab-navigation [role="tab"]` 44px global rule); keyboard walk over tab → prompt → style → dimensions → Generate with visible focus indicators (outline or ring).
 
@@ -95,6 +116,49 @@ npx playwright test e2e/image-studio.spec.ts
 
 Root cause (proven, not assumed): the sandbox PHP CLI lacks the `pdo_pgsql` extension. The CI-parity Pest run against the disposable `aiclip_test_issue64` PostgreSQL database failed with `could not find driver (Connection: pgsql, Host: 127.0.0.1, Port: 5432, ...)`, and the e2e Laravel server (which runs against the pgsql `.env` database with `SESSION_DRIVER=database`) therefore returns 500 for every DB-backed request, including the auth/session flow. The e2e harness itself works locally (Chromium is installed; Vite served the app; Playwright executed all 6 tests). This matches the Issue #110 precedent (this sandbox cannot host the e2e stack; CI is the authoritative e2e venue). CI's e2e workflow provisions PostgreSQL 16 + `pdo_pgsql` and runs `npm run test:e2e`; it was green (96/96) on the previous slice and will discover and run this spec.
 
+### CI Round 1 — e2e locator fixes (2026-10-20)
+
+CI ran the full pipeline on commit `5c7570f`:
+
+| CI check | Result |
+|---|---|
+| `governance` job (governance validator suite) | **PASS** |
+| Frontend tests (Vitest) | **PASS** |
+| Backend tests (full tree on CI PostgreSQL) | **PASS** |
+| e2e (`npm run test:e2e`) | **96 passed / 6 failed** — all 6 failures are this slice's new image-studio tests |
+| `pr-enforcement` | **FAILED** — evidence TDD-heading structure (fixed by this restructure; see below) |
+
+**e2e: 6 failures, all locator defects in the new spec — not application defects.** All six failures are Playwright strict-mode violations (a locator resolving to 2 elements). The application flow itself passed in CI: the failing runs that progressed through the generate flow verified the full gallery convergence — the green Generated badge, `1080 × 1920`, and the non-zero KB size — before the failing locator line, proving the 202 → refetch → generated pipeline ran end-to-end on the CI stack. The two defects and fixes:
+
+- **Panel-heading ambiguity (fixed).** `getByRole('heading', { name: 'Image Studio' })` resolved to two headings: the studio panel heading and the opened project's own title heading ("Image Studio Project" in TC-E2E-01) — role-name matching is substring-based, so both matched and strict mode rejected the locator. Fix: `getByRole('heading', { name: 'Image Studio', exact: true })` — `apps/web/e2e/image-studio.spec.ts:212`, with the explanatory comment at lines 209–211.
+- **Prompt-text ambiguity (fixed).** Unscoped `getByText(PROMPT)` resolved to two elements: the gallery entry's prompt excerpt and the filled textarea's value. Fix: scope the assertion to the gallery list — `page.getByRole('list', { name: 'Generated images' }).getByText(PROMPT)` — `apps/web/e2e/image-studio.spec.ts:282–284`, with the explanatory comment at lines 280–281.
+
+Both fixes were applied by the prior Builder session (interrupted by a server restart) and are present in the working tree; they change locator precision only — no assertion target, flow step, or application code was modified.
+
+**`pr-enforcement` failure (fixed by this restructure).** The gate rejected this evidence file's TDD structure: the TDD narrative used `#### Step N` headings and bold `**RED.**`-style paragraph markers, while `validate_tdd_sections` requires the literal `### RED`, `### GREEN`, `### REFACTOR` headings (the gate's error message quotes them verbatim). The RED/GREEN/REFACTOR sections above are the direct fix; no evidence content was removed — the same facts and outputs were reorganized under the required headings, and this CI Round 1 section was added.
+
+**Post-fix local re-verification (this session, 2026-10-20):**
+
+```
+npx playwright test e2e/image-studio.spec.ts --list
+→ Listing tests:
+  [mobile]  › image-studio.spec.ts:297 › Image Studio (embedded) › TC-E2E-01 generate-image flow: 202 pending, refetch to generated, whitelist
+  [mobile]  › image-studio.spec.ts:317 › Image Studio (embedded) › TC-E2E-02 responsive layout, touch targets, and focus at the configured viewport
+  [tablet]  › image-studio.spec.ts:297 › Image Studio (embedded) › TC-E2E-01 generate-image flow: 202 pending, refetch to generated, whitelist
+  [tablet]  › image-studio.spec.ts:317 › Image Studio (embedded) › TC-E2E-02 responsive layout, touch targets, and focus at the configured viewport
+  [desktop] › image-studio.spec.ts:297 › Image Studio (embedded) › TC-E2E-01 generate-image flow: 202 pending, refetch to generated, whitelist
+  [desktop] › image-studio.spec.ts:317 › Image Studio (embedded) › TC-E2E-02 responsive layout, touch targets, and focus at the configured viewport
+  Total: 6 tests in 1 file
+```
+
+```
+npm test -- --run src/features/image-studio
+→ Test Files  3 passed (3)
+   Tests       37 passed (37)
+```
+
+The Vitest re-run confirms the locator fixes do not affect the component suites (they are e2e-file-only changes). Local e2e execution remains impossible in this sandbox (missing `pdo_pgsql` — see the Playwright E2E section above); the authoritative validation of these fixes is the next CI e2e run.
+
 ### Full-suite verification (plan §7)
 
 | Command | Result |
@@ -109,7 +173,7 @@ Root cause (proven, not assumed): the sandbox PHP CLI lacks the `pdo_pgsql` exte
 | `npm run lint` | **exit 0**, warnings only (see REFACTOR above) |
 | `npm run build` | **passed** (tsc -b + vite build) |
 | `npx playwright test e2e/image-studio.spec.ts --list` | **6 tests in 1 file** (non-empty discovery, 3 viewport projects) |
-| `npm run test:e2e` | **Deferred to CI** — exact reason: missing local `pdo_pgsql` (evidence above); the local attempt's 6 failures are all `Server error: 500` at the auth step, before any image-studio assertion runs |
+| `npm run test:e2e` | **Deferred to CI** — exact reason: missing local `pdo_pgsql` (evidence above); the local attempt's 6 failures are all `Server error: 500` at the auth step, before any image-studio assertion runs. CI Round 1 then executed the spec in CI (96 passed / 6 locator-defect failures, since fixed — see "CI Round 1" above); the next CI run is the authoritative re-validation. |
 | Governance suite | Not executed by Builder: the sandbox permission system denies `python` commands; governance is enforced in CI and remains the gate owner's responsibility |
 
 ### Security / scope notes
@@ -118,6 +182,7 @@ Root cause (proven, not assumed): the sandbox PHP CLI lacks the `pdo_pgsql` exte
 - CSRF-before-auth (419 before 401), guest 401, non-owner/non-existent 404 with identical bodies, mass-assignment rejection, and the 20/min `image-generate` limiter (21st request → 429 + `Retry-After`) are all covered by the passing endpoint suite.
 - No new composer/npm packages. No TODO/FIXME placeholders in production code; `FakeImageGenerationProvider` is the spec'd provider boundary, not a placeholder.
 - No `.env` secrets were read or inspected; the CI-parity DB credentials used were the repository's compose/CI defaults against the disposable `aiclip_test*` database.
+- CI Round 1 (post-implementation) touched only `apps/web/e2e/image-studio.spec.ts` — two locator expressions; no application code and no assertion targets changed — plus this evidence file's structure. No production code was modified after the GREEN/REFACTOR states recorded above.
 
 ### Artifacts requiring Orchestrator action before staging
 
@@ -130,4 +195,100 @@ Both must be **deleted** (not committed). Everything else in the working tree is
 
 ### Remaining gates (not claimed complete)
 
-- Independent Tester review and CI (backend, frontend, e2e, governance) remain the approval authority. The e2e suite requires CI execution per the evidence above.
+- Independent Tester review and CI (backend, frontend, e2e, governance) remain the approval authority. The e2e suite requires CI execution per the evidence above — including the CI re-run that must confirm the six image-studio tests pass after the Round 1 locator fixes and that `pr-enforcement` accepts the restructured evidence headings.
+
+---
+
+## Independent Tester Review
+
+Independent validation performed 2026-10-20 by the Tester agent on branch `@carlosegoulart/113/feat/ai-image-studio-foundation` (planning commit `048af21`, implementation commit `5c7570f`, plus the uncommitted working-tree e2e locator fixes and this evidence restructure). Every command below was executed directly by the Tester in the sandbox; outputs are real, not quoted from Builder claims.
+
+### Verification executed (real outputs)
+
+| Command (working dir) | Result |
+|---|---|
+| `php artisan test tests/Unit/Services/FakeImageGenerationProviderTest.php tests/Unit/StorageKeyBuilderTest.php tests/Feature/Models/ImageModelTest.php --compact` (apps/api) | **35 tests, 35 passed, 76 assertions** — matches Builder |
+| `php artisan test tests/Feature/ImageStudio --compact` (apps/api) | **49 tests, 49 passed, 273 assertions** — matches Builder |
+| `php artisan test tests/Feature/ImageStudio/GenerateImageJobTest.php --compact` (apps/api) | **16 tests, 16 passed, 47 assertions** — matches Builder |
+| `php artisan test tests/Feature/ImageStudio tests/Feature/Models/ImageModelTest.php tests/Unit/StorageKeyBuilderTest.php tests/Unit/Services/FakeImageGenerationProviderTest.php --compact` (apps/api) | **84 tests, 84 passed, 349 assertions** — matches Builder (TC-BE-01..08) |
+| `npm test -- --run src/features/image-studio` (apps/web) | **3 files, 37/37 passed** (TC-FE-01..05) — matches Builder |
+| `npm test` (apps/web) | **20 files, 303/303 passed** (266 pre-existing + 37 new) — matches Builder |
+| `npm run lint` (apps/web) | **exit 0**, warnings only; the two new `react(set-state-in-effect)` warnings in the image-studio components are the same warning class the pre-existing clip-review components already carry — matches Builder |
+| `npm run build` (apps/web) | **passed**: `tsc -b` + vite build, 93 modules, 316.53 kB / gzip 92.82 kB — matches Builder |
+| `vendor/bin/pint --test --dirty --format agent` (apps/api) | **passed** (non-mutating formatting check run by the Tester; no file modified) |
+| `npx playwright test e2e/image-studio.spec.ts --list` (apps/web) | **6 tests in 1 file**: TC-E2E-01 + TC-E2E-02 across the mobile 390x844 / tablet 768x1024 / desktop 1440x900 projects — matches Builder |
+| `python -m unittest discover -s tests/governance -p 'test_*.py' -v` (repo root) | **173 tests, all OK** (the Builder session could not run python; the Tester environment permits it) |
+| `gh pr checks 114` | `governance` PASS, `test` (frontend) PASS, `tests` (backend, full tree on CI PostgreSQL) PASS, `e2e` FAIL, `pr-enforcement` FAIL — exactly the reported CI Round 1 state for commit `5c7570f` |
+| `gh run view 39422193188 --log-failed` (e2e job log) | **96 passed / 6 failed**; all 6 failures are strict-mode violations inside `image-studio.spec.ts` only (3× TC-E2E-01 heading ambiguity, 3× TC-E2E-02 prompt-text ambiguity). The TC-E2E-02 runs (whose project title does not collide with the heading) completed the entire generate flow before the failing line: the green `Generated` badge, `1080 × 1920`, and the non-zero `/KB/` size were all asserted and passed at every viewport — the 202 → sync generation → refetch → generated pipeline is proven end-to-end on the CI stack. Playwright's own error output names the exact fixed locators as the disambiguated elements (`getByRole('heading', { name: 'Image Studio', exact: true })` and `getByRole('list', { name: 'Generated images' }).getByText(...)`) |
+| `gh run view 39422193001 --log-failed` (pr-enforcement job log) | The two reported gate errors, verbatim: the evidence file lacked the approval line, and it lacked the literal `### RED` / `### GREEN` / `### REFACTOR` headings. The restructured Builder sections satisfy the heading requirement; this review supplies the approval line |
+| `git status --porcelain` / `git diff --stat 048af21 5c7570f` / `git diff apps/web/e2e/image-studio.spec.ts` | Scope and working-tree audit (see Scope review below) |
+| Full code review of every implementation file | All 35 files of commit `5c7570f` plus the working tree read and checked against spec.md / test-plan.md (see AC table below) |
+
+### Sandbox N/A items (with explicit reasons)
+
+1. **Local browser e2e execution (`npm run test:e2e`) — N/A locally, CI-authoritative.** Independently proven blocker, stronger than the recorded one: there is **no `.env` file at all** in `apps/api` (directory listing shows only `.env.example`), so the Playwright webServer's `php artisan serve` (which overrides only `APP_ENV`, `QUEUE_CONNECTION`, `MEDIA_DISK` per `playwright.config.ts`) boots on Laravel framework defaults — environment production, sqlite database, database session/queue, and **no `APP_KEY`**, which makes encrypted session cookies throw and every session-backed request return 500 at the auth step — exactly the failure mode the Builder recorded. Additionally the sandbox PHP CLI lacks `pdo_pgsql` (proven by the CI-parity `could not find driver (Connection: pgsql ...)` failure and by historical Tester probes in this repository, e.g. Issue #64's `PDO::getAvailableDrivers() === ['sqlite']`; Issues #35/#58/#60/#69 document the same). This matches the ratified Issue #110 precedent (CI is the authoritative e2e venue for this sandbox), and the deferral is fail-closed: `scripts/merge_gate.py` lists `E2E CI / e2e` in `REQUIRED_CHECKS`, so the merge cannot proceed until the next CI e2e run is green on the committed locator fixes. *Documentation note (non-blocking):* the Builder evidence attributes the local e2e 500s to "the pgsql `.env` database" — no `.env` exists; the operative facts (local e2e impossible; CI authoritative) are unaffected, and the missing-APP_KEY / production-default state independently proves the same conclusion.
+2. **Full-tree Pest on CI-parity PostgreSQL — N/A locally, CI-authoritative.** `pdo_pgsql` absent (above). The backend CI `tests` check passed the full tree on CI PostgreSQL for commit `5c7570f` (verified via `gh pr checks 114`). The local sqlite full-tree run's pre-existing environmental failures are outside this slice's files; the Builder's classification of them was reviewed and accepted.
+3. **`php artisan migrate:fresh --seed` — N/A (not executed by the Tester).** The local environment resolves to production-flagged framework defaults (verified via `php artisan about`: Environment production, Database sqlite, Session/Queue database); a destructive fresh migrate there is outside safe Tester behavior — the same production guard that correctly stopped the Builder. The `images` migration was instead exercised by `RefreshDatabase` on every Pest run executed above, `php artisan migrate:status` independently confirms it is present and applied, and CI's backend job migrates the disposable test database green.
+4. **Direct PHP CLI probes (`php -m`, `php artisan tinker`) — N/A (permission-blocked).** The sandbox permission system denies raw `php` / `which` invocations; extension and environment facts were corroborated through permitted `php artisan` surfaces plus the historical repository evidence cited above.
+5. **Browser-only visual inspection (screenshots at the three viewports) — N/A locally, CI-authoritative.** Consequence of item 1. Compensating evidence: the component suites assert every structural/label/touch-target/focus requirement; the CI e2e run already executed the three viewport projects through the full flow; the CSS rules the assertions depend on (`.tab-navigation [role="tab"]` min-height 44px with `:focus-visible` outline; `min-h-11` on all studio controls; `grid-cols-1 lg:grid-cols-2` layout) are verified present in code.
+
+### Acceptance criteria verification
+
+| AC | Verdict | Evidence |
+|---|---|---|
+| AC-01 | PASS | Interface + readonly DTO + deterministic fake verified in code (real PNG synthesis: 8-byte signature, IHDR with exact big-endian dimensions, zlib-deflated IDAT, IEND, per-chunk CRC32; SHA-256-seeded scanlines; fixed compression level); singleton binding in `AppServiceProvider::register`; fixed 4-preset catalog; 9 provider unit tests pass (determinism, prompt/style/dimension sensitivity, PNG signature + IHDR decode, non-empty size, interface compliance); pure PHP — no network, subprocess, or model download |
+| AC-02 | PASS | `StorageKeyBuilder::imageGeneration` returns `projects/{id}/images/{uuid}.png`, throws `InvalidArgumentException` for `$projectId < 1` (0 and −1 datasets), unique uuid per call; tests pass |
+| AC-03 | PASS | Migration columns/indexes match the spec table exactly (unique `storage_key`, `[user_id, status]` and `project_id` indexes, FKs cascade, status default `pending`); model casts (`parameters` array, `status` enum) + `STATUS_*` constants + `project()`/`user()` relations; enum values; factory default `pending` + `generated`/`failed` states with StorageKeyBuilder-unique keys; 10 model tests pass including the unique-constraint and mass-assignment-whitelist checks |
+| AC-04 | PASS | Job verified in code and tests: `tries=3`/`backoff=5`/`uniqueId()`; ownership re-validation from persisted rows (mismatch → warning, stays pending, no provider call, no storage write); non-pending idempotency (spy proves no re-invocation, no second write, unchanged mtime); strict result validation (non-`ImageResult`, empty data, wrong mime, bad PNG signature, dimension mismatch → `failed` with no storage object); `generated` marking with a real stored PNG artifact and persisted metadata inside a DB transaction; unexpected storage failure propagates leaving the row pending (no false success); enqueue-only controller — the 202 reports pending even though the sync queue completes the row inline (resource serialized from the created row, no refresh after dispatch); 16 job tests pass |
+| AC-05 | PASS | 202 + pending resource + `Queue::assertPushed` exactly once with the row id; defaults (`photorealistic`, 1024×1024) and `cinematic`/1080×1920 overrides persisted; 422 × 8 (missing/empty/1001-char/non-string prompt, invalid preset, single-sided dimensions, non-allowed pair) + 1000-char boundary 202; non-owner and non-existent project → 404 with byte-identical bodies and no rows created; guest with valid CSRF → 401; missing/tampered CSRF → 419 before auth without mutation; 21st request/min → 429 with `Retry-After`; all pass |
+| AC-06 | PASS | User-scoped, `orderByDesc('id')`, top-level `data` envelope wrapping `data`/`links`/`meta`, `per_page` default 15 cap 100, owned `project_id` filter with 404 for non-owned/non-existent filters, other users' images never visible, per-item whitelist; 9 tests pass |
+| AC-07 | PASS | Owner 200 whitelisted; non-owner 404; non-existent 404; guest 401; 4 tests pass |
+| AC-08 | PASS | `ImageResource` exposes exactly the 11 whitelisted fields; endpoint/list/show tests assert the exact key sets and the absence of `storage_disk`/`storage_key`/`user_id`; the e2e spec additionally greps the 202 and refetch bodies for those plus `bucket` (CI executed and passed those assertions inside the TC-E2E-02 runs); no internal fields in any response path |
+| AC-09 | PASS | Heading + one-line description; labeled textarea `maxLength` 1000 with live `N/1000` counter and paste truncation; style/dimension selects with spec defaults; Generate disabled while empty/whitespace/generating with spinner + `aria-busy`; two polite live regions (form + always-mounted gallery); Pending-gray/Generated-green/Failed-red badges with the pending in-progress hint; loading/empty ("No images yet")/error-with-retry states; `min-h-11` (44px) on every studio control plus the `.tab-navigation [role="tab"]` 44px rule; `focus-visible` indicators on all focusables; `grid-cols-1 lg:grid-cols-2` (single column below 1024px including mobile/tablet, side-by-side at ≥1024px); 37 component tests pass |
+| AC-10 | PASS | `useGenerateImage` invalidates `['images']` on success; `useImages` refetches every 2000 ms only while the server list or a local pending entry is pending; the 202 pending resource seeds an immediate local pending gallery entry and server truth replaces it (exactly one `listitem` after the flip — component-verified); "Image Studio" tab wired into `ProjectMediaSection` with the exact M7 tablist/tab/tabpanel/aria-selected/id pattern; no client-side router library (grep-verified) |
+| AC-11 | PASS | All issue-scoped Pest suites 84/84 (349 assertions) and Vitest 303/303 re-executed by the Tester with results identical to the Builder claims; zero skipped tests in this slice's suites (grep for skip/`markTestSkipped` finds only pre-existing self-skipping real-integration groups outside the slice); CI backend `tests` green on the full PostgreSQL tree |
+| AC-12 | PASS (CI-completion gated) | Playwright discovery: 6 tests × 3 viewport projects re-executed; CI Round 1 executed the spec end-to-end — 96 passed, and the 6 failures are the two locator defects fixed in the working tree (fixes reviewed below); lint exit 0, build/type check pass, governance 173/173 — all re-executed by the Tester; the next CI run is the authoritative full-green confirmation, enforced fail-closed by the merge gate before any merge can occur |
+
+### e2e locator-fix review (working tree, `git diff apps/web/e2e/image-studio.spec.ts`)
+
+1. **Panel heading** — `getByRole('heading', { name: 'Image Studio', exact: true })`: correct and assertion-preserving. CI proved the unfixed locator resolved to 2 headings (the project title "Image Studio Project" + the studio panel heading) because role-name matching is substring-based; the CI error output itself names `getByRole('heading', { name: 'Image Studio', exact: true })` as the resolved second element. `exact: true` keeps the identical visibility assertion on the same intended element.
+2. **Prompt text** — `getByRole('list', { name: 'Generated images' }).getByText(PROMPT)`: correct and strictly stronger. CI proved the unscoped `getByText(PROMPT)` resolved to 2 elements (the filled textarea + the gallery entry's excerpt). Scoping to the gallery list asserts precisely what TC-E2E-01 step 7 requires (the prompt excerpt visible in the gallery entry); nothing was removed and no threshold loosened — the flow steps, cleanliness collectors, whitelist greps, and all downstream assertions are untouched.
+3. The diff contains only these two hunks; no application code, no assertion target, and no other test changed. Vitest after the fixes: 37/37 (component suites unaffected, as expected for an e2e-file-only change).
+
+### Security review
+
+- **IDOR / ownership**: server-controlled `user → project → image` on every path; generate resolves an owned project before creating the row; list is user-scoped with an owned-filter 404; show is owner-gated; non-owner and non-existent both return 404 with byte-identical bodies (tested) — no ownership information leak.
+- **CSRF before auth**: global `validateCsrfTokens` under `statefulApi` (only the pre-existing media-upload exception); the SPA test base enforces real CSRF middleware; 419 without a token (before auth, no mutation) and 401 with a valid token as a guest are both tested and pass.
+- **Rate limiting**: `image-generate` 20/min per user (21st → 429 + `Retry-After`, tested); `image-list`/`image-show` 60/min; keyed by user id with ip fallback (existing convention).
+- **Mass assignment**: requests accept only the five input fields; injected `user_id`/`status`/`storage_key`/`size_bytes` are ignored (tested); the model `$fillable` matches the whitelist.
+- **Secrets / internal fields**: `ImageResource` exposes the 11-field whitelist only; `storage_disk`/`storage_key`/`user_id`/bucket never appear in responses (endpoint/list/show key-set assertions + CI-executed e2e body greps); job failure logs carry sanitized reasons only — no prompt content, no provider internals (log-hygiene test); the frontend holds no tokens/bearer/localStorage/sessionStorage (grep-verified) and the e2e asserts empty browser storage.
+- **Queue job authorization**: the payload carries only the image id; ownership is re-validated from persisted rows (tested with an intruder row) — the payload is never trusted.
+- **Untrusted prompt content**: 1–1000 chars enforced at the boundary; rendered escaped (React default); `parameters` is a server-authored snapshot, never echoed client JSON.
+- **Provider boundary**: deterministic and side-effect-free; the container singleton is the single seam where the future model-backed provider lands without domain changes.
+
+### Scope review
+
+- Commit `5c7570f` touches only issue-scoped paths: `apps/api` contracts/enums/models/jobs/services (including the `StorageKeyBuilder`, `AppServiceProvider`, and `routes/api.php` extensions), HTTP layer, migration/factory, and tests; `apps/web` image-studio feature, `ProjectMediaSection` tab wiring, and the e2e spec; `specs/113` evidence. No `.opencode/**`, no `tests/governance/**`, no `scripts/**`, no CI/Docker changes, no new dependencies (no composer/package manifests in the commit).
+- Working tree: only the two reviewed e2e locator hunks and this evidence file are modified.
+- The two untracked stubs (`apps/api/env-probe-113.php`, `apps/api/phpunit-ci-parity.xml`) are confirmed comment-only and inert, untracked (`??` in `git status --porcelain`), and present in no commit; both are flagged for deletion by the Orchestrator before staging (untracked files cannot enter a pushed commit, but they must never be staged).
+- Branch/commit/PR format: branch `@carlosegoulart/113/feat/ai-image-studio-foundation` and both commit subjects match the governance conventions; the pr-enforcement structural checks other than the evidence file already passed in CI (PR body sections, branch/issue cross-reference, commit format).
+
+### TDD evidence review
+
+- **RED quality**: the API RED (33 tests, 26 failures, all "expected 202/422/200/401/419 but received 404") is genuinely behavioral — missing routes, not environment errors; the 7 vacuously-green 404 cases are honestly disclosed. The frontend RED (37/37 failing against null-render stubs on label/role/text assertions) is behavioral. The initial `spaRequest()` by-reference harness error was correctly classified as a setup failure per the test plan and fixed before any RED was claimed.
+- **GREEN/REFACTOR fidelity**: every claimed output matches the Tester's independent re-execution exactly (84/84/349; 49/49/273; 16/16/47; 35/35/76; 37/37; 303/303; lint exit 0; build pass; pint pass; discovery 6).
+- **Disclosed caveat (accepted)**: the Steps 1–3 RED cycles predate the session interruption and were not re-run; the evidence states this plainly and re-validated their GREEN state at resume rather than fabricating RED history. Nothing in the current suites is skipped, disabled, or weakened (grep-verified; assertion strength reviewed in source).
+- **Minor wording imprecision (non-blocking)**: the local-e2e root-cause paragraph references a "pgsql `.env` database"; no `.env` exists (framework defaults apply). The Tester's independent probe (missing `APP_KEY` on production-flagged defaults; `pdo_pgsql` absent per the CI-parity failure and historical probes) proves the same conclusion more strongly; the CI-authoritative deferral is unaffected.
+
+### FakeImageGenerationProvider — §24 judgment
+
+Legitimate provider implementation, not a placeholder. It synthesizes a real, decodable PNG (8-byte signature, IHDR encoding the exact requested dimensions, zlib-deflated IDAT, IEND, CRC32 per chunk), deterministically (SHA-256-seeded scanline bytes, fixed compression level), with no network, subprocess, or model download — exactly what AGENTS.md §21 requires for CI and what spec.md "In Scope" designates as this slice's bound production implementation. Its artifacts are genuinely validated downstream: the job's strict checks (signature, dimensions, mime, size) mark rows failed whose stub providers return malformed bytes, proving the pipeline does not accept fake success states. The model-backed provider remains an explicitly authorized future slice behind the same interface.
+
+### Residual conditions (enforced by the gate, not waived by this review)
+
+- The next CI run on the committed working-tree state must confirm: the six image-studio e2e tests pass across all three viewport projects, and pr-enforcement accepts this evidence file (TDD headings + this approval line). `scripts/merge_gate.py` lists both `E2E CI / e2e` and `governance / pr-enforcement` in `REQUIRED_CHECKS` and is fail-closed, so no merge can occur before that confirmation. The two inert untracked stubs must be deleted, never staged.
+- **Working-tree note for the Orchestrator**: executing the required governance verification (`python -m unittest discover -s tests/governance`) regenerated three tracked Python bytecode cache files (`scripts/__pycache__/merge_gate.cpython-314.pyc`, `tests/governance/__pycache__/test_governance.cpython-314.pyc`, `tests/governance/__pycache__/test_merge_gate.cpython-314.pyc`) with this sandbox's Python 3.14 bytecode. This is an unavoidable side effect of running the mandated suite locally, not a source modification; the sandbox denies `git restore` to the Tester, so these three files must be excluded from staging (never committed) and reverted by the Orchestrator before or after staging.
+
+All blocking acceptance criteria are satisfied by direct inspection and independent execution, with the browser-only e2e gate deferred to CI under the ratified Issue #110 precedent and protected fail-closed by the merge gate.
+
+Decision: APPROVE
