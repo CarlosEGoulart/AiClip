@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ClipReviewController;
+use App\Http\Controllers\Api\V1\ImageController;
 use App\Http\Controllers\Api\V1\MediaAssetController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use Illuminate\Support\Facades\DB;
@@ -62,6 +63,15 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:media-upload');
         Route::get('/projects/{project}/media', [MediaAssetController::class, 'index']);
         Route::delete('/media/{media}', [MediaAssetController::class, 'destroy']);
+
+        // Image Studio routes (M8 Slice 1): generation enqueues a queue job;
+        // list/show are user-scoped reads.
+        Route::post('/images/generate', [ImageController::class, 'generate'])
+            ->middleware('throttle:image-generate');
+        Route::get('/images', [ImageController::class, 'index'])
+            ->middleware('throttle:image-list');
+        Route::get('/images/{image}', [ImageController::class, 'show'])
+            ->middleware('throttle:image-show');
     });
 
     // Clip review video playback is reachable either through a time-limited

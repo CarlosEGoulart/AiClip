@@ -56,4 +56,17 @@ final class StorageKeyBuilder
             Str::uuid()->toString(),
         );
     }
+
+    public static function imageGeneration(int $projectId): string
+    {
+        if ($projectId < 1) {
+            throw new InvalidArgumentException('Invalid image storage identity.');
+        }
+
+        return sprintf(
+            'projects/%d/images/%s.png',
+            $projectId,
+            Str::uuid()->toString(),
+        );
+    }
 }
