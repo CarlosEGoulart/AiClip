@@ -9,6 +9,8 @@
   --accent-border: rgba(37, 99, 235, 0.35);
   --error: #dc2626;
   --error-bg: rgba(220, 38, 38, 0.08);
+  --success: #15803d;
+  --success-bg: rgba(21, 128, 61, 0.1);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.08) 0 10px 15px -3px, rgba(0, 0, 0, 0.04) 0 4px 6px -2px;
@@ -40,6 +42,8 @@
     --accent-border: rgba(96, 165, 250, 0.3);
     --error: #f87171;
     --error-bg: rgba(248, 113, 113, 0.12);
+    --success: #4ade80;
+    --success-bg: rgba(74, 222, 128, 0.12);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.35) 0 10px 15px -3px, rgba(0, 0, 0, 0.2) 0 4px 6px -2px;
@@ -774,4 +778,370 @@ code {
   font-weight: 600;
   color: var(--text-h);
   margin: 0 0 16px;
+}
+
+/* Image Studio (issue #113) */
+
+.image-studio {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.image-studio-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* The panel heading is styled by the global h2 rule. */
+.image-studio-intro {
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* Form column left, gallery column right; a single column with the
+   form above the gallery below 1024px (the responsive contract
+   e2e/image-studio.spec.ts measures through gridTemplateColumns). */
+.image-studio-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .image-studio-layout {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.image-studio-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.image-studio-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.image-studio-field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-h);
+  letter-spacing: 0.01em;
+}
+
+/* Shared style for the prompt textarea and both preset selects:
+   44px touch target, project input look, visible focus ring. */
+.image-studio-field-control {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+  font-size: 15px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  touch-action: manipulation;
+}
+
+textarea.image-studio-field-control {
+  resize: vertical;
+}
+
+.image-studio-field-control:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.image-studio-field-control:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Style preset and dimensions sit side by side from 640px up. */
+.image-studio-field-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 640px) {
+  .image-studio-field-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.image-studio-prompt-counter {
+  text-align: right;
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.image-studio-submit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+  margin-top: 4px;
+}
+
+.image-studio-submit-button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.image-studio-submit-button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.image-studio-submit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.image-studio-submit-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.image-studio-submit-spinner {
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: image-studio-spin 0.8s linear infinite;
+}
+
+@keyframes image-studio-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.image-studio-form-live {
+  min-height: 24px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--error);
+}
+
+/* Gallery */
+
+.image-gallery-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.image-gallery-card {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.image-gallery-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.image-gallery-card-prompt {
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-h);
+  overflow-wrap: anywhere;
+}
+
+.image-gallery-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.image-gallery-card-meta span {
+  font-variant-numeric: tabular-nums;
+}
+
+.image-gallery-card-hint {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* Status badge. The three status class names below are the stable
+   hooks e2e/image-studio.spec.ts asserts on (bg-gray-100 pending,
+   bg-green-100 generated, bg-red-100 failed); they are real classes
+   defined here and colored with the project palette. */
+.image-gallery-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.bg-gray-100 {
+  background: var(--code-bg);
+  color: var(--text);
+}
+
+.bg-green-100 {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.bg-red-100 {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+/* Loading / empty / error states */
+
+.image-gallery-loading {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.image-gallery-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  animation: image-studio-pulse 1.6s ease-in-out infinite;
+}
+
+.image-gallery-skeleton-line {
+  border-radius: 4px;
+  background: var(--code-bg);
+}
+
+.image-gallery-skeleton-line--title {
+  height: 20px;
+  width: 66.67%;
+}
+
+.image-gallery-skeleton-line--meta {
+  height: 16px;
+  width: 33.33%;
+}
+
+@keyframes image-studio-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.image-gallery-state {
+  padding: 48px 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  text-align: center;
+}
+
+.image-gallery-state-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.image-gallery-state-subtitle {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.image-gallery-retry-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  box-sizing: border-box;
+  margin-top: 16px;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.image-gallery-retry-button:hover {
+  opacity: 0.9;
+}
+
+.image-gallery-retry-button:active {
+  transform: scale(0.985);
+}
+
+.image-gallery-retry-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Visually hidden polite live region: announced, never shown. */
+.image-gallery-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

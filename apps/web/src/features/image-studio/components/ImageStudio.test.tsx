@@ -235,14 +235,20 @@ describe('ImageStudio', () => {
   it('keeps the composed controls programmatically labeled with touch-target sizing', () => {
     renderStudio();
 
-    const controls = [
+    // The field class index.css styles with min-height: 44px and a
+    // :focus border + ring; the button class with min-height: 44px and
+    // a :focus-visible outline.
+    const fields = [
       screen.getByLabelText('Prompt'),
       screen.getByLabelText('Style preset'),
       screen.getByLabelText('Dimensions'),
-      screen.getByRole('button', { name: 'Generate' }),
     ];
-    for (const control of controls) {
-      expect(control).toHaveClass('min-h-11');
+    for (const field of fields) {
+      expect(field).toHaveClass('image-studio-field-control');
     }
+
+    expect(screen.getByRole('button', { name: 'Generate' })).toHaveClass(
+      'image-studio-submit-button',
+    );
   });
 });

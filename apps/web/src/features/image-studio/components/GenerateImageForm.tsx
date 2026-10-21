@@ -89,26 +89,15 @@ export const GenerateImageForm: React.FC<GenerateImageFormProps> = ({
 
   const canGenerate = prompt.trim() !== '' && !generating;
 
-  const selectClassName =
-    'mt-1 block w-full min-h-11 rounded-lg border border-gray-300 dark:border-gray-600 ' +
-    'bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white ' +
-    'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ' +
-    'focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900';
-
   return (
     <form
       onSubmit={handleSubmit}
       aria-label="Generate image"
-      className="space-y-4 bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm"
+      className="image-studio-form"
       noValidate
     >
-      <div>
-        <label
-          htmlFor="image-prompt"
-          className="block text-sm font-medium text-gray-900 dark:text-white"
-        >
-          Prompt
-        </label>
+      <div className="image-studio-field">
+        <label htmlFor="image-prompt">Prompt</label>
         <textarea
           id="image-prompt"
           value={prompt}
@@ -117,34 +106,21 @@ export const GenerateImageForm: React.FC<GenerateImageFormProps> = ({
           rows={4}
           aria-describedby="image-prompt-counter image-form-live"
           placeholder="Describe the image you want to create"
-          className={
-            'mt-1 block w-full min-h-11 rounded-lg border border-gray-300 dark:border-gray-600 ' +
-            'bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-white placeholder-gray-400 ' +
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ' +
-            'focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900'
-          }
+          className="image-studio-field-control"
         />
-        <p
-          id="image-prompt-counter"
-          className="mt-1 text-right text-xs text-gray-500 dark:text-gray-400 tabular-nums"
-        >
+        <p id="image-prompt-counter" className="image-studio-prompt-counter">
           {prompt.length}/{PROMPT_MAX_LENGTH}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label
-            htmlFor="image-style-preset"
-            className="block text-sm font-medium text-gray-900 dark:text-white"
-          >
-            Style preset
-          </label>
+      <div className="image-studio-field-row">
+        <div className="image-studio-field">
+          <label htmlFor="image-style-preset">Style preset</label>
           <select
             id="image-style-preset"
             value={stylePreset}
             onChange={(event) => setStylePreset(event.target.value)}
-            className={selectClassName}
+            className="image-studio-field-control"
           >
             {STYLE_PRESETS.map((preset) => (
               <option key={preset.id} value={preset.id}>
@@ -154,18 +130,13 @@ export const GenerateImageForm: React.FC<GenerateImageFormProps> = ({
           </select>
         </div>
 
-        <div>
-          <label
-            htmlFor="image-dimensions"
-            className="block text-sm font-medium text-gray-900 dark:text-white"
-          >
-            Dimensions
-          </label>
+        <div className="image-studio-field">
+          <label htmlFor="image-dimensions">Dimensions</label>
           <select
             id="image-dimensions"
             value={dimensionPresetId}
             onChange={(event) => setDimensionPresetId(event.target.value)}
-            className={selectClassName}
+            className="image-studio-field-control"
           >
             {DIMENSION_PRESETS.map((preset) => (
               <option key={preset.id} value={preset.id}>
@@ -180,28 +151,15 @@ export const GenerateImageForm: React.FC<GenerateImageFormProps> = ({
         type="submit"
         disabled={!canGenerate}
         aria-busy={generating}
-        className={
-          'w-full min-h-11 inline-flex items-center justify-center gap-2 rounded-lg ' +
-          'bg-blue-600 px-5 py-2.5 font-medium text-white transition-colors ' +
-          'hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 ' +
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ' +
-          'focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900'
-        }
+        className="image-studio-submit-button"
       >
         {generating && (
-          <span
-            aria-hidden="true"
-            className="animate-spin inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent"
-          />
+          <span aria-hidden="true" className="image-studio-submit-spinner" />
         )}
         Generate
       </button>
 
-      <div
-        id="image-form-live"
-        aria-live="polite"
-        className="min-h-6 text-sm text-red-600 dark:text-red-400"
-      >
+      <div id="image-form-live" aria-live="polite" className="image-studio-form-live">
         {visibleError}
       </div>
     </form>

@@ -8,10 +8,15 @@ interface ImageGalleryProps {
   onRetry: () => void;
 }
 
+/*
+ * The status class names keep the exact tokens e2e/image-studio.spec.ts
+ * asserts on (bg-gray-100 / bg-green-100 / bg-red-100); they are real
+ * classes defined in index.css alongside the shared badge base class.
+ */
 const statusBadgeClasses: Record<ImageStatus, string> = {
-  pending: 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300',
-  generated: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
-  failed: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
+  pending: 'image-gallery-badge bg-gray-100',
+  generated: 'image-gallery-badge bg-green-100',
+  failed: 'image-gallery-badge bg-red-100',
 };
 
 const statusLabels: Record<ImageStatus, string> = {
@@ -62,31 +67,23 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
 
   if (loading) {
     content = (
-      <div role="status" aria-label="Loading images" className="space-y-3">
+      <div role="status" aria-label="Loading images" className="image-gallery-loading">
         {[...Array(3)].map((_, index) => (
-          <div
-            key={index}
-            className="bg-white dark:bg-gray-800 rounded-xl p-5 space-y-3 animate-pulse"
-          >
-            <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-2/3" />
-            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3" />
+          <div key={index} className="image-gallery-skeleton">
+            <div className="image-gallery-skeleton-line image-gallery-skeleton-line--title" />
+            <div className="image-gallery-skeleton-line image-gallery-skeleton-line--meta" />
           </div>
         ))}
       </div>
     );
   } else if (error) {
     content = (
-      <div className="py-12 text-center bg-white dark:bg-gray-800 rounded-xl">
-        <p className="text-red-600 dark:text-red-400">{error}</p>
+      <div className="image-gallery-state">
+        <p className="error-message">{error}</p>
         <button
           type="button"
           onClick={onRetry}
-          className={
-            'mt-4 inline-flex items-center justify-center min-h-11 px-5 rounded-lg ' +
-            'bg-blue-600 font-medium text-white transition-colors hover:bg-blue-700 ' +
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ' +
-            'focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900'
-          }
+          className="image-gallery-retry-button"
         >
           Retry loading images
         </button>
@@ -94,43 +91,37 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
     );
   } else if (images.length === 0) {
     content = (
-      <div className="py-12 text-center bg-white dark:bg-gray-800 rounded-xl" role="status">
-        <p className="text-lg text-gray-600 dark:text-gray-400">No images yet</p>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+      <div className="image-gallery-state" role="status">
+        <p className="image-gallery-state-title">No images yet</p>
+        <p className="image-gallery-state-subtitle">
           Generate your first image with the form.
         </p>
       </div>
     );
   } else {
     content = (
-      <div role="list" aria-label="Generated images" className="space-y-3">
+      <div role="list" aria-label="Generated images" className="image-gallery-list">
         {images.map((image) => (
-          <article
-            key={image.id}
-            role="listitem"
-            className="bg-white dark:bg-gray-800 rounded-xl p-5"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="min-w-0 text-sm font-medium text-gray-900 dark:text-white break-words">
-                {excerpt(image.prompt)}
-              </p>
+          <article key={image.id} role="listitem" className="image-gallery-card">
+            <div className="image-gallery-card-head">
+              <p className="image-gallery-card-prompt">{excerpt(image.prompt)}</p>
               <span
                 aria-label={`Status: ${statusLabels[image.status]}`}
-                className={`shrink-0 rounded-full px-2.5 py-1 text-sm font-medium ${statusBadgeClasses[image.status]}`}
+                className={statusBadgeClasses[image.status]}
               >
                 {statusLabels[image.status]}
               </span>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-500 dark:text-gray-400">
-              <span className="tabular-nums">
+            <div className="image-gallery-card-meta">
+              <span>
                 {image.width} × {image.height}
               </span>
-              <span className="tabular-nums">{formatBytes(image.size_bytes)}</span>
+              <span>{formatBytes(image.size_bytes)}</span>
             </div>
 
             {image.status === 'pending' && (
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Generating…</p>
+              <p className="image-gallery-card-hint">Generating…</p>
             )}
           </article>
         ))}
@@ -142,7 +133,7 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
   // screen readers reliably announce pending-status transitions.
   return (
     <div>
-      <div aria-live="polite" className="sr-only">
+      <div aria-live="polite" className="image-gallery-live">
         {liveAnnouncement}
       </div>
       {content}

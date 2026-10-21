@@ -69,14 +69,14 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ projectId }) => {
 
   return (
     <section aria-label="Image Studio" className="image-studio">
-      <header className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Image Studio</h2>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <header className="image-studio-header">
+        <h2>Image Studio</h2>
+        <p className="image-studio-intro">
           Generate images from text prompts and follow their progress in this project.
         </p>
       </header>
 
-      <div className="image-studio-layout grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <div className="image-studio-layout">
         <GenerateImageForm
           onGenerate={handleGenerate}
           generating={generateMutation.isPending}

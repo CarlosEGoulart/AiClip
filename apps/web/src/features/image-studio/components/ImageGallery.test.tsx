@@ -131,8 +131,9 @@ describe('ImageGallery', () => {
   it('keeps the retry control touch-target sized with a visible focus indicator', () => {
     renderGallery({ error: 'Request failed' });
 
+    // index.css styles this class with min-height: 44px and a
+    // :focus-visible outline.
     const retry = screen.getByRole('button', { name: 'Retry loading images' });
-    expect(retry).toHaveClass('min-h-11');
-    expect(retry.className).toMatch(/focus-visible:ring-2/);
+    expect(retry).toHaveClass('image-gallery-retry-button');
   });
 });

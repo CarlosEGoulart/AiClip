@@ -112,7 +112,7 @@ describe('GenerateImageForm', () => {
     const button = screen.getByRole('button', { name: 'Generate' });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute('aria-busy', 'true');
-    expect(button.querySelector('.animate-spin')).not.toBeNull();
+    expect(button.querySelector('.image-studio-submit-spinner')).not.toBeNull();
 
     await userEvent.click(button);
     expect(onGenerate).not.toHaveBeenCalled();
@@ -226,16 +226,21 @@ describe('GenerateImageForm', () => {
   it('gives every interactive control a 44px minimum height class and a visible focus indicator', () => {
     renderForm();
 
-    const controls = [
+    // The field class index.css styles with min-height: 44px and a
+    // :focus border + ring; the button class with min-height: 44px and
+    // a :focus-visible outline.
+    const fields = [
       screen.getByLabelText('Prompt'),
       screen.getByLabelText('Style preset'),
       screen.getByLabelText('Dimensions'),
-      screen.getByRole('button', { name: 'Generate' }),
     ];
 
-    for (const control of controls) {
-      expect(control).toHaveClass('min-h-11');
-      expect(control.className).toMatch(/focus-visible:ring-2/);
+    for (const field of fields) {
+      expect(field).toHaveClass('image-studio-field-control');
     }
+
+    expect(screen.getByRole('button', { name: 'Generate' })).toHaveClass(
+      'image-studio-submit-button',
+    );
   });
 });
