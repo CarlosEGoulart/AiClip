@@ -408,7 +408,12 @@ test.describe('Image Studio (embedded)', () => {
     }
 
     // Keyboard navigation reaches the studio controls in logical order
-    // with a visible focus indicator (outline or focus ring).
+    // with a visible focus indicator (outline or focus ring). The click
+    // below is only a panel/focus anchor; every target's focus state is
+    // recorded exclusively after keyboard interaction (the
+    // clip-review.spec.ts discipline), so the measured indicator is the
+    // :focus-visible state — a mouse click focuses the tab without
+    // engaging :focus-visible in Chromium.
     await page.getByRole('tab', { name: 'Image Studio' }).click();
     const focusVisible: Record<string, boolean> = {};
     const recordFocusedTarget = () =>
@@ -426,9 +431,15 @@ test.describe('Image Studio (embedded)', () => {
         };
       }, IMAGE_STUDIO_FOCUS_TARGETS);
 
+    // Re-establish the Image Studio tab's focus through the keyboard
+    // (Shift+Tab to the previous tab, Tab back onto this one) so its
+    // recorded state reflects keyboard focus, not pointer focus.
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
     let hit = await recordFocusedTarget();
     if (hit) focusVisible[hit.key] = hit.visible;
 
+    // Walk forward through prompt -> style -> dimensions -> generate.
     for (let i = 0; i < 4; i++) {
       await page.keyboard.press('Tab');
       hit = await recordFocusedTarget();
