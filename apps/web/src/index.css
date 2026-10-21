@@ -819,6 +819,7 @@ code {
 
 .image-studio-form {
   width: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 16px;
