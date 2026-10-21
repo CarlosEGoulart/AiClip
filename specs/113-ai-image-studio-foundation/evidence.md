@@ -159,6 +159,66 @@ npm test -- --run src/features/image-studio
 
 The Vitest re-run confirms the locator fixes do not affect the component suites (they are e2e-file-only changes). Local e2e execution remains impossible in this sandbox (missing `pdo_pgsql` — see the Playwright E2E section above); the authoritative validation of these fixes is the next CI e2e run.
 
+### CI Round 2 — real CSS for image-studio (2026-10-20)
+
+CI ran the full pipeline on commit `a8d3641` (run `39452428016`):
+
+| CI check | Result |
+|---|---|
+| `governance` job (governance validator suite) | **PASS** |
+| Frontend tests (Vitest) | **PASS** |
+| Backend tests (full tree on CI PostgreSQL) | **PASS** |
+| `pr-enforcement` | **PASS** (the restructured `### RED`/`### GREEN`/`### REFACTOR` headings above were accepted) |
+| e2e (`npm run test:e2e`) | **99 passed / 3 failed** — all 3 failures are TC-E2E-02 |
+
+**e2e: 3 failures, all real-geometry styling defects in this slice — TC-E2E-01 now fully passes.** After the Round 1 locator fixes, all six image-studio tests ran to their assertions. TC-E2E-01 (all three viewports) passed the complete 202 → refetch → generated convergence. TC-E2E-02 failed on measured geometry: at **mobile and tablet** the style-preset touch target was **19px < 44px**, and at **desktop** the layout computed **`gridTemplateColumns` = 1 instead of 2**.
+
+**Root cause (defect in this slice's frontend, not in the spec).** The image-studio components were written with Tailwind utility classes (`min-h-11`, `grid-cols-1 lg:grid-cols-2`, `focus-visible:ring-2`, …), but this project has no Tailwind config or import — `apps/web/src/index.css` is hand-written plain CSS, and the M7 clip-review reference components use semantic class names styled there. The utility tokens were therefore inert: the layout div rendered as plain `display: block` (one column at every viewport) and the preset selects fell back to the browser-default 19px height. TC-E2E-01 passed because it is functional; TC-E2E-02 measures real rendered geometry, which is exactly what it caught. The e2e spec was correct and remains untouched.
+
+**The fix (styling-only, no behavior change).** A semantic **"Image Studio (issue #113)"** block was added to `index.css` (~lines 783–1150): `.image-studio-layout` as `display: grid; grid-template-columns: 1fr` with `@media (min-width: 1024px) { 1fr 1fr }`; `.image-studio-field-control`, `.image-studio-submit-button`, and `.image-gallery-retry-button` with `min-height: 44px` and the project's input/button/focus patterns (`:focus` border + ring on fields, `:focus-visible` outline on buttons); badge classes kept as real classes the e2e asserts on (`.image-gallery-badge` + `.bg-gray-100`/`.bg-green-100`/`.bg-red-100` defined in the block, with `--success`/`--success-bg` added to `:root` and dark mode); skeleton, state, and visually-hidden live-region styles. The three components were refactored from the inert utilities to these semantic classes — ids, aria attributes, roles, and texts unchanged, no logic touched. The component tests' assertions on inert utility tokens were updated to assert the real classes instead — same intent (44px touch targets, visible focus), now verified through classes that actually carry the styles: `GenerateImageForm.test.tsx` (fields → `image-studio-field-control`, Generate → `image-studio-submit-button`, spinner → `.image-studio-submit-spinner`), `ImageStudio.test.tsx` (same pattern for the composed controls), `ImageGallery.test.tsx` (retry → `image-gallery-retry-button`; the inert `focus-visible:ring-2` regex dropped — the focus indicator is provided by the stylesheet).
+
+**Post-fix local re-verification (this session, 2026-10-20):**
+
+```
+npm test
+→ Test Files  20 passed (20)
+   Tests       303 passed (303)
+
+npx vitest run src/features/image-studio
+→ Test Files  3 passed (3)
+   Tests       37 passed (37)
+
+npm run lint (oxlint)
+→ exit 0 — warnings only, all pre-existing (clip-review + the two
+  set-state-in-effect warnings already recorded under REFACTOR)
+
+npm run build (tsc -b && vite build)
+→ ✓ 93 modules transformed
+  dist/assets/index-*.css  15.88 kB │ gzip:  3.26 kB
+  dist/assets/index-*.js   314.46 kB │ gzip: 92.56 kB
+
+npx playwright test e2e/image-studio.spec.ts --list
+→ Total: 6 tests in 1 file
+  ([mobile|tablet|desktop] × {TC-E2E-01 flow, TC-E2E-02 responsive})
+```
+
+CSS-hook confirmation (`apps/web/src/index.css`):
+
+```
+grep '@media (min-width: 1024px)' + '.image-studio-layout' (image-studio block)
+→ 807:  .image-studio-layout {
+→ 814:  @media (min-width: 1024px) {
+→ 815:    .image-studio-layout { grid-template-columns: 1fr 1fr; }
+
+grep '.image-gallery-retry-button:focus-visible'
+→ 1133: .image-gallery-retry-button:focus-visible { (outline: 2px solid var(--accent)) }
+
+(min-height: 44px confirmed at .image-studio-field-control:848,
+ .image-studio-submit-button:902, .image-gallery-retry-button:1110)
+```
+
+A whole-feature scan for the inert utility tokens (`min-h-11`, `grid-cols-`, `lg:`, `dark:`, `text-2xl`, `animate-spin`, `focus-visible:ring`, `rounded-lg`, plus a broader utility sweep) now finds only the intentionally kept badge classes `bg-gray-100`/`bg-green-100`/`bg-red-100` (real classes defined in the block, asserted by the e2e). Local e2e execution remains impossible in this sandbox (missing `pdo_pgsql`, unchanged from Round 1); the authoritative validation of this fix is the next CI e2e run.
+
 ### Full-suite verification (plan §7)
 
 | Command | Result |
@@ -290,5 +350,96 @@ Legitimate provider implementation, not a placeholder. It synthesizes a real, de
 - **Working-tree note for the Orchestrator**: executing the required governance verification (`python -m unittest discover -s tests/governance`) regenerated three tracked Python bytecode cache files (`scripts/__pycache__/merge_gate.cpython-314.pyc`, `tests/governance/__pycache__/test_governance.cpython-314.pyc`, `tests/governance/__pycache__/test_merge_gate.cpython-314.pyc`) with this sandbox's Python 3.14 bytecode. This is an unavoidable side effect of running the mandated suite locally, not a source modification; the sandbox denies `git restore` to the Tester, so these three files must be excluded from staging (never committed) and reverted by the Orchestrator before or after staging.
 
 All blocking acceptance criteria are satisfied by direct inspection and independent execution, with the browser-only e2e gate deferred to CI under the ratified Issue #110 precedent and protected fail-closed by the merge gate.
+
+Verdict recorded: approval of commit 5c7570f's functional scope — superseded by the re-review below after CI Round 2 exposed real-geometry styling defects that this approval had not caught.
+
+---
+
+## Independent Tester Re-Review — CI Round 2 real-CSS fix
+
+Re-review performed 2026-10-21 by the Tester agent on branch `@carlosegoulart/113/feat/ai-image-studio-foundation`, against the working-tree fix for the CI Round 2 e2e failures (CI run `39452428016` on commit `a8d3641`, the commit that carried the round-1 approval). Every command and inspection below was executed directly by the Tester in the sandbox; outputs are real, not quoted from Builder claims.
+
+### What the round-1 review missed, and why
+
+The round-1 review (the section above) verified that the studio components carried `min-h-11`, `grid grid-cols-1 lg:grid-cols-2`, and `focus-visible:ring-2`, and recorded those tokens as evidence for AC-09 and the touch-target/responsive checks (see its "Sandbox N/A items", point 5). That was a check of **class-name presence in JSX, not of styling effect**: this project has no Tailwind — `apps/web/src/index.css` is hand-written plain CSS, with no `tailwind*` config file, no `tailwindcss` dependency, and no `@import`/`@source`/`@tailwind` directive anywhere — so those utility tokens were inert strings with zero effect. The unit layer compounded the blind spot: the component tests asserted on the same inert tokens (`toHaveClass('min-h-11')`), so no local suite could catch it. The clip-review reference components the feature was modeled on use semantic class names that *are* defined in `index.css`; the round-1 review should have resolved every geometry-bearing class of the new components against the stylesheet exactly as it did for `.tab-navigation [role="tab"]`. It did not, and it approved a state in which TC-E2E-02's ≥44px and 2-column assertions had no real styling basis. CI then measured the real geometry and failed — independently re-confirmed by the Tester from the run's failed-job log (`gh run view 39452428016 --log-failed`: **99 passed / 3 failed**, all three failures TC-E2E-02; `[mobile]`/`[tablet]` `style-preset touch-target height` expected ≥44 received **19** at spec line 407, `[desktop]` `layout grid column count` expected **2** received **1** at line 366; TC-E2E-01 passed at every viewport, so the functional flow is proven on the CI stack and the defect was styling-only). The e2e spec was correct and is untouched by the fix.
+
+### 1. Stylesheet reality (re-verified from source, not from the Builder report)
+
+Read directly in `apps/web/src/index.css` ("Image Studio (issue #113)" block, lines 783–1147). `git diff HEAD -- apps/web/src/index.css` is **370 insertions, 0 deletions** — purely additive; no pre-existing rule is touched.
+
+- `.image-studio-layout` (807–812): `display: grid; grid-template-columns: 1fr; gap: 32px; align-items: start`, plus `@media (min-width: 1024px) { .image-studio-layout { grid-template-columns: 1fr 1fr } }` (814–818) — the same 1-column-below / 2-columns-at-1024 mechanism as the CI-proven `.review-layout` (clip-review TC-E2E-03 responsive passed at all three viewports in the same CI run).
+- `.image-studio-field-control` (846–859): `min-height: 44px` (848), `box-sizing: border-box`, project input look via `var(--border)`/`var(--bg)`; `:focus` (865–869) sets an accent border + 3px box-shadow ring; `:disabled` (871–874).
+- `.image-studio-submit-button` (896–915): `min-height: 44px` (902); `:focus-visible` 2px accent outline (930–933); hover/active/disabled states.
+- `.image-gallery-retry-button` (1106–1123): `min-height: 44px` (1110); `:focus-visible` outline (1133–1136).
+- Badge classes are real definitions, not utilities: `.bg-gray-100` (1024), `.bg-green-100` (1029), `.bg-red-100` (1034), colored with the project palette; the required `--success`/`--success-bg` variables are added to `:root` (12–13) and the dark-mode block (45–46), and every variable the block consumes (`--border`, `--bg`, `--accent`, `--accent-bg`, `--error`, `--error-bg`, `--code-bg`) exists in both.
+- Tailwind absence proven three ways: glob `tailwind*` under `apps/web` → no files; `package.json` contains no `tailwindcss`/PostCSS tooling; grep `@import|@source|@tailwind` in `index.css` → no matches. `index.css` (imported by `main.tsx:3`) is therefore the only styling mechanism, and the new semantic classes are the sole carriers of the asserted geometry.
+- The rules actually ship: the `npm run build` output `dist/assets/index-ENR2KrwU.css` contains the block (CSS-only tokens `image-studio-spin`/`image-studio-pulse`, which exist nowhere in JSX, verified present in the built bundle).
+
+### 2. e2e selector cross-check (every selector resolves to real backing)
+
+| e2e selector (`e2e/image-studio.spec.ts`) | Component backing | Stylesheet backing |
+|---|---|---|
+| `.image-studio-layout` (343) | `ImageStudio.tsx:79` — wraps exactly the two element children the spec destructures as `[form, gallery]` | grid `1fr`, `@media 1024px` → `1fr 1fr` |
+| `.image-studio header` (377) | `ImageStudio.tsx:72` `header.image-studio-header` inside `section.image-studio` | `.image-studio-header` + global `h2` rule |
+| `#image-prompt` (57, 379, 399) | `GenerateImageForm.tsx:102` textarea, `className="image-studio-field-control"` | `min-height: 44px` + `:focus` ring |
+| `#image-style-preset` (58, 380, 400) | `GenerateImageForm.tsx:120` select, same class | same |
+| `#image-dimensions` (59, 381, 401) | `GenerateImageForm.tsx:136` select, same class | same |
+| `.image-studio button[type="submit"]` (60, 381, 402) | `GenerateImageForm.tsx:150–160` `type="submit"`, `className="image-studio-submit-button"` | `min-height: 44px` + `:focus-visible` outline |
+| `.image-studio [role="list"]` (382) | `ImageGallery.tsx:103` `role="list"` `aria-label="Generated images"`, `className="image-gallery-list"` | `.image-gallery-list` |
+| `#image-studio-tab` (56, 398) | `ProjectMediaSection.tsx:76` `role="tab"` | `.tab-navigation [role="tab"]` `min-height: 44px` (581–595) + `:focus-visible` (601–604) — pre-existing, unchanged |
+| `button[aria-label="Back to projects"]` (403) | `ProjectMediaSection.tsx:36` `className="back-button"` | `min-height: 44px` (543–556) — pre-existing |
+| badges `bg-gray-100`/`bg-green-100` (256, 275) | `ImageGallery.tsx:16–20` `statusBadgeClasses` — tokens preserved exactly | real classes (1024 / 1029) |
+
+The focus-visibility check (spec 412–443) is satisfied per mechanism: fields are styled on `:focus` (box-shadow — satisfies its `boxShadow !== 'none'` branch), the Generate button and the tab on `:focus-visible` (outline — satisfies its `outlineWidth > 0 && outlineStyle !== 'none'` branch).
+
+### 3. Styling-only confirmation (vs HEAD = `a8d3641`)
+
+- `git diff HEAD --stat`: exactly 8 files — the 3 components, their 3 test files, `index.css`, and this evidence file. `git diff HEAD -- apps/web/e2e/image-studio.spec.ts` is **empty** and the spec is absent from `git status` — the spec was correct and is untouched.
+- The three component diffs read line by line: **only `className` strings change** (plus removal of the style-only `selectClassName` constant in `GenerateImageForm` and one explanatory comment in `ImageGallery`). Every id, `htmlFor`, `aria-*` attribute, role, visible text, placeholder, `rows`/`maxLength`, disabled logic, and all behavior code is identical to `a8d3641`; the badge tokens `bg-gray-100`/`bg-green-100`/`bg-red-100` are preserved (inert `dark:` variants dropped).
+- The component test diffs update assertions from the inert tokens to the real classes (`image-studio-field-control`, `image-studio-submit-button`, `.image-studio-submit-spinner`, `image-gallery-retry-button`) — same intent (44px touch targets, visible focus), now asserted through classes that actually carry the styles.
+- A whole-feature grep for every inert-token family the round-1 components used (`min-h-`, `grid-cols`, `lg:`/`sm:`/`dark:`, `text-2xl`, `animate-spin`, `focus-visible:ring`, `rounded-`, `px-`/`py-`, `space-y`, `bg-white`/`bg-blue`, `sr-only`, `tabular`, `shrink-`) finds **zero matches** — only the three badge class names remain, and they are real classes now.
+
+### 4. Local re-execution (real outputs, 2026-10-21)
+
+```
+npm test (apps/web)
+→ Test Files  20 passed (20)
+   Tests       303 passed (303)
+
+npx vitest run src/features/image-studio (apps/web)
+→ Test Files  3 passed (3)
+   Tests       37 passed (37)
+
+npm run lint (apps/web)
+→ exit 0 — warnings only; the same advisory set as the approved baseline
+  (clip-review warnings plus the two set-state-in-effect warnings on
+  unchanged image-studio lines; none reference the new classes)
+
+npm run build (apps/web)
+→ ✓ 93 modules transformed
+  dist/assets/index-ENR2KrwU.css  15.88 kB │ gzip:  3.26 kB
+  dist/assets/index-oFSJoOBh.js   314.46 kB │ gzip:  92.56 kB
+
+npx playwright test e2e/image-studio.spec.ts --list (apps/web)
+→ Total: 6 tests in 1 file
+  [mobile|tablet|desktop] × {TC-E2E-01 flow, TC-E2E-02 responsive}
+```
+
+CI state independently corroborated: `gh pr checks 114` (for `a8d3641`) — e2e **FAIL** (run 39452428016); governance, pr-enforcement, test (frontend), tests (backend) **PASS**; the failed-job log reproduces the three TC-E2E-02 failures and the 99-passed total quoted above.
+
+Sandbox limits, honestly scoped: the full e2e remains impossible locally (missing `pdo_pgsql` plus no `apps/api/.env` — the ratified Issue #110 precedent; CI is the authoritative e2e venue). The Tester additionally attempted a real-browser static-DOM geometry measurement against the built CSS outside the repo tree; the sandbox permission system denied every avenue (scratch-file creation, `node -e`, raw `php`/`sed` probes), so **no geometry numbers are claimed from this sandbox** — the measured-geometry verdict is deliberately left to CI. The governance python suite was not re-run this round, for three reviewed reasons: running it regenerates tracked `__pycache__` bytecode (the round-1 working-tree note), this round's diff touches no governance-owned file, and CI ran governance + pr-enforcement green on `a8d3641`; the evidence-file rules were instead verified directly against `tests/governance/validators.py` and `scripts/merge_gate.py` (exactly one `Decision:` line required; the `### RED`/`### GREEN`/`### REFACTOR` headings are preserved by this append-only edit).
+
+### 5. Scope re-check
+
+Working tree vs `a8d3641`: only `apps/web/src/**` (`index.css` + the image-studio feature) and this evidence file. The two untracked stubs (`apps/api/env-probe-113.php`, `apps/api/phpunit-ci-parity.xml`) are re-confirmed comment-only and inert, remain untracked/unstaged, and are still flagged for Orchestrator deletion. No `.opencode/**`, `tests/governance/**`, CI, Docker, or dependency changes; no new packages.
+
+### Non-blocking observations
+
+- `ProjectMediaSection.tsx` tab buttons (including the Image Studio tab added by this issue) still carry inert color utility strings (`border-blue-600`, `dark:*`, …). The visible selected state is carried by the real `.tab-navigation [role="tab"][aria-selected="true"]` rule and no e2e assertion depends on those tokens; recorded for future Planner consideration, not a defect against this issue's acceptance criteria.
+- The corrected component tests assert class names rather than computed geometry; genuine ≥44px measurement lives in the e2e layer. That is the established project split and is acceptable because CI exercises the geometry fail-closed.
+
+### Verdict
+
+No blocking defect. The previously unbacked geometry assertions now have a verified real stylesheet basis at three levels — source CSS, built production bundle, and component-to-selector resolution — the change is styling-only with the e2e spec untouched, and all mandated local gates pass with the expected counts. **This approval is explicitly conditional on the next CI e2e run executing TC-E2E-01 and TC-E2E-02 green at all three configured viewports (390x844, 768x1024, 1440x900); that run is the authoritative final geometry verdict for this fix.** The condition is enforced fail-closed: `scripts/merge_gate.py` lists `E2E CI / e2e` and `governance / pr-enforcement` in `REQUIRED_CHECKS`, so no merge can occur before that CI confirmation.
 
 Decision: APPROVE
