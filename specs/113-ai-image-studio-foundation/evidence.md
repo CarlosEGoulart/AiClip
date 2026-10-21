@@ -442,4 +442,215 @@ Working tree vs `a8d3641`: only `apps/web/src/**` (`index.css` + the image-studi
 
 No blocking defect. The previously unbacked geometry assertions now have a verified real stylesheet basis at three levels — source CSS, built production bundle, and component-to-selector resolution — the change is styling-only with the e2e spec untouched, and all mandated local gates pass with the expected counts. **This approval is explicitly conditional on the next CI e2e run executing TC-E2E-01 and TC-E2E-02 green at all three configured viewports (390x844, 768x1024, 1440x900); that run is the authoritative final geometry verdict for this fix.** The condition is enforced fail-closed: `scripts/merge_gate.py` lists `E2E CI / e2e` and `governance / pr-enforcement` in `REQUIRED_CHECKS`, so no merge can occur before that CI confirmation.
 
+Verdict recorded at this point in the narrative: an **approval** of the round-2 real-CSS fix. That verdict is **superseded** by the "Independent Tester Re-Review — CI Round 3" section at the end of this file: its explicit condition (the next CI e2e run green) did not materialize — CI Round 3 on commit `2113c87` failed the required `e2e` check with the three TC-E2E-02 failures that the current correction addresses. The decision line is restated as prose here so this file carries exactly one decision line of exactly one kind — the final Tester verdict at the end of the file.
+
+---
+
+## Builder Correction — CI Round 3 (Fix A + Fix B, 2026-10-21)
+
+Builder session on branch `@carlosegoulart/113/feat/ai-image-studio-foundation` (base commit `2113c87`, PR #114) applying exactly the two authorized CI Round 3 corrections from `spec.md`'s "CI Round 3 Correction" section and `plan.md` Step C: **Fix A** (`box-sizing: border-box` on `.image-studio-form`) and **Fix B** (TC-E2E-02 focus walk re-anchored on keyboard interaction). No assertion was added, removed, relaxed, skipped, subsetted, or hardcoded; no application logic, component, backend, dependency, governance, CI, or other e2e-spec file was touched.
+
+### RED
+
+The RED for this correction is the CI Round 3 run on commit `2113c87` (PR #114): `npm run test:e2e` → **99 passed, 3 failed**, all three in `apps/web/e2e/image-studio.spec.ts` TC-E2E-02, while `governance`, `pr-enforcement`, frontend `test`, and backend `tests` were all **PASS** in the same run. These are genuine behavioral assertion failures (99 other tests executed green in the same run) — not environment, setup, or discovery errors. The failure output, verbatim as reported from the CI Round 3 run (mirrored in the Planner's `spec.md` §"CI Round 3 Correction" and `test-plan.md` §11.1; the Builder sandbox denies `gh`, so the quotes were transmitted by the Orchestrator):
+
+```
+1) [mobile] 390x844 — image-studio.spec.ts:338 — TC-E2E-02 responsive layout, touch targets, and focus at the configured viewport
+   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth)
+     Expected: <= 390
+     Received:    408
+
+2) [tablet] 768x1024 — image-studio.spec.ts:338 — TC-E2E-02 responsive layout, touch targets, and focus at the configured viewport
+   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth)
+     Expected: <= 768
+     Received:    786
+
+3) [desktop] 1440x900 — image-studio.spec.ts:442 — TC-E2E-02 responsive layout, touch targets, and focus at the configured viewport
+   expect(focusVisible[target.key], `${target.key} visible focus indicator`).toBe(true)
+     image-studio-tab visible focus indicator
+     Expected: true
+     Received: false
+```
+
+No test was added, altered, or deleted to manufacture GREEN; the failing assertions themselves were kept bit-for-bit in strength.
+
+### GREEN
+
+**Fix A** — `apps/web/src/index.css`, rule `.image-studio-form` only: added the single declaration `box-sizing: border-box;` (the per-rule project convention already used by `.image-studio-field-control`, `.image-studio-submit-button`, `.tab-navigation [role="tab"]`, et al.). The rule's `width: 100%` + `padding: 20px` + `border: 1px solid` previously summed to container + 42px under the default `content-box`, producing the observed +18px document overflow at 390/768. No global `*` reset was introduced; `.project-form` (identical pre-existing pattern, recorded future candidate) was deliberately untouched; no other geometry changed.
+
+**Fix B** — `apps/web/e2e/image-studio.spec.ts`, TC-E2E-02 focus section only: the line-412 click is retained as a panel/focus anchor, but the tab's focus state is no longer recorded from that pointer click. The walk now re-establishes `#image-studio-tab` as `document.activeElement` **through keyboard interaction** (`Shift+Tab` to the previous tab, then `Tab` back onto the Image Studio tab — the `clip-review.spec.ts` keyboard-only discipline) and records only after those keyboard presses, so the measured state is the `:focus-visible` indicator; the existing forward `Tab` walk then covers prompt → style-preset → dimensions → generate exactly as before. All five `focusVisible[key] === true` assertions, the `'reached focus targets'` length assertion of `IMAGE_STUDIO_FOCUS_TARGETS.length` (5), the visibility predicate (outline width/style or box-shadow), `IMAGE_STUDIO_FOCUS_TARGETS` itself (all five selectors unchanged), and every other assertion, flow step, threshold, and cleanliness collector in the spec are untouched.
+
+Local verification (real outputs, 2026-10-21; `npm ci` was re-run in `apps/web` first because `node_modules` was absent in this sandbox session — lockfile and manifests unchanged):
+
+```
+npm test (apps/web)
+→ Test Files  20 passed (20)
+   Tests       303 passed (303)
+
+npm run lint (apps/web, oxlint)
+→ exit 0 — warnings only; the same pre-existing advisory set as the approved
+  baseline (clip-review warnings + the two set-state-in-effect warnings on
+  unchanged image-studio component lines; nothing references the changed files)
+
+npm run build (apps/web, tsc -b && vite build)
+→ ✓ 93 modules transformed
+  dist/assets/index-B-Xr0Czu.css  15.90 kB │ gzip:  3.26 kB
+  dist/assets/index-BHTDcBCn.js   314.46 kB │ gzip: 92.56 kB
+  (grep of the built CSS confirms .image-studio-form{...box-sizing:border-box...}
+   ships in the production bundle)
+
+npx playwright test e2e/image-studio.spec.ts --list (apps/web)
+→ Total: 6 tests in 1 file
+  [mobile|tablet|desktop] × {TC-E2E-01 flow, TC-E2E-02 responsive}
+```
+
+Backend sanity: this correction touches no PHP file (`git diff --name-only` shows no `apps/api/**` path; `vendor/bin/pint --test --dirty --format agent` → **passed**, nothing to fix). The planned re-run of `php artisan test tests/Feature/ImageStudio --compact` could **not** execute in this sandbox session: the session's PHP now lacks the PDO **sqlite** driver as well — all 49 tests errored at bootstrap with `could not find driver (Connection: sqlite, Database: :memory:, ...)`, an environment failure identical in kind to the previously recorded driver gaps (the same command executed 49/49 green in this issue's earlier sessions, and every error trace is the TestCase's SQLite connection, not an assertion). No backend file is in this correction's diff, so the backend `tests` CI check (green on `2113c87`) is unaffected and remains the authoritative backend venue.
+
+### REFACTOR
+
+No post-GREEN cleanup was needed — the two fixes are already minimal (Fix A: one CSS declaration; Fix B: interaction wiring only, comments in the style of the adjacent block comments). The full local matrix was re-run after the GREEN state with no intervening changes and remained green with identical results: Vitest **303/303**; lint **exit 0** (same advisory set); build **passed** with byte-identical bundle hashes to the GREEN build (`index-B-Xr0Czu.css` / `index-BHTDcBCn.js`); Playwright `--list` **6 tests in 1 file**; `vendor/bin/pint --test --dirty --format agent` **passed** (no PHP touched).
+
+### Diff audit (static scope proof)
+
+```
+git diff --numstat (working tree at audit time, before this appendix was written)
+→  1  0  apps/web/src/index.css
+  12  1  apps/web/e2e/image-studio.spec.ts
+  63  0  specs/113-ai-image-studio-foundation/plan.md      (Planner-owned revision; not Builder-edited)
+  74  0  specs/113-ai-image-studio-foundation/spec.md      (Planner-owned revision; not Builder-edited)
+  74  1  specs/113-ai-image-studio-foundation/test-plan.md (Planner-owned revision; not Builder-edited)
+```
+
+- `apps/web/src/index.css`: exactly **+1 line** — `box-sizing: border-box;` inside `.image-studio-form`; no other rule touched (`.project-form` unchanged; no global reset; no other geometry change).
+- `apps/web/e2e/image-studio.spec.ts`: only the TC-E2E-02 focus section (comment + keyboard re-anchor replacing the direct post-click record; the `recordFocusedTarget` predicate, the forward 4-`Tab` walk, and all assertions below it are unchanged). `git diff --name-only -- apps/web/e2e/` → `image-studio.spec.ts` only; `IMAGE_STUDIO_FOCUS_TARGETS` still lists all five targets with unchanged selectors; the length-5 and five `toBe(true)` assertions are intact (grep-verified at lines 449–453).
+- The three `specs/113-…` planning files were modified by the **Planner's** just-revised planning bundle, present in the working tree before this Builder session started; the Builder did not edit them.
+- This evidence appendix is the third Builder-touched path (explicitly authorized evidence recording).
+- No `tests/governance/**`, `.opencode/**`, `scripts/merge_gate.py`, `.github/workflows/governance.yml`, `playwright.config.ts`, composer/package manifest, Docker, or backend file is in the diff. No `.env` was read or created. The two historical untracked stubs (`apps/api/env-probe-113.php`, `apps/api/phpunit-ci-parity.xml`) no longer exist on disk and are absent from `git status`.
+
+### Honest limits
+
+- **Local e2e execution is impossible in this sandbox** (missing `pdo_pgsql`, no `apps/api/.env` — the ratified Issue #110 precedent; this session's PHP additionally lacks even the sqlite driver, per GREEN above). **No e2e results are claimed from this sandbox.** The authoritative GREEN for TC-E2E-02 — line 338 `scrollWidth <= innerWidth` at all three viewports and line 442 `focusVisible[key] === true` for all five keyboard-established targets at all three viewports — is the **next CI run** on the correction commit; the merge gate remains fail-closed on `e2e`.
+- The CI Round 3 RED quotes above were transmitted by the Orchestrator from the CI run on `2113c87` (the Builder sandbox denies `gh`); the values (`408`, `786`, `false`) match the Planner's correction sections verbatim.
+- This Builder section adds **no** `Decision:` line; the single existing Tester-owned `Decision:` line is left byte-identical, and the Tester must issue the Round 3 verdict after reviewing this correction.
+
+---
+
+## Independent Tester Re-Review — CI Round 3
+
+Re-review performed 2026-10-21 by the Tester agent on branch `@carlosegoulart/113/feat/ai-image-studio-foundation` (PR #114), against the working-tree CI Round 3 correction (Fix A + Fix B, uncommitted; base commit `2113c87`). Every command and inspection below was executed directly by the Tester in the sandbox; outputs are real, not quoted from Builder claims. This section supersedes the earlier round-2 approval narrative above, whose CI condition did not materialize.
+
+### 1. Planning-bundle review (Planner revision, working tree)
+
+Read directly: `spec.md` "CI Round 3 Correction" (AC-13..AC-15), `plan.md` Step C, `test-plan.md` §11. Verdict: the revision authorizes **exactly two fixes** and nothing else — Fix A (`box-sizing: border-box` on the `.image-studio-form` rule only; global `*` reset explicitly forbidden) and Fix B (TC-E2E-02 focus-walk interaction re-anchored on keyboard presses, with every assertion kept bit-for-bit in strength; no application CSS/component change for Fix B). The revision removes nothing (AC-01..AC-12 remain in force), creates no new issue, and the implemented working-tree diff matches this authorization exactly on inspection.
+
+### 2. Scope audit (own `git status` / `git diff`, not Builder's)
+
+```
+git status --porcelain
+→  M apps/web/e2e/image-studio.spec.ts
+   M apps/web/src/index.css
+   M specs/113-ai-image-studio-foundation/evidence.md
+   M specs/113-ai-image-studio-foundation/plan.md
+   M specs/113-ai-image-studio-foundation/spec.md
+   M specs/113-ai-image-studio-foundation/test-plan.md
+```
+
+Six modified files, no untracked files (the two historical stubs `apps/api/env-probe-113.php` / `apps/api/phpunit-ci-parity.xml` are confirmed gone from disk and from `git status`). `git diff --stat`: `index.css` +1 line; `image-studio.spec.ts` +12/−1 (comment + keyboard re-anchor); the three Planner-owned planning files; `evidence.md`. No `tests/governance/**`, no `.opencode/**`, no `scripts/merge_gate.py`, no `.github/workflows/**`, no `playwright.config.ts`, no backend/`apps/api/**`, no composer/package manifests, no Docker, no other e2e spec, no new dependency anywhere in the diff. `vendor/bin/pint --test --dirty --format agent` (apps/api) → `{"tool":"pint","result":"passed"}` (no PHP file is dirty).
+
+Implementation diffs read hunk by hunk:
+
+- **Fix A** (`apps/web/src/index.css`): exactly one added line — `box-sizing: border-box;` inside `.image-studio-form` (now lines 820–830: `width: 100%` + `box-sizing: border-box` + `padding: 20px` + `border: 1px solid`). No other rule touched. `.project-form` (lines 348–357) still carries the identical pre-existing missing-`box-sizing` pattern — correctly left untouched as a recorded future Planner candidate; the inert `ProjectMediaSection` utility strings and the unimported `App.css` are likewise untouched.
+- **Fix B** (`apps/web/e2e/image-studio.spec.ts`, TC-E2E-02 focus section only): the line-417 click is kept as a panel/focus anchor; the tab's focus state is no longer recorded from that click — instead `Shift+Tab` + `Tab` (lines 437–438) re-establish `#image-studio-tab` as `document.activeElement` through keyboard interaction before the first `recordFocusedTarget()`. The forward 4-`Tab` walk, the `recordFocusedTarget` visibility predicate, and everything below it are unchanged.
+
+### 3. Test-integrity audit (no weakening — own inspection)
+
+- `IMAGE_STUDIO_FOCUS_TARGETS` (lines 55–61) still lists all **five** targets with unchanged selectors (`#image-studio-tab`, `#image-prompt`, `#image-style-preset`, `#image-dimensions`, `.image-studio button[type="submit"]`).
+- The overflow assertion at line 338 (`expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth)`) is byte-identical; the clipping check (line 390, `toBe(0)`), the ≥44px touch-target loop (lines 406–408), and the layout column checks (360–370) are unchanged.
+- The `'reached focus targets'` length assertion (lines 449–451: `toHaveLength(IMAGE_STUDIO_FOCUS_TARGETS.length)`) and the five `focusVisible[target.key] … .toBe(true)` assertions (lines 452–454) are intact and unchanged. Because recording now happens only after keyboard presses, an unreached target leaves its key absent and fails the length assertion first — the walk is fail-closed, not weakened.
+- TC-E2E-01 and the TC-E2E-03 cleanliness collectors (`trackCleanliness` / `expectClean`, console/pageerror/4xx-5xx/storage/browser-storage) are untouched. No assertion, threshold, collector, or target anywhere in the spec was removed, relaxed, skipped, subsetted, or hardcoded; no `.skip`/`.only`/`test.fixme` exists in the file.
+
+### 4. Root-cause and fix verification (from source, independently)
+
+No global box-sizing reset exists: the stylesheet's only `*` selector is the `prefers-reduced-motion` block (lines 327–336, no `box-sizing`); there are now **11** per-rule `box-sizing: border-box` declarations (the 10 pre-existing ones plus the fix at line 822). `.app-main` (269–277) has `padding: 32px 24px`; `.project-media-section` (528–534) `width: 100%; max-width: 60rem`; `.image-studio` (785–790) `width: 100%`; `.image-studio-layout` is `1fr` below 1024px (807–818). Under the former `content-box`, the form's right edge was `24 + (viewport − 48) + 42` = **408** at 390 and **786** at 768 — exactly the CI Round 3 received values; at 1440 the 960px panel is centered (form right ≈ 240 + 1002 = 1242 < 1440), explaining the desktop overflow pass. With `border-box` the padding/border now sit inside `width: 100%`, removing the +18px document overflow with no other geometry change (two-column ≥1024px grid, single column below, ≥44px targets, and the no-clipping check are unaffected by construction — the form only becomes narrower by its own padding/border, which no assertion measures absolutely).
+
+Fix B root cause independently confirmed: `.tab-navigation [role="tab"]:focus-visible` (lines 601–604) is the tab's only indicator rule, so a mouse-click-established focus correctly computed `outline: none; box-shadow: none` → recorded `false`. Keyboard-established focus engages `:focus-visible` in Chromium; the `Shift+Tab`/`Tab` re-anchor is the same discipline `clip-review.spec.ts` uses (whose tab targets passed CI-green runs against this very CSS rule). Runtime confirmation is CI-authoritative (§7).
+
+**Built CSS ships the fix** (own verification): the normal `npm run build` produced `dist/assets/index-B-Xr0Czu.css` (same hash the Builder reported); to read the rule despite minification, the Tester additionally built once with `npx vite build --minify false` and read the artifact directly — `.image-studio-form` at line 820 of `index-DJbiSmAO.css` contains `box-sizing: border-box;` (line 822), and no `*{box-sizing` reset exists in the built CSS — then re-ran `npm run build`, restoring the byte-identical minified bundles (`index-B-Xr0Czu.css` / `index-BHTDcBCn.js`). `dist` is a gitignored build artifact; no repository file was modified by this probe.
+
+### 5. Local re-execution (real outputs, 2026-10-21)
+
+```
+npm test (apps/web)
+→ Test Files  20 passed (20)
+   Tests       303 passed (303)
+
+npm run lint (apps/web, oxlint)
+→ exit 0 — warnings only; the same pre-existing advisory set (clip-review +
+  image-studio set-state-in-effect/exhaustive-deps advisories on unchanged
+  lines; nothing references the two changed files)
+
+npm run build (apps/web, tsc -b && vite build)
+→ ✓ 93 modules transformed
+  dist/assets/index-B-Xr0Czu.css  15.90 kB │ gzip:  3.26 kB
+  dist/assets/index-BHTDcBCn.js   314.46 kB │ gzip: 92.56 kB
+
+npx playwright test e2e/image-studio.spec.ts --list (apps/web)
+→ Listing tests:
+  [mobile]  › image-studio.spec.ts:297 … TC-E2E-01 generate-image flow …
+  [mobile]  › image-studio.spec.ts:317 … TC-E2E-02 responsive layout, touch targets, and focus …
+  [tablet]  › image-studio.spec.ts:297 … TC-E2E-01 …
+  [tablet]  › image-studio.spec.ts:317 … TC-E2E-02 …
+  [desktop] › image-studio.spec.ts:297 … TC-E2E-01 …
+  [desktop] › image-studio.spec.ts:317 … TC-E2E-02 …
+  Total: 6 tests in 1 file
+
+vendor/bin/pint --test --dirty --format agent (apps/api)
+→ {"tool":"pint","result":"passed"}
+
+php artisan test --exclude-group=real-integration (apps/api)
+→ 1593 tests, 1040 passed, 4 failed — every failure in HealthTest with
+  "status": "error", "database": "disconnected" / HTTP 503 (no database
+  reachable in this sandbox), none in this correction's scope or files
+
+php artisan test --filter=Image (apps/api)
+→ 72 tests, 13 passed, 59 errors — every error is the identical bootstrap
+  failure "could not find driver (Connection: sqlite, Database: :memory:, …)"
+  raised at tests/TestCase.php:13 before any assertion runs
+```
+
+**Backend classification (honest):** environment, not defect. This session's sandbox PHP lacks the PDO **sqlite** driver (and, per the ratified Issue #110 precedent, `pdo_pgsql`; no `apps/api/.env` exists — corroborated without reading any `.env`). The 59 image-scoped errors are all TestCase SQLite-bootstrap driver failures, not assertion failures; the same suites ran 84/84 green in this issue's earlier sessions on a working driver, the correction's diff contains zero `apps/api/**` paths, and CI's backend `tests` check was **PASS** on `2113c87` in the same Round 3 run. Pint's clean `--dirty` result independently confirms no PHP file changed.
+
+**CI state corroborated (read-only):**
+
+```
+gh pr checks 114
+→ e2e            fail  (run 39595504652 — CI Round 3 on 2113c87)
+  governance     pass
+  pr-enforcement pass
+  test           pass
+  tests          pass
+```
+
+Exactly the Round 3 state the correction was planned against: the three TC-E2E-02 failures (mobile/tablet line 338 overflow 408/786; desktop line 442 tab focus indicator `false`) with every other required check green.
+
+### 6. Browser e2e — N/A locally, CI-authoritative (ratified precedent)
+
+`npm run test:e2e` cannot execute in this sandbox: the PHP runtime lacks the PDO drivers the Playwright webServer's Laravel stack requires (`pdo_pgsql`, and this session even `sqlite`), and no `apps/api/.env` exists — the ratified **Issue #110 precedent**, independently re-corroborated above by the two Pest bootstrap/connection failures. No local workaround, reduced viewport set, or reduced spec selection was attempted or accepted. The authoritative runtime verdict for AC-13 (line 338 at 390/768/1440) and AC-14 (five keyboard-established focus targets at all three viewports) is the **next CI run** on the correction commit, and the merge gate is **fail-closed** on the required `e2e` check (`scripts/merge_gate.py` `REQUIRED_CHECKS`), so this approval cannot merge unverified runtime behavior. The local governance python suite was not re-run this round (running it regenerates tracked `__pycache__` bytecode — the recorded round-1 working-tree note); this round's diff touches no governance-owned file, CI `governance` + `pr-enforcement` were green on `2113c87` and are required green again on the correction commit, and the evidence-file rules were verified directly against `tests/governance/validators.py` (this file, after this edit, contains the `### RED` / `### GREEN` / `### REFACTOR` headings — two sets preserved — and exactly one decision line of exactly one kind).
+
+### 7. AC verdicts for this correction
+
+| AC | Verdict | Evidence |
+|---|---|---|
+| AC-13 | PASS (CI-completion gated) | Root cause proven in source with exact CI arithmetic (408/786); canonical one-declaration fix applied on `.image-studio-form` only; built CSS ships it; no global reset; layout/targets/clipping rules unchanged (own inspection). Line 338 at all three viewports is confirmed by the next green CI `e2e` run, enforced fail-closed by the merge gate. |
+| AC-14 | PASS (CI-completion gated) | Focus walk now records only after keyboard interaction; all five targets, the length-5 assertion, the `toBe(true)` assertions, the visibility predicate, and `IMAGE_STUDIO_FOCUS_TARGETS` are intact and unchanged (own line-by-line audit); the walk is fail-closed on an unreached target. Five keyboard-established targets at all three viewports are confirmed by the next green CI `e2e` run. |
+| AC-15 | PASS (CI-completion gated) | No-regression locally: Vitest 303/303, lint exit 0, build pass, `--list` 6/6, Pint passed; TC-E2E-01 and TC-E2E-03 are untouched in the spec and passed on `2113c87`; governance/pr-enforcement/test/tests were green on Round 3 and must be green on the correction commit (merge-gate-enforced). |
+
+### 8. Scope conclusion
+
+The correction introduces no unrelated change, no new dependency, no assertion weakening, and no application-logic change; the pre-existing `.project-form` pattern and the other recorded future candidates were correctly left untouched. No blocking defect was found by inspection or local execution.
+
+### Verdict
+
+No blocking defect. Both fixes are exactly the Planner-authorized correction, no test was weakened, every locally executable mandatory check passes with the expected counts, and the CSS root cause is independently proven and corrected at source and in the built bundle. This approval is explicitly conditional on the **next CI run on the correction commit** reporting `e2e` **green with zero failures** — TC-E2E-01 **and** TC-E2E-02 passing at 390x844, 768x1024, and 1440x900, including line 338 at all three viewports and line 442 `toBe(true)` for all five keyboard-established focus targets at all three viewports — **plus** `governance`, `pr-enforcement`, `test`, and `tests` still green. That condition is enforced fail-closed by `scripts/merge_gate.py` (`E2E CI / e2e` and `governance / pr-enforcement` in `REQUIRED_CHECKS`); no merge may occur before it is satisfied, and any failure sends the issue back to Builder through the Orchestrator.
+
 Decision: APPROVE
