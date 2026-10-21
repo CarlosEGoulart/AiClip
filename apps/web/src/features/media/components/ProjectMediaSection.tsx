@@ -3,8 +3,9 @@ import { useMediaAssets } from '../hooks';
 import { MediaUploadForm } from './MediaUploadForm';
 import { MediaList } from './MediaList';
 import { ReviewPage } from '../../clip-review/components/ReviewPage';
+import { ImageStudio } from '../../image-studio/components/ImageStudio';
 
-type Tab = 'media' | 'review';
+type Tab = 'media' | 'review' | 'image-studio';
 
 interface ProjectMediaSectionProps {
   projectId: number;
@@ -68,6 +69,20 @@ export function ProjectMediaSection({ projectId, projectName, onBack }: ProjectM
           >
             Review Clips
           </button>
+          <button
+            role="tab"
+            aria-selected={activeTab === 'image-studio'}
+            aria-controls="image-studio-panel"
+            id="image-studio-tab"
+            onClick={() => setActiveTab('image-studio')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'image-studio'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            Image Studio
+          </button>
         </nav>
       </div>
 
@@ -94,6 +109,12 @@ export function ProjectMediaSection({ projectId, projectName, onBack }: ProjectM
             projectName={projectName}
             onBack={onBack}
           />
+        </div>
+      )}
+
+      {activeTab === 'image-studio' && (
+        <div id="image-studio-panel" role="tabpanel" aria-labelledby="image-studio-tab">
+          <ImageStudio projectId={projectId} />
         </div>
       )}
     </div>

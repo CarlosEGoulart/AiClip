@@ -146,12 +146,36 @@ happy paths plus terminal-state no-further-transition at 390x844 /
 Vitest passed, 0 failed. Governance: 173 tests OK. E2E CI green at all
 three viewports.
 
+M8 Slice 1 — AI Image Studio Foundation (Issue #113, PR #114, merged via
+`scripts/merge_gate.py`): `ImageGenerationProvider` contract with a
+deterministic `FakeImageGenerationProvider` (container-bound; no model
+download), `StorageKeyBuilder::imageGeneration()` project-scoped keys,
+`Image` model with status enum (pending/generated/failed) plus migration and
+factory, `GenerateImage` queue job following the `RenderMediaClip` topology
+(ownership re-validation, non-pending idempotency, strict result validation,
+transactional generated/failed marking; inference never inside HTTP request
+processes), and the API triad `POST /api/v1/images/generate` (202
+enqueue-only with 422/404/401/419/429 contracts and a 20/min rate limiter),
+`GET /api/v1/images` (paginated, project filter), `GET /api/v1/images/{image}`,
+with a strict 11-field ImageResource whitelist (no storage internals).
+Frontend adds the image-studio feature (`useGenerateImage`/`useImages` hooks,
+prompt form with live counter, style and dimension presets, gallery with
+status badges, loading/empty/error states) and the Image Studio tab in
+ProjectMediaSection, styled with semantic project CSS (44px touch targets,
+visible focus indicators, one column below 1024px, side-by-side above).
+Verification: backend issue suites 84 tests/349 assertions, ImageStudio
+feature suites 49/49, Vitest 303/303, lint/build clean, Playwright e2e
+generate flow plus responsive/touch-target/focus at 390x844/768x1024/1440x900
+with console/network cleanliness, governance 173 tests OK.
+
 # Next Architectural Goal
 
-M7 — Clip Review Experience continues beyond Slice 1: remaining slices
-(approval-driven downstream actions, editor integrations, publishing hooks)
-require separate explicit authorization and are not active. M6.2+ remaining —
-Vertical Clip Rendering enhancements (multi-candidate batch rendering,
+M8 — AI Image Studio continues beyond Slice 1: remaining slices (a real
+model-backed image generation provider behind the `ImageGenerationProvider`
+seam, presigned download URLs, image deletion, batch generation, image
+editing) require separate explicit authorization and are not active. M7
+remaining slices (approval-driven downstream actions, editor integrations,
+publishing hooks) and M6.2+ enhancements (multi-candidate batch rendering,
 render profiles beyond `vertical_v1`) likewise remain future work, not
 active, and not implemented. A standalone queue-consuming Python service
 remains a future architectural evolution, not the current CLI execution

@@ -97,3 +97,32 @@ it('captionFile throws when renderProfileVersion is empty', function () {
 it('captionFile throws when renderProfileVersion has invalid characters', function () {
     StorageKeyBuilder::captionFile(1, 1, 0, 'invalid/version');
 })->throws(InvalidArgumentException::class, 'Invalid render profile version.');
+
+/*
+|--------------------------------------------------------------------------
+| imageGeneration() — Issue #113 (M8 Slice 1, TC-BE-02)
+|--------------------------------------------------------------------------
+*/
+
+it('imageGeneration builds the project scoped image key with a png uuid suffix', function () {
+    $key = StorageKeyBuilder::imageGeneration(7);
+
+    expect($key)->toMatch('#\Aprojects/7/images/[0-9a-f-]{36}\.png\z#');
+});
+
+it('imageGeneration throws when projectId < 1', function (int $projectId) {
+    StorageKeyBuilder::imageGeneration($projectId);
+})->with([
+    'zero' => [0],
+    'negative' => [-1],
+])->throws(InvalidArgumentException::class, 'Invalid image storage identity.');
+
+it('imageGeneration generates a fresh uuid for a new image identity', function () {
+    $first = StorageKeyBuilder::imageGeneration(7);
+    $second = StorageKeyBuilder::imageGeneration(7);
+
+    expect($first)->not->toBe($second)
+        ->and($first)->toStartWith('projects/7/images/')
+        ->and($first)->toEndWith('.png')
+        ->and($second)->toEndWith('.png');
+});
