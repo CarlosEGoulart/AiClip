@@ -87,13 +87,19 @@ Completed slices:
 
 - **Slice 1 — Clip Review Experience foundation (Issue #106, PR #107 — merged; issue closed)**: ClipReview model with status enum (`pending`, `approved`, `rejected`, `needs_changes`), review API (project-scoped paginated list, show, status update with idempotent transitions, feedback submission, dual-gate signed video URL), `ProcessClipReview` queue job with event dispatch, automatic ClipReview creation when a rendered DerivedAsset completes, and per-endpoint rate limiting. Frontend delivers the embedded review experience inside ProjectMediaSection: VideoPlayer, ReviewActions, FeedbackForm, ReviewList, and ReviewPage with native History API URL sync (no client-side router library), a root React Query provider, 44px touch targets, and visible focus indicators. Verification: backend Pest suites, a `real-integration` group executing real MinIO presigned round trips and a real-database rollback case, Vitest component suites, and Playwright E2E covering the reachable review states at three viewports.
 
+## M8 — AI Image Studio (Slice 1 completed)
+
+Completed slices:
+
+- **Slice 1 — AI Image Studio Foundation (Issue #113, PR #114 — merged; issue closed)**: `ImageGenerationProvider` contract plus a deterministic `FakeImageGenerationProvider` (no model download; CI-safe per AGENTS.md §21), `StorageKeyBuilder::imageGeneration()` project-scoped keys, `Image` model + migration + factory with status enum (`pending`/`generated`/`failed`), `GenerateImage` queue job following the `RenderMediaClip` topology (inference never inside HTTP request processes; ownership re-validation, non-pending idempotency, strict result validation), API endpoints `POST /api/v1/images/generate` (202 enqueue-only with 422/404/401/419/429 contracts and a 20/min rate limiter), `GET /api/v1/images` (paginated, project filter), `GET /api/v1/images/{image}` with a strict ImageResource whitelist (no storage internals), and the React `ImageStudio` feature (`useGenerateImage`/`useImages` hooks, prompt form with live counter, style/dimension presets, status-badge gallery, loading/empty/error states) plus the Image Studio tab in ProjectMediaSection, styled with semantic project CSS (44px touch targets, visible focus, one column below 1024px, side-by-side above). Verification: Pest issue suites 84/84 (349 assertions), Vitest 303/303, Playwright e2e generate flow plus responsive/touch-target/focus at 390x844 / 768x1024 / 1440x900 with console/network cleanliness.
+
 ## Planned Milestones
 
 | Milestone | Description |
 |-----------|-------------|
 | M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2 Slices 3A–3E completed) |
 | M7 | Clip Review Experience (Slice 1 Complete — Issue #106, PR #107) |
-| M8 | AI Image Studio |
+| M8 | AI Image Studio (Slice 1 Complete — Issue #113, PR #114) |
 | M9 | Social Connection Framework |
 | M10 | YouTube Publishing |
 | M11 | Instagram Publishing |
