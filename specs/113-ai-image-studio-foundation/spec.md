@@ -34,6 +34,8 @@ Read this specification with `plan.md` and `test-plan.md` in this directory. The
 - [ ] Define Vitest component tests for `ImageStudio`
 - [ ] Define Playwright E2E generate-image flow at 390x844 / 768x1024 / 1440x900 with console/network cleanliness
 - [ ] Define security, ownership, CSRF, rate-limit, and accessibility requirements
+- [ ] **CI Round 3 correction (Fix A)**: eliminate the Image Studio panel's horizontal document overflow at 390/768 (styling only; see "CI Round 3 Correction" below)
+- [ ] **CI Round 3 correction (Fix B)**: re-anchor the TC-E2E-02 focus walk on keyboard interaction so the `:focus-visible` indicator is what is measured, with every assertion intact (e2e interaction only)
 
 ## Scope and Out of Scope
 
@@ -299,6 +301,9 @@ Test at: **390x844** (mobile), **768x1024** (tablet), **1440x900** (desktop). Si
 - [ ] **AC-10**: `useGenerateImage`/`useImages` follow React Query conventions (invalidation, pending-aware 2s polling); the pending 202 resource is immediately visible in the gallery; the "Image Studio" tab is wired into `ProjectMediaSection` per M7 Slice 1 conventions with no client-side router library.
 - [ ] **AC-11**: Pest unit + feature suites and Vitest component suites pass with no skipped tests.
 - [ ] **AC-12**: Playwright E2E generate-image flow passes at 390x844, 768x1024, and 1440x900 with console/network cleanliness; lint, build, type check, and governance pass.
+- [ ] **AC-13** *(CI Round 3 correction)*: The Image Studio panel causes **no horizontal document overflow** at any required viewport: `document.documentElement.scrollWidth <= window.innerWidth` at 390x844, 768x1024, and 1440x900 (TC-E2E-02 line 338 passes at all three). The root-cause rule `.image-studio-form` sizes its padding and border inside its `width: 100%` box (`box-sizing: border-box` or an equivalently correct fix), with no other geometry regression: desktop two-column layout, single column below 1024px, all ≥44px touch targets, and the no-clipping check remain unchanged.
+- [ ] **AC-14** *(CI Round 3 correction)*: The TC-E2E-02 focus walk establishes each target's focus state **through keyboard interaction** (so the `:focus-visible` indicator is what is measured) and still asserts `focusVisible[key] === true` for **all five** targets (`image-studio-tab`, `prompt`, `style-preset`, `dimensions`, `generate`) plus the `'reached focus targets'` length assertion of 5, at all three viewports — no assertion removed, relaxed, skipped, subsetted, or hardcoded.
+- [ ] **AC-15** *(CI Round 3 correction)*: **No regression**: TC-E2E-01 continues to pass at all three viewports; TC-E2E-03 console/network cleanliness stays enforced; all previously passing local suites (Pest, Vitest, lint, build, Pint) remain green; on the correction commit CI reports `e2e`, `governance`, `pr-enforcement`, `test`, and `tests` all green.
 
 ## Known Limitations and Coverage Boundary
 
@@ -330,6 +335,75 @@ Test at: **390x844** (mobile), **768x1024** (tablet), **1440x900** (desktop). Si
 ## Human-Gated Operations
 
 - None specific to this slice beyond the standard issue lifecycle. `tests/governance/**` and `scripts/merge_gate.py` remain denied to all agents.
+
+## CI Round 3 Correction (authorized clarification of Issue #113 — same issue, same branch)
+
+This section is a **correction/clarification of the existing active issue #113** (branch `@carlosegoulart/113/feat/ai-image-studio-foundation`, PR #114). It creates no new issue and does not broaden scope. **AC-01 through AC-12 remain intact and in force**; the correction criteria AC-13 through AC-15 supplement them and remove nothing. Everything above this section stands unless explicitly refined here, and nothing here contradicts it.
+
+CI Round 3 ran on commit `2113c87` (PR #114): `npm run test:e2e` → **99 passed, 3 failed**, all three in `apps/web/e2e/image-studio.spec.ts` TC-E2E-02, while `governance`, `pr-enforcement`, frontend `test`, and backend `tests` all PASS:
+
+1. `[mobile]` 390x844, spec line 338: `expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth)` → Expected `<= 390`, Received `408`.
+2. `[tablet]` 768x1024, spec line 338: same assertion → Expected `<= 768`, Received `786`.
+3. `[desktop]` 1440x900, spec line 442: `image-studio-tab visible focus indicator` → `expect(focusVisible['image-studio-tab']).toBe(true)` received `false`.
+
+The correction consists of exactly two fixes — Fix A and Fix B — and nothing else.
+
+### Correction Fix A — 18px horizontal document overflow (application styling)
+
+**Root cause (verified in source).** `apps/web/src/index.css` has **no global box-sizing reset**. It contains exactly ten `box-sizing: border-box` declarations, all on individual rules — the project convention is per-rule border-box (`.image-studio-field-control` line 849, `.image-studio-submit-button` line 903, `.tab-navigation [role="tab"]` line 583, `.back-button` line 546, `.review-back-button` line 703, …); the only `*` selector block in the stylesheet is the `prefers-reduced-motion` media query (lines 327–336), which sets no `box-sizing`. `index.css` is the only stylesheet the app imports (`main.tsx:3`), so elements default to `content-box`.
+
+`.image-studio-form` (index.css lines 820–829) sets `width: 100%` **plus** `padding: 20px` and `border: 1px solid` **without** `box-sizing: border-box`, so under `content-box` its border-box width is `container + 42px`. The element is rendered by `GenerateImageForm.tsx:96` (`className="image-studio-form"`) and is the first grid child of `.image-studio-layout` (lines 807–818, `grid-template-columns: 1fr` below 1024px), inside `.image-studio` (line 785, `width: 100%`) inside `.project-media-section` (lines 528–530, `width: 100%; max-width: 60rem`) inside `.app-main` (lines 269–277, `padding: 32px 24px`).
+
+Arithmetic: wherever the panel is narrower than 60rem, form right edge = `24 + (viewport − 48) + 42 = viewport + 18` → `scrollWidth` = **408** at 390 and **786** at 768 — exactly the CI values (18 = 42 − 24: the form's extra 42px minus `.app-main`'s 24px right padding). At 1440 the 60rem panel is centered with large side margins (form right ≈ 1242 < 1440), so there is no document overflow — consistent with the desktop run passing line 338. `.image-studio-form` is the **sole** Image Studio overflow source: every other padding-bearing studio rule either carries border-box (`.image-studio-field-control`, `.image-studio-submit-button`, `.image-gallery-retry-button`) or has no explicit `width: 100%` (`.image-gallery-card`, `.image-gallery-state`, `.image-gallery-skeleton` are stretched/auto-sized, so padding stays inside); `.image-studio`, `.image-studio-form-live`, and `.image-gallery-list` are padding-free.
+
+**Required end state (AC-13):**
+
+- `document.documentElement.scrollWidth <= window.innerWidth` at 390x844, 768x1024, and 1440x900, with the panel-attributable overflow eliminated — TC-E2E-02 line 338 passes at all three viewports.
+- The canonical fix is **adding `box-sizing: border-box;` to the `.image-studio-form` rule** — one declaration, matching the per-rule project convention. An equivalently correct CSS fix is acceptable only if it yields the identical end state with no side effects. No global `*` reset may be introduced (that would change every unstyled element in the app — a silent, unreviewed app-wide change far beyond this issue).
+- No other geometry regression: the desktop two-column layout (`.image-studio-layout` → `1fr 1fr` at ≥1024px) unchanged; single column with form above gallery below 1024px unchanged; all ≥44px touch targets unchanged; the no-clipping check (line 390) still passes; focus behavior unchanged. (The fix also makes the form respect its grid track, removing a latent ~10px form/gallery box overlap at ≥1024px — a computed consequence of the same defect, not a new assertion.)
+- The form's inner content narrows by its own padding/border (the correct box model — fields now sit inside the card). No assertion depends on absolute field widths; heights, clipping, and layout assertions are unaffected.
+
+### Correction Fix B — TC-E2E-02 focus walk interaction fidelity (e2e scenario)
+
+**Root cause (verified in source).** `apps/web/e2e/image-studio.spec.ts` line 412 does `page.getByRole('tab', { name: 'Image Studio' }).click()` and lines 429–430 immediately record the tab's focus state **before any keyboard press** (the first `keyboard.press('Tab')` is at line 433). A mouse click focuses the button but does not engage `:focus-visible` in Chromium, and the tab's indicator is defined only via `.tab-navigation [role="tab"]:focus-visible` (index.css lines 601–604) — so the computed outline is none and `box-shadow` is `none`, recording `visible: false` and failing line 442 with `false`. (A never-recorded target would have produced `undefined`; receiving `false` confirms the tab *was* focused but *not* focus-visible — pointer-derived focus.)
+
+The other four targets pass by construction: `.image-studio-field-control:focus` (index.css 865–869) shows a box-shadow ring on any focus, and the Generate button is recorded only after keyboard `Tab` presses (its indicator is `:focus-visible`, lines 930–933). The scenario's own comment (lines 410–411) states the contract: *"Keyboard navigation reaches the studio controls in logical order with a visible focus indicator"* — keyboard focus, which is exactly what `:focus-visible` measures. The reference implementation `apps/web/e2e/clip-review.spec.ts` (lines 396–421) records focus **only** after `Shift+Tab`/`Tab` presses — never after a mouse click — and its `FOCUS_TARGETS` include `media-tab` and `review-tab`, proving in CI-green runs that this very CSS rule reports a visible indicator when the tab is keyboard-focused. The stylesheet is therefore correct; the interaction that feeds the measurement is not.
+
+**Authorized fix: e2e interaction discipline only — no application CSS or component change for Fix B.**
+
+The correction must:
+
+1. Establish `#image-studio-tab` as `document.activeElement` **through keyboard interaction** before its state is recorded, using the same interaction discipline as `clip-review.spec.ts` (bounded `Shift+Tab`/`Tab` presses with recording only after keyboard presses, until every target has been recorded). Keeping the line-412 click as a panel/focus anchor is acceptable **only if** the tab's recorded state is taken after a subsequent keyboard interaction, never directly from the click.
+2. Record every one of the five targets' states only from keyboard-established focus, so the measured state is the `:focus-visible` indicator.
+3. **Keep, bit-for-bit in strength**: the assertion `focusVisible[key] === true` for all five targets (`image-studio-tab`, `prompt`, `style-preset`, `dimensions`, `generate`), and the `'reached focus targets'` length assertion `toBe(IMAGE_STUDIO_FOCUS_TARGETS.length)` (5).
+
+**Explicitly forbidden** in Fix B: removing or relaxing any threshold or assertion (including loosening `toBe(true)`, altering the outline/box-shadow visibility predicate, or the ≥44px thresholds); skipping the focus section entirely; hiding or removing `image-studio-tab` from `IMAGE_STUDIO_FOCUS_TARGETS`; asserting only a subset of targets; writing a hardcoded/constant `true` for any target (AGENTS.md §24); replacing computed-style measurement with a class-presence check; weakening console/network cleanliness; touching TC-E2E-01 or TC-E2E-03 assertions; or modifying any other e2e spec's assertions (`clip-review.spec.ts` is read-only reference).
+
+**Why the e2e interaction is the authorized fix, and why this is not a weakening of the test.** The test's stated contract (lines 410–411) and the clip-review reference measure *keyboard* focus visibility (WCAG 2.4.7 semantics; this spec requires "keyboard navigable, visible focus"). The current code measures a state the contract never intended — pointer-derived focus — and therefore fails for a reason unrelated to the application's keyboard focus behavior. Restoring keyboard-established focus makes the measurement match the contract while every assertion remains exactly as strong (all five targets, `=== true`, length 5): the test becomes **more** faithful to its intent, not less. An application-side change (e.g. also showing the tab indicator on `:focus`) was considered and is **not** part of this correction: it would alter global tab styling for every tab in the app to compensate for a test-interaction defect, and pointer-focus indicators are required neither by this specification nor by WCAG.
+
+### Correction Scope and Out of Scope
+
+**In scope (the entire correction):**
+
+1. Fix A: `box-sizing: border-box` (or an equivalently correct, identical-end-state fix) on `.image-studio-form` in `apps/web/src/index.css` — styling only, no rule removed, no global reset.
+2. Fix B: the focus-walk interaction in the TC-E2E-02 section of `apps/web/e2e/image-studio.spec.ts` — interaction only, assertions intact.
+3. Evidence recording for the correction in `specs/113-ai-image-studio-foundation/evidence.md` (Builder/Tester-owned; the Planner does not edit it).
+
+**Out of scope (explicitly excluded):**
+
+- Any backend/PHP change; any component logic or behavior change; any API, job, model, or migration change.
+- Any dependency change (no composer/npm additions or upgrades).
+- Any assertion weakening, skipping, subsetting, or deletion — in this or any other spec.
+- No new issues; no changes to `tests/governance/**`, `.opencode/**`, `scripts/merge_gate.py`, CI/Docker configuration, or `playwright.config.ts`.
+- No edits to other e2e specs' assertions (`clip-review.spec.ts`, `media.spec.ts`, `auth.spec.ts`, `projects.spec.ts`, `health.spec.ts`).
+- No opportunistic refactors. The following were observed and are **recorded as future Planner candidates, not to be touched now**:
+  - `.project-form` (index.css lines 348–357) carries the identical `width: 100%` + `padding: 20px` + `border` without `box-sizing` pattern; it is pre-existing, on a page whose overflow no test measures, and outside this issue's scope.
+  - The pre-existing inert Tailwind-style utility class strings on the tab buttons and `.tab-navigation` wrapper in `ProjectMediaSection.tsx` (e.g. `border-b border-gray-200`, `px-4 py-2`, `border-blue-600`, `dark:*`); the real selected/focus states come from `.tab-navigation [role="tab"]` rules and no assertion depends on the inert tokens.
+  - `apps/web/src/App.css` — the unimported Vite-template stylesheet (not referenced by `main.tsx`).
+
+### Security and UX Impact of the Correction
+
+No security impact: no API, auth, CSRF, rate-limit, or data-exposure surface changes. UX impact is limited to the Image Studio form's box model (fields correctly inset within the card, no horizontal page scroll on mobile/tablet) and unchanged keyboard focus appearance. No user-facing text, layout structure, or interaction flow changes.
 
 ---
 

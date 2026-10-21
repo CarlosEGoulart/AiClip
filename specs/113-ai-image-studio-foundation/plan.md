@@ -247,6 +247,69 @@ All scenarios:
 - [ ] Playwright E2E passes at 390x844 / 768x1024 / 1440x900; console/network clean; no secrets in browser
 - [ ] Full backend/frontend/E2E suites pass; lint, build, type check pass; governance passes
 
+## Step C — CI Round 3 Correction (same issue #113; no new issue)
+
+Context: implementation of Steps 0–7 is complete; CI Round 3 on commit `2113c87` (PR #114) reports `npm run test:e2e` → **99 passed, 3 failed**, all three in `apps/web/e2e/image-studio.spec.ts` TC-E2E-02 (mobile/tablet line 338 overflow `408`/`786`; desktop line 442 `image-studio-tab visible focus indicator` = `false`), while `governance`, `pr-enforcement`, frontend `test`, and backend `tests` all PASS. This step corrects those two defects on the existing branch only, per `spec.md`'s "CI Round 3 Correction" section. **Steps 0–7 and AC-01..AC-12 are unchanged and already satisfied; nothing here re-opens or relaxes them.** Every file Step C touches (the image-studio block of `apps/web/src/index.css` and `apps/web/e2e/image-studio.spec.ts`) was authored by this issue, so the "purely additive / no pre-existing behavior changes" property of Steps 0–7 is preserved — no pre-issue code is modified.
+
+### C.1 RED — already demonstrated (no new test code)
+
+The tests are the existing TC-E2E-02 assertions; their CI Round 3 failures **are** the RED. The three failures (quoted verbatim in `spec.md`'s correction section) are genuine behavioral assertion failures — 99 other tests executed to completion in the same run, so this is not an environment/setup failure. Builder records that CI Round 3 output verbatim in `evidence.md` under the `### RED` heading (evidence.md is Builder/Tester-owned; the Planner does not edit it). No test may be added, altered, or deleted to manufacture GREEN.
+
+### C.2 GREEN — Fix A (styling only)
+
+- File: `apps/web/src/index.css`, rule `.image-studio-form` (lines 820–829).
+- Change: add `box-sizing: border-box;` to that rule — one declaration, matching the per-rule project convention documented in `spec.md`. An equivalently correct fix with the identical end state is acceptable only if it touches this rule alone; a global `*` box-sizing reset is forbidden.
+- Static audit already performed by the Planner (re-verify during implementation): `.image-studio-form` is the only Image Studio rule combining explicit `width: 100%` with padding/border without border-box; do not "fix" any other rule.
+- Required end state: `document.documentElement.scrollWidth <= window.innerWidth` at 390/768/1440 (spec line 338 green at all three viewports); layout structure, ≥44px targets, clipping check, and focus behavior unchanged (AC-13).
+
+### C.3 GREEN — Fix B (e2e interaction only)
+
+- File: `apps/web/e2e/image-studio.spec.ts`, focus section (lines 410–443).
+- Change: establish `#image-studio-tab` as `document.activeElement` **through keyboard interaction** before recording its state, following `clip-review.spec.ts` lines 396–421's keyboard-only discipline (bounded `Shift+Tab`/`Tab` presses; record only after keyboard presses; forward walk covers `prompt → style-preset → dimensions → generate` as today). The line-412 click may be kept purely as a panel/focus anchor, but the tab's recorded state must come from a subsequent keyboard interaction.
+- Keep unchanged: all five `focusVisible[key] === true` assertions, the `'reached focus targets'` length assertion (5), the visibility predicate (outline width/style or box-shadow), and every other assertion in the spec file (overflow, layout, clipping, touch targets, TC-E2E-01, TC-E2E-03 cleanliness).
+- Forbidden: every relaxation listed in `spec.md` Fix B (no removed/relaxed/skipped/subset assertions, no removed target, no hardcoded `true`, no class-presence substitution).
+- **No application code, stylesheet, or component change is authorized for Fix B** — the tab's `:focus-visible` rule (index.css 601–604) is correct and keyboard-proven by clip-review's CI-green runs; the defect is in how the test feeds the measurement.
+
+### C.4 REFACTOR
+
+- No behavior change is expected beyond the two fixes. Re-run the local matrix (`test-plan.md` §11); all suites remain green.
+- Formatting: `vendor/bin/pint --dirty` for `apps/api` only if any PHP file were touched — none should be; `npm run lint` must exit 0.
+
+### C.5 Verification matrix — local vs CI (authoritative split)
+
+| Venue | Command / check | Required result |
+|---|---|---|
+| `apps/web` (local) | `npm test` | full Vitest suite green (no component is changed by this correction; any failure signals scope creep) |
+| `apps/web` (local) | `npm run lint` | exit 0 |
+| `apps/web` (local) | `npm run build` | TypeScript + Vite build pass (ships the corrected CSS) |
+| `apps/web` (local) | `npx playwright test e2e/image-studio.spec.ts --list` | non-empty discovery: 6 tests in 1 file across mobile/tablet/desktop |
+| `apps/api` (local) | `php artisan test --exclude-group=real-integration` (or the issue-scoped suites) | unchanged and green — this correction touches no PHP |
+| `apps/api` (local) | `vendor/bin/pint --dirty --format agent` | no fixes needed (nothing PHP changed) |
+| Repository root | governance suite (when executable locally) / CI `governance` job | pass |
+| **CI only** | `npm run test:e2e` | **authoritative and impossible locally**: the sandbox PHP lacks `pdo_pgsql` and `apps/api/.env` does not exist (ratified Issue #110 precedent, evidenced in `evidence.md`). CI provisions PostgreSQL 16 + `pdo_pgsql` and is the e2e venue. |
+
+**Exact CI pass condition (the merge gate is fail-closed on these):** on the correction commit — `e2e` **green** with TC-E2E-01 **and** TC-E2E-02 passing at 390x844, 768x1024, and 1440x900 (zero failures; the image-studio spec's 6 tests all pass), **plus** `governance`, `pr-enforcement`, `test` (frontend), and `tests` (backend) still green. No partial pass is acceptable; local e2e attempts are not substitutes.
+
+### C.6 TDD and evidence expectations for this correction
+
+- **RED**: the CI Round 3 output recorded verbatim in `evidence.md` under `### RED` (real assertion failures, quoted in `spec.md`).
+- **GREEN**: (1) CI `e2e` green on the fix commit **and** (2) every local suite green after the fix (Vitest, lint, build, `--list` discovery, backend suites, governance).
+- **REFACTOR**: local suites remain green after any cleanup; behavior unchanged.
+- `evidence.md` must keep the literal `### RED` / `### GREEN` / `### REFACTOR` headings (the `pr-enforcement` gate requires them) and must continue to end with **exactly one** `Decision:` line — that line is Tester-owned. Correction evidence is appended without removing prior rounds' content.
+
+### C.7 Scope discipline (out of scope for this step)
+
+No backend changes; no component behavior changes beyond Fix A's one CSS declaration; no assertion weakening of any kind; no new issues; no dependency changes; no edits to `tests/governance/**`, `.opencode/**`, `scripts/merge_gate.py`, CI/Docker, or `playwright.config.ts`; no changes to other e2e specs' assertions; no opportunistic refactors. Future Planner candidates recorded, not touched now: `.project-form`'s identical missing-`box-sizing` pattern (index.css 348–357), the pre-existing inert utility class strings on the `ProjectMediaSection` tabs, and the unimported `apps/web/src/App.css`.
+
+### Correction checklist
+
+- [ ] Fix A: `box-sizing: border-box` on `.image-studio-form` only; no global reset; static re-audit confirms no other studio overflow rule
+- [ ] Fix B: tab focus state recorded only after keyboard interaction; all five `toBe(true)` assertions and the length-5 assertion intact; no other assertion in the file changed
+- [ ] Local matrix green: Vitest, lint, build, Playwright `--list` (6 tests), backend suites, Pint (no-op)
+- [ ] CI green: `e2e` (TC-E2E-01 + TC-E2E-02 at all three viewports), `governance`, `pr-enforcement`, `test`, `tests`
+- [ ] `evidence.md` carries the CI Round 3 RED verbatim under the required headings, GREEN/REFACTOR recorded, and still ends with exactly one Tester-owned `Decision:` line
+- [ ] Scope audit: diff limited to `apps/web/src/index.css` (one declaration), `apps/web/e2e/image-studio.spec.ts` (focus interaction), and `evidence.md`
+
 ## Remaining Gates (Not Claimed Complete)
 
 - Independent Tester review: runs all backend/frontend/E2E tests, operates the running app, inspects screenshots at 3 viewports, checks console/network/API, validates accessibility, security, ownership, CSRF, secret exposure.

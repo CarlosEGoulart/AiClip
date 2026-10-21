@@ -2,7 +2,7 @@
 
 ## Authority, Preconditions, and Evidence Rules
 
-Active issue: [Issue #113](https://github.com/CarlosEGoulart/AiClip/issues/113). Verify `spec.md` acceptance criteria AC-01 through AC-12 and the ordered work in `plan.md`.
+Active issue: [Issue #113](https://github.com/CarlosEGoulart/AiClip/issues/113). Verify `spec.md` acceptance criteria AC-01 through AC-12 and the ordered work in `plan.md`. The CI Round 3 correction adds AC-13 through AC-15 and section 11 below; AC-01 through AC-12 remain intact and in force.
 
 Before Builder corrections: Orchestrator confirms the planning/governance gate. Builder ensures Docker infrastructure is running (`docker compose up -d postgres` from repository root), database migrated, and baseline tests pass.
 
@@ -357,6 +357,79 @@ Verify installed runner support for fail-closed options during setup. The standa
 | Cross-cutting Security | AC-05, AC-06, AC-07, AC-08 |
 | Cross-cutting Accessibility | AC-09 |
 | Full backend/frontend/E2E suites + lint/build/governance | AC-11, AC-12 |
+| Correction Fix A — TC-E2E-02 overflow assertion at 3 viewports (CI Round 3) | AC-13 |
+| Correction Fix B — TC-E2E-02 keyboard focus walk, five targets at 3 viewports (CI Round 3) | AC-14 |
+| Correction no-regression — TC-E2E-01, TC-E2E-03, all local suites, full CI green (CI Round 3) | AC-15 |
+
+## 11. CI Round 3 Correction — Verification Addendum (Issue #113 clarification)
+
+This addendum verifies the two corrections defined in `spec.md` ("CI Round 3 Correction": Fix A overflow, Fix B focus-walk interaction) and `plan.md` Step C. It supplements — and does not replace — sections 1–10: AC-01 through AC-12 and every test case above remain in force, and previously passing suites must stay green.
+
+### 11.1 RED evidence (already obtained — do not re-litigate or manufacture)
+
+The RED for both defects is the CI Round 3 run on commit `2113c87` (PR #114), `npm run test:e2e` → **99 passed, 3 failed**, all in `apps/web/e2e/image-studio.spec.ts` TC-E2E-02:
+
+```
+[mobile]  TC-E2E-02 line 338: expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth)
+          → Expected `<= 390`, Received `408`
+[tablet]  TC-E2E-02 line 338: expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.innerWidth)
+          → Expected `<= 768`, Received `786`
+[desktop] TC-E2E-02 line 442: image-studio-tab visible focus indicator
+          → expect(focusVisible['image-studio-tab']).toBe(true) received `false`
+```
+
+This is valid RED: real behavioral assertion failures on a run where 99 other tests executed green (not environment, not setup, not discovery). Builder records this output verbatim in `evidence.md` under the `### RED` heading (`evidence.md` is Builder/Tester-owned; the Planner does not edit it). TC-E2E-01 passed at all three viewports and governance/pr-enforcement/frontend `test`/backend `tests` were green in the same run — those states are the no-regression baseline.
+
+### 11.2 Local verification (required on the fix commit before push)
+
+| Working Directory | Command / Required Result |
+|---|---|
+| `apps/web` | `npm test` — full Vitest suite green (Fix A touches only CSS and Fix B only the e2e file; any component-test failure signals scope creep) |
+| `apps/web` | `npm run lint` — exit 0 |
+| `apps/web` | `npm run build` — TypeScript + Vite build pass (the build must contain the corrected `.image-studio-form` rule) |
+| `apps/web` | `npx playwright test e2e/image-studio.spec.ts --list` — non-empty discovery: **6 tests in 1 file** (TC-E2E-01 + TC-E2E-02 × mobile/tablet/desktop) |
+| `apps/api` | `php artisan test --exclude-group=real-integration` — green; this correction touches no PHP, so any backend delta is out of scope |
+| `apps/api` | `vendor/bin/pint --dirty --format agent` — pass (expected no-op; nothing PHP changed) |
+| Repository root | governance suite where locally executable; otherwise CI `governance` is authoritative |
+
+Also re-run statically: confirm the CSS diff is confined to the `.image-studio-form` fix (canonically the single `box-sizing: border-box` declaration; per `spec.md` an equivalently correct fix is acceptable only if it stays within that rule and removes no other), the e2e diff touches only the TC-E2E-02 focus interaction, and `IMAGE_STUDIO_FOCUS_TARGETS` still lists all five targets with unchanged selectors.
+
+### 11.3 CI-authoritative checks (cannot run in this sandbox)
+
+`npm run test:e2e` **cannot execute locally**: the sandbox PHP lacks `pdo_pgsql` and `apps/api/.env` does not exist, so the Playwright webServer's Laravel stack returns 500 at the auth step — the ratified **Issue #110 precedent**, independently proven and recorded in `evidence.md`. CI provisions PostgreSQL 16 + `pdo_pgsql`; **CI is the e2e venue**. No local workaround, interception, reduced viewport set, or reduced spec selection may be substituted, and the e2e check may never be skipped or downgraded.
+
+### 11.4 Exact CI pass condition
+
+On the fix commit, **all** of the following must be green:
+
+1. `e2e` (`npm run test:e2e`): **zero failures**; TC-E2E-01 **and** TC-E2E-02 pass at **390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)** — including line 338 `scrollWidth <= innerWidth` at all three, the layout/clipping/touch-target checks at all three, and line 442 `focusVisible[key] === true` for all five targets at all three; TC-E2E-03 console/network cleanliness intact.
+2. `governance` — green.
+3. `pr-enforcement` — green (evidence TDD headings + single trailing `Decision:` line).
+4. `test` (frontend Vitest) — green.
+5. `tests` (backend, full tree on CI PostgreSQL) — green.
+
+`scripts/merge_gate.py` is fail-closed on these checks; 99-passed/3-failed, partial passes, or a green run with any skipped image-studio test do **not** satisfy the condition.
+
+### 11.5 TDD and evidence rules for this correction
+
+- **RED**: the CI Round 3 output above, quoted verbatim in `evidence.md` under `### RED`.
+- **GREEN**: (a) CI `e2e` green on the fix commit per §11.4 **and** (b) every local suite in §11.2 green after the fix. GREEN is not claimed from `--list` discovery, from code inspection alone, or from any run in which a required test was skipped.
+- **REFACTOR**: any cleanup after GREEN must keep all suites green with no behavior change.
+- `evidence.md` structure is mandatory: the literal `### RED`, `### GREEN`, `### REFACTOR` headings must be preserved (the `pr-enforcement` gate requires them), correction evidence is appended without deleting prior rounds, and the file must end with **exactly one** `Decision:` line — that line is **Tester-owned** (Builder appends evidence before it; Tester re-issues the final verdict).
+
+### 11.6 Test-integrity prohibitions (binding on Builder)
+
+Forbidden while producing GREEN: removing, relaxing, skipping, or subset-asserting any check (in this spec or any other); removing `image-studio-tab` from `IMAGE_STUDIO_FOCUS_TARGETS` or changing its selector; hardcoding `true` for any focus target (AGENTS.md §24); replacing computed-style measurement with class presence; deleting or bypassing the overflow assertion; reducing the Playwright project/viewport set; disabling console/network collectors; touching `clip-review.spec.ts` (or any other spec's) assertions; weakening any component or backend test. Fix B changes **how focus is established**, never **what is asserted**.
+
+### 11.7 Test case ↔ correction acceptance criteria mapping
+
+| Test Case / Check | AC Covered |
+|-----------|------------|
+| TC-E2E-02 line 338 overflow at 390/768/1440 (CI) | AC-13 |
+| TC-E2E-02 keyboard focus walk — 5 targets × 3 viewports (CI) | AC-14 |
+| TC-E2E-01 flow at 3 viewports + TC-E2E-03 cleanliness (CI, no regression) | AC-15 |
+| Local suites: Vitest, lint, build, `--list`, backend, Pint (no regression) | AC-15 |
+| CI `governance` + `pr-enforcement` (evidence structure, single `Decision:`) | AC-15, AC-12 |
 
 ---
 
