@@ -16,14 +16,16 @@ import { test, expect, type Page, type Response } from '@playwright/test';
  * QUEUE_CONNECTION=sync (Issue #110 requirement), so generation
  * completes during the POST and the first gallery refetch observes the
  * terminal state. No MinIO and no Python worker are involved: the bound
- * provider is the deterministic pure-PHP fake and the gallery fetches no
- * image bytes (no byte-delivery URL exists in this slice).
+ * provider is the deterministic pure-PHP fake, and delivered image bytes
+ * come exclusively through the first-party signed serve route on the API
+ * origin (the `local` disk serves bytes via the framework's signed
+ * route); external storage backends remain forbidden in this slice.
  *
  * TC-E2E-01 and TC-E2E-02 run in every configured viewport project
  * (mobile 390x844, tablet 768x1024, desktop 1440x900); viewport sizes
  * are never set manually. TC-E2E-03 (console/network/API cleanliness,
- * no secrets in browser storage, no storage/bucket requests) is enforced
- * inside both tests.
+ * no secrets in browser storage, no external storage/bucket requests) is
+ * enforced inside both tests.
  */
 
 interface Cleanliness {
@@ -40,6 +42,7 @@ interface FocusTarget {
 
 const IMAGE_FIELD_WHITELIST = [
   'created_at',
+  'download_url',
   'height',
   'id',
   'mime_type',
@@ -58,6 +61,7 @@ const IMAGE_STUDIO_FOCUS_TARGETS: FocusTarget[] = [
   { key: 'style-preset', selector: '#image-style-preset' },
   { key: 'dimensions', selector: '#image-dimensions' },
   { key: 'generate', selector: '.image-studio button[type="submit"]' },
+  { key: 'download', selector: '.image-gallery-download' },
 ];
 
 function uniqueEmail() {
@@ -72,8 +76,10 @@ function matches(method: string, pathname: string) {
 /*
  * TC-E2E-03 collectors: browser console errors/warnings, uncaught
  * exceptions, any 4xx/5xx response (the anonymous GET /api/v1/auth/me 401
- * session probe is the single ratified exception), and any request to a
- * storage/bucket URL (no image byte delivery exists in this slice).
+ * session probe is the single ratified exception), and any request
+ * carrying a storage/bucket token outside the API origin. Byte delivery
+ * through the first-party signed serve route on the API origin
+ * (127.0.0.1:8000) is expected; external storage backends are forbidden.
  */
 function trackCleanliness(page: Page): Cleanliness {
   const cleanliness: Cleanliness = {
@@ -124,7 +130,10 @@ function trackCleanliness(page: Page): Cleanliness {
 
   page.on('request', (request) => {
     const url = request.url();
-    if (/storage|amazonaws|bucket|:9000/.test(url)) {
+    const isApiOrigin = new URL(url).host === '127.0.0.1:8000'; // API_HOST
+    const externalStorageToken = /amazonaws|bucket|:9000/.test(url);
+    const storageTokenOffOrigin = /storage/.test(url) && !isApiOrigin;
+    if (externalStorageToken || storageTokenOffOrigin) {
       cleanliness.storageRequests.push(`${request.method()} ${url}`);
     }
   });
@@ -239,6 +248,8 @@ async function runGenerateFlow(page: Page) {
   expect(generateResponse.status()).toBe(202);
   const generateBody = await generateResponse.json();
   expect(generateBody.data.status).toBe('pending');
+  // The enqueue-time pending resource never carries a signed URL.
+  expect(generateBody.data.download_url).toBeNull();
   expect(Object.keys(generateBody.data).sort()).toEqual(IMAGE_FIELD_WHITELIST);
   expect(JSON.stringify(generateBody)).not.toContain('storage_disk');
   expect(JSON.stringify(generateBody)).not.toContain('storage_key');
@@ -283,6 +294,34 @@ async function runGenerateFlow(page: Page) {
     page.getByRole('list', { name: 'Generated images' }).getByText(PROMPT),
   ).toBeVisible();
   await expect(page.getByRole('listitem')).toHaveCount(1);
+
+  // 6a: the refetch mints a time-limited signed download URL for the
+  // generated item (route path + signature + expires, no storage
+  // internals anywhere in the payload — asserted above).
+  const generatedItem = refetchBody.data.data[0];
+  expect(typeof generatedItem.download_url).toBe('string');
+  expect(generatedItem.download_url).toContain(`images/${generatedItem.id}/download`);
+  expect(generatedItem.download_url).toContain('signature=');
+  expect(generatedItem.download_url).toContain('expires=');
+
+  // 6b/6c: the preview renders and decodes — the issue's chain proof. A
+  // decoded image can only exist if the browser completed the API 302 →
+  // signed local serve route → 200 PNG byte delivery; a broken chain
+  // yields naturalWidth === 0 and/or an unexpected 4xx/5xx caught by the
+  // response collector above.
+  const preview = page.getByRole('img', { name: /^Generated image:/ });
+  await expect(preview).toBeVisible();
+  await expect
+    .poll(() => preview.evaluate((element) => (element as HTMLImageElement).naturalWidth), {
+      timeout: 10000,
+    })
+    .toBeGreaterThan(0);
+
+  // 6d: the download link carries the same signed API URL.
+  const downloadLink = page.getByRole('link', { name: 'Download image' });
+  await expect(downloadLink).toHaveAttribute('href', /\/api\/v1\/images\/\d+\/download/);
+  await expect(downloadLink).toHaveAttribute('href', /signature=/);
+  await expect(downloadLink).toHaveAttribute('href', /expires=/);
 }
 
 async function cleanupProject(page: Page, projectName: string) {
@@ -369,8 +408,8 @@ test.describe('Image Studio (embedded)', () => {
       );
     }
 
-    // Header, form, and gallery are fully inside the viewport (no
-    // clipping at any configured width).
+    // Header, form, and gallery (including the preview) are fully inside
+    // the viewport (no clipping at any configured width).
     const clipped = await page.evaluate(() => {
       const viewportWidth = window.innerWidth;
       const elements = [
@@ -380,6 +419,7 @@ test.describe('Image Studio (embedded)', () => {
         document.querySelector('#image-dimensions'),
         document.querySelector('.image-studio button[type="submit"]'),
         document.querySelector('.image-studio [role="list"]'),
+        document.querySelector('.image-gallery-card-preview'),
       ];
       return elements.filter((element) => {
         if (!element) return true;
@@ -390,7 +430,7 @@ test.describe('Image Studio (embedded)', () => {
     expect(clipped, 'elements clipped by the viewport').toBe(0);
 
     // Interactive controls are touch-target sized (>= 44px): the studio
-    // controls and the Image Studio tab.
+    // controls, the Image Studio tab, and the download link.
     const touchTargets = await page.evaluate(() => {
       const height = (selector: string) =>
         document.querySelector(selector)?.getBoundingClientRect().height ?? 0;
@@ -400,6 +440,7 @@ test.describe('Image Studio (embedded)', () => {
         'style-preset': height('#image-style-preset'),
         dimensions: height('#image-dimensions'),
         generate: height('.image-studio button[type="submit"]'),
+        download: height('.image-gallery-download'),
         'back-to-projects': height('button[aria-label="Back to projects"]'),
       };
     });
@@ -439,8 +480,16 @@ test.describe('Image Studio (embedded)', () => {
     let hit = await recordFocusedTarget();
     if (hit) focusVisible[hit.key] = hit.visible;
 
-    // Walk forward through prompt -> style -> dimensions -> generate.
-    for (let i = 0; i < 4; i++) {
+    // Walk forward through prompt -> style -> dimensions -> generate ->
+    // download. The walk is bounded (cap 8 presses) and records only
+    // matched targets, so an interposed focusable (if the real DOM adds
+    // one) cannot weaken the full-strength assertions below, which still
+    // require all six targets to have been reached.
+    for (
+      let i = 0;
+      i < 8 && Object.keys(focusVisible).length < IMAGE_STUDIO_FOCUS_TARGETS.length;
+      i++
+    ) {
       await page.keyboard.press('Tab');
       hit = await recordFocusedTarget();
       if (hit) focusVisible[hit.key] = hit.visible;
