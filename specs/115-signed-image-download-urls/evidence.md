@@ -858,3 +858,325 @@ failure in the backend `tests` job (1608 passed / 1 failed / 8 pre-existing
 environmental skips). The prior line-start Decision at the top of this file
 (line 540) remains the operative decision. Final GREEN authority is the next
 CI run of the backend `tests` job.
+
+---
+
+## Tester Review — Docs Landing (post-merge DoD)
+
+Independent review of the docs-only cherry-pick commit `f951133`
+(`docs(project): record M8 slice 2 signed download URLs and gallery previews`)
+on branch `@carlosegoulart/115/feat/image-download-urls`, performed before the
+Orchestrator opens the PR that lands the post-merge project-state
+documentation blocked by branch protection.
+
+Execution note: `git switch` is denied by this sandbox's permission rules, so
+all branch inspection was performed read-only against explicit refs
+(`git diff origin/master...@carlosegoulart/115/feat/image-download-urls`,
+`git diff --stat 0b11297 f951133`, `git log -1 --format=fuller f951133`)
+instead of checking the branch out. The working tree was never altered by the
+inspection; `f951133` has parent `0b11297`, so the three-dot diff and the
+commit-local diff are identical.
+
+### Files reviewed (diff scope)
+
+`git diff --stat origin/master...@carlosegoulart/115/feat/image-download-urls`
+and `git diff --stat 0b11297 f951133` both report exactly three files —
+3 files changed, 45 insertions(+), 7 deletions(-):
+
+- `README.md`
+- `docs/project-state.md`
+- `docs/roadmap.md`
+
+No production code, application tests, `specs/**` files, CI workflows, Docker
+configuration, `scripts/merge_gate.py`, or `.opencode/**` files are touched.
+Scope: PASS.
+
+### Commit message
+
+Subject `docs(project): record M8 slice 2 signed download URLs and gallery
+previews` (Conventional Commits `docs(project): ...`), body ends with
+`Refs #115`. Format and issue reference: PASS.
+
+### Content verification against the merged implementation (code first)
+
+Verified TRUE:
+
+1. Route placement — `apps/api/routes/api.php`: the `auth:sanctum` group
+   closes at line 75; the `image.download` route is registered at lines 87-88
+   with its comment block starting at line 83. `php artisan route:list
+   --path=download --json` (cwd `apps/api`) reports `"middleware":["api"]` and
+   name `image.download`. The docs' "outside `auth:sanctum`, middleware
+   exactly `["api"]`" claim is TRUE. (Precision note: docs cite "line 83";
+   the route statement itself is lines 87-88.)
+2. Dual-gate order — `ImageController::download()` (lines 131-170): signature
+   present → `abort_unless($request->hasValidSignature(), 403)` before any
+   ownership check; unsigned → guest 401 / non-owner 404; artifact guard
+   `status !== generated` → 404; storage exception → `Log::error` with
+   `image_id` only and a sanitized 500. The docs' 403 → 401/404 → 404 → 404 →
+   500 ordering claim is TRUE (mirrors `ClipReviewController::video`).
+3. Resource whitelist — `ImageResource::toArray()` emits exactly 12 keys
+   (id, project_id, prompt, parameters, mime_type, size_bytes, width, height,
+   status, `download_url`, created_at, updated_at); the signed value comes
+   from `URL::temporarySignedRoute('image.download', now()->addHour(), ...)`
+   for `generated` only. The "12-field whitelist including the signed
+   download URL" claim is TRUE. (Terminology note: the serialized key is
+   `download_url`; `downloadUrl` is the PHP method `downloadUrl()` and the
+   frontend local in `ImageGallery.tsx` line 142.)
+4. Gallery previews — `ImageGallery.tsx` renders `<img>` previews keyed by
+   `${image.id}-${image.download_url}` with an `onError` fallback
+   (`Preview unavailable`, line 64) and a download link only for generated
+   images with a non-null URL. The "gallery previews with a fallback state"
+   claim is TRUE.
+5. AC-07 cleanliness predicate — `apps/web/e2e/image-studio.spec.ts` lines
+   131-139: `externalStorageToken = /amazonaws|bucket|:9000/` is fatal
+   unconditionally (even on the API origin) and `storage` is fatal only when
+   `new URL(url).host !== '127.0.0.1:8000'`. The "exempt only first-party
+   `127.0.0.1:8000` while external `amazonaws`/`bucket`/`:9000` stay fatal"
+   claim is TRUE.
+6. Identifiers and CI history — `gh pr view 116` reports MERGED, merge commit
+   `a69efb5`, merged 2026-10-22T12:13:23Z (TRUE). `gh run list` confirms
+   exactly three PR check rounds: 11:02:18 Backend failure (Round 1, run
+   39767567074), 11:31:17 Backend failure (Round 2, run 39771198950),
+   12:04:52 all green (Round 3, runs 39775460899/0974/1101/1293). Round 1
+   fixed two test-assertion bugs in `0518d47` (evidence "Defect 1" +
+   "Defect 2"), Round 2 the `toBeEmpty()` → `isEmpty()` fix in `0b11297`,
+   Round 3 all five checks green (`gh pr checks 116`: e2e, governance,
+   pr-enforcement, test, tests — all pass). TRUE.
+7. `real-integration` group test `ImageDownloadRealIntegrationTest` exists in
+   the merged PR file list. TRUE.
+8. Vitest 309/309 — final Frontend CI job log (job 119813145713) reports
+   `Test Files 20 passed (20)` / `Tests 309 passed (309)`, lint `0 errors`,
+   build passed. TRUE.
+
+### Factual drift found (defects)
+
+1. **Backend test tally is wrong in two files.** `docs/project-state.md`
+   claims "backend `tests` job green (1608 passed, 8 skipped MinIO
+   environmental guards, 0 failed)" and `docs/roadmap.md` claims "backend
+   `tests` green (1608 passed)". Independently fetched the final green
+   backend job (`gh run view --job=119813143976 --log`, run 39775460899 — the
+   `tests` check of PR #116): the summary line is **`Tests: 8 skipped, 1609
+   passed (7188 assertions)`**. `1608` is the Round 2 figure *with one
+   failing test* (this file, line 808: "1 failed, 8 skipped, 1608 passed");
+   after the Round 3 fix the pass count is **1609**. The docs combine the
+   Round-2 pass count with "0 failed", which does not correspond to any
+   executed run.
+2. **Test-venue misattribution in `docs/project-state.md`.** The sentence "a
+   12-field whitelist and six focus targets are asserted in Vitest (309/309)"
+   is false. `IMAGE_FIELD_WHITELIST` (12 keys) is asserted only in
+   `apps/web/e2e/image-studio.spec.ts` line 253, and
+   `IMAGE_STUDIO_FOCUS_TARGETS` (6 entries) only at e2e lines 498-503 across
+   all three viewports. Repository-wide search finds no Vitest test asserting
+   either the 12-key set or six focus targets (Vitest image-studio suites
+   cover tab order of four form controls, focus/touch classes, preview and
+   fallback behavior). This evidence file itself attributes both items to
+   Playwright (lines 223-237 and 436-447). Vitest 309/309 is a true count
+   attached to the wrong assertions.
+3. **Same sentence also misplaces the byte-chain proof.** "`naturalWidth > 0`
+   byte-chain verification" is a Playwright assertion
+   (`image-studio.spec.ts` lines 314-318), not something the frontend gallery
+   cards perform; the component only renders and `onError`-falls-back.
+   (README's looser "gallery image previews with real byte-chain
+   verification" and roadmap's "Playwright e2e including preview byte-chain"
+   are acceptable; only the project-state phrasing is wrong.)
+
+Timing note (not counted as a separate blocking defect): `docs/roadmap.md`
+records the Slice 2 entry as "Issue #115, PR #116 — merged; issue closed",
+but `gh issue view 115` currently reports `state: OPEN, stateReason:
+REOPENED`. That clause only becomes true when the Orchestrator closes the
+issue after this docs PR lands; it must be re-checked at that point.
+
+Minor precision notes (recorded, not separately blocking): "line 83" for a
+route statement at lines 87-88; `downloadUrl` versus the serialized
+`download_url` key; README's "non-owners always 404" holds on the unsigned
+path only (a valid signed URL is a bearer credential and redirects any holder,
+per `spec.md` lines 403-405).
+
+### English-only and documentation conventions
+
+All three files are English-only (AGENTS.md §19) with no Portuguese content,
+and contain no `TODO`, `FIXME`, `TBD`, `placeholder`, or lorem-ipsum text
+(grep across `README.md`, `docs/roadmap.md`, `docs/project-state.md`: zero
+matches). PASS.
+
+### Merge-gate Decision-line integrity
+
+The gate's line-anchored pattern `^\s*(\*\*)?Decision:` run over this file
+**before** this append returned **exactly one match: line 540,
+`Decision: APPROVE`**. The same pattern was re-run **after** this append and
+still returns exactly one match at line 540 — this section deliberately
+contains no line-start `Decision:` line, and the verdict below is stated in
+prose only, so `TESTER_CONFLICTING_DECISIONS` cannot be triggered by this
+append.
+
+### Application / Playwright / visual / accessibility checks
+
+N/A — governance/docs-only change: the diff touches only `README.md`,
+`docs/roadmap.md`, and `docs/project-state.md`, with no production code, no
+API behavior change, and no user-interface change. There is no running
+application surface to exercise for this diff, so unit/API/E2E/Playwright
+scenarios, console/network inspection, screenshots, and the 390x844 /
+768x1024 / 1440x900 viewport and accessibility interaction checks are not
+applicable; they were covered by the original review of PR #116, whose
+implementation approval stands.
+
+### Environment note (not attributable to this diff)
+
+The push-triggered `.github/workflows/test-e2e-caption.yml` run for
+`f951133` (run 39779524300) failed in 0s with "workflow file issue". This is
+pre-existing and universal: the same workflow fails identically on every push,
+including the PR #116 merge commit on master (39776581918) and earlier branch
+commits. It is unrelated to the docs content and is not one of the five
+merge-gate checks.
+
+### Verdict
+
+Verdict: REJECT — the diff is correctly scoped (exactly three documentation
+files, nothing else), English-only, free of placeholder text, and its commit
+message follows Conventional Commits with `Refs #115`, but two factual claims
+are false against independently verified sources: the final backend tally is
+**1609 passed / 8 skipped / 0 failed** (docs state 1608 passed in both
+`docs/project-state.md` and `docs/roadmap.md`), and the 12-field whitelist
+plus the six focus targets (and the `naturalWidth > 0` byte-chain proof) are
+asserted in the Playwright e2e suite, not Vitest, contrary to
+`docs/project-state.md`. Because this PR exists solely to land accurate
+project-state documentation, factual drift is a blocking defect. Required
+before re-review: correct 1608 → 1609 in both files, and re-attribute the
+whitelist/focus-target/byte-chain assertions to Playwright e2e in
+`docs/project-state.md`. The operative line-start Decision at line 540
+(`Decision: APPROVE`) is unchanged by this section.
+
+## Tester Re-review — Docs Landing Corrections
+
+Reviewer: independent Tester (docs-landing re-review of the uncommitted
+working-tree corrections on `@carlosegoulart/115/feat/image-download-urls`).
+This section re-reviews the corrections made in response to the `## Tester
+Review — Docs Landing (post-merge DoD)` REJECT above.
+
+### Process context: why the Orchestrator (not Builder) applied the fixes
+
+Builder attempted the verified fix list but was runtime-blocked: the
+Builder permission allowlist covers only `apps/**`, `services/**`, and
+`specs/*/evidence.md`, so `README.md` and `docs/**` are outside its writable
+surface. Per AGENTS.md §4.1 ("update project state" is an explicit
+Orchestrator responsibility) and §27 (the Orchestrator maintains
+`docs/project-state.md`), the Orchestrator then applied the Tester's exact
+verified fix list directly to the three documentation files. I treat this as
+governance-appropriate: these are pure documentation files, not application
+features (AGENTS.md §4.1 forbids the Orchestrator from implementing
+application features; this is not that), the edit content was dictated line by
+line by the prior review (no new claims were invented), and the
+Tester-independence gate is preserved because an independent Tester is
+re-verifying the result from scratch below rather than trusting the actor.
+
+### Working-tree state
+
+`git status --short` before this append: exactly four dirty paths —
+`README.md`, `docs/project-state.md`, `docs/roadmap.md` (the corrections
+under review), plus this pre-existing dirty `specs/115-signed-image-download-urls/evidence.md`
+(my own prior REJECT append). `git diff --stat`: README.md 1 line changed,
+docs/project-state.md 15 lines changed, docs/roadmap.md 1 line changed,
+evidence.md +187 (prior Tester append only). No code, no specs other than
+this evidence file, no workflows, no CI/Docker config.
+
+### Required fix 1 — 1608 → 1609 tally
+
+- Before (prior review, recorded above): both `docs/project-state.md` and
+  `docs/roadmap.md` claimed `1608 passed`, which is the Round 2 figure taken
+  while one test was still failing.
+- After: grep for `1608` across `README.md`, `docs/project-state.md`,
+  `docs/roadmap.md` returns **zero matches** (Grep tool, include-glob
+  verified with a positive control). The corrected text now reads
+  `1609 passed, 8 skipped MinIO environmental guards, 0 failed` in
+  `docs/project-state.md` (line 192) and `1609 passed` in
+  `docs/roadmap.md` (line 95).
+- Independent source check: I fetched the full log of the green Backend CI
+  run 39775460899 (head `0b11297`, Round 3, conclusion `success` via
+  `gh run list`) and located the tests-job summary line:
+  `Tests: 8 skipped, 1609 passed (7188 assertions)`. The corrected docs
+  match this independently retrieved figure exactly. VERIFIED.
+
+### Required fix 2 — re-attribute whitelist / focus targets / byte-chain proof to Playwright e2e
+
+- Before: `docs/project-state.md` claimed "a 12-field whitelist and six focus
+  targets are asserted in Vitest (309/309)".
+- After: the paragraph now reads that "the 12-field whitelist, the six focus
+  targets, and the `naturalWidth > 0` byte-chain proof are asserted by the
+  Playwright e2e suite, while Vitest 309/309 covers component and hook
+  behavior" (lines 183-186). Grep confirms no sentence in
+  `docs/project-state.md` attributes the whitelist, focus-target, or
+  byte-chain assertions to Vitest. `docs/roadmap.md` likewise attributes the
+  byte-chain verification to Playwright e2e ("Playwright e2e including
+  preview byte-chain and cleanliness predicates") and makes no Vitest
+  assertion claim about them. VERIFIED.
+
+### Flagged minors — route reference and serialized field name
+
+- `line 83` → `lines 87–88`: grep for `line 83` in `docs/project-state.md`
+  returns **zero matches**; the text now reads "lines 87–88 of
+  `apps/api/routes/api.php`". I factually re-checked the source: in the
+  current `apps/api/routes/api.php`, lines 87-88 are the
+  `Route::get('/images/{image}/download', ...)` statement and its
+  `->name('image.download')`; line 83 is only a comment. The corrected
+  reference is accurate. VERIFIED.
+- `downloadUrl` → `download_url`: grep for `downloadUrl` across the three
+  docs returns **zero matches** (positive control: `download_url` found at
+  README.md line 81 and in both docs). Remaining repository occurrences of
+  `downloadUrl` are all legitimate non-doc references (the PHP method
+  `downloadUrl()` in `ImageResource`, local variables in
+  `ImageShowTest.php`/`ImageGallery.tsx`, and quotes inside
+  spec/plan/evidence). VERIFIED.
+
+### No-new-defects verification
+
+- Dual-gate order (403 signature before ownership; 401/404 unsigned
+  fallback; 404 non-owner no-leak; 404 artifact guard; sanitized 500),
+  route outside `auth:sanctum`, middleware exactly `["api"]`,
+  `real-integration` `ImageDownloadRealIntegrationTest`, AC-07 predicate
+  refinement, and the three CI rounds including `0518d47` and `0b11297`
+  (plus "Round 3: all five checks green") are all unchanged in
+  `docs/project-state.md` (lines 171-197) — I compared the pre-correction
+  diff hunks against the post-correction file: the edits touch only the six
+  flagged tokens/sentences and nothing else.
+- English-only: all corrected text is English (the en dash in "87–88" is
+  typographic, not a language violation). No Portuguese introduced.
+- No `TODO`/`FIXME`/`TBD`/placeholder/lorem-ipsum text introduced (grep
+  across the three docs: zero matches in the corrected text).
+- Explicit non-changes preserved: README's "non-owners always 404" /
+  roadmap's "404 for non-owners (no ownership leak)" phrasing is untouched
+  (it mirrors `spec.md` and remains subject to the same bearer-credential
+  nuance recorded above), and the roadmap's "merged; issue closed" wording
+  is untouched and accurate again now that the auto-close path via the
+  upcoming PR merge holds.
+
+### Merge-gate Decision-line integrity
+
+The gate's line-anchored pattern `^\s*(\*\*)?Decision:` run over this file
+**before** this append returns **exactly one match: line 540,
+`Decision: APPROVE`**. This re-review section again contains no line-start
+`Decision:` line; its verdict is stated in prose only. The pattern is
+re-run after this append (result recorded in the Orchestrator handoff) and
+must still return exactly one match at line 540.
+
+### Application / Playwright / visual / accessibility checks
+
+N/A — governance/docs-only correction: the diff under review modifies only
+`README.md`, `docs/project-state.md`, and `docs/roadmap.md`; there is no
+production code, API behavior, or user-interface change. There is no running
+application surface to exercise, so unit/API/E2E/Playwright scenarios,
+console/network inspection, screenshots, and the 390x844 / 768x1024 /
+1440x900 viewport and accessibility interaction checks do not apply to this
+correction; the original PR #116 implementation approval stands, and the
+application behavior was validated in the prior full review.
+
+### Verdict
+
+Verdict: APPROVE — every defect and minor flagged in the prior REJECT is
+resolved against independently re-verified sources (1609/8/0 tally matched
+to the green Backend CI log; Playwright-e2e attribution corrected;
+`lines 87–88` factually accurate against `routes/api.php`; serialized field
+`download_url` used consistently in the docs), no new defect was introduced,
+scope remains exactly the three documentation files plus this Tester-owned
+evidence file, and the single line-start `Decision:` at line 540
+(`Decision: APPROVE`) is intact. The docs landing for Issue #115 is now
+factually accurate; nothing further blocks the docs correction PR.
