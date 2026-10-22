@@ -14,7 +14,7 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 | M5 — AI Clip Recommendation | Completed (Issue #64, PR #66) |
 | M6 — Vertical Clip Rendering | M6.1 Complete (Issue #69, PR #73); M6.2 Slices 3A–3E Complete (Issues #81, #81B, #87, #89, #101) |
 | M7 — Clip Review Experience | Slice 1 Complete (Issue #106, PR #107) |
-| M8 — AI Image Studio | Slice 1 Complete (Issue #113, PR #114) |
+| M8 — AI Image Studio | Slice 1 Complete (Issue #113, PR #114); Slice 2 Complete (Issue #115, PR #116) |
 
 M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization, Sanctum SPA authentication, and authenticated project management. M2 delivered: project-scoped video upload with S3-compatible storage (MinIO for development, AWS S3 in production).
 
@@ -72,8 +72,18 @@ lifecycle, a `GenerateImage` queue job following the existing worker topology
 `POST /api/v1/images/generate` / `GET /api/v1/images` /
 `GET /api/v1/images/{image}` API with a strict resource whitelist, and the
 React `ImageStudio` feature with the Image Studio tab in ProjectMediaSection.
-A real model-backed provider, image deletion, batch generation, and download
-URLs remain future M8 slices.
+
+M8 Slice 2 adds signed image download URLs and gallery previews (Issue #115,
+PR #116): a dual-gate `GET /api/v1/images/{image}/download` endpoint outside
+`auth:sanctum` mirroring the clip-review video pattern (invalid/expired/
+tampered signatures 403 before any ownership check; unsigned requests fall
+back to ownership 401/404; non-owners always 404; artifact guard; sanitized
+500), a 12-field `ImageResource` whitelist including the signed `download_url`,
+gallery image previews with real byte-chain verification and a fallback state
+when a preview cannot load, and a Playwright cleanliness predicate refined to
+exempt only first-party `127.0.0.1:8000` storage hosts while keeping external
+`amazonaws`/`bucket`/`:9000` tokens fatal. A real model-backed provider,
+image deletion, batch generation, and image editing remain future M8 slices.
 
 ## Technology Stack
 
