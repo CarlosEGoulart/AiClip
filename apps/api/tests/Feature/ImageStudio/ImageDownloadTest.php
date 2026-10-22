@@ -100,11 +100,8 @@ it('returns 403 for a tampered signature', function () {
 it('returns 404 for an unsigned request from a non-owner', function () {
     Storage::fake($this->disk);
 
-    $this->spaRequest('POST', '/api/v1/auth/login', $this->cookies, [
-        'email' => $this->otherUser->email,
-        'password' => 'password',
-    ])->assertOk();
-
+    // beforeEach already authenticated $this->user; the requested image is
+    // owned by $this->otherUser, so the session user is a non-owner.
     $response = $this->spaRequest(
         'GET',
         '/api/v1/images/'.$this->otherUserImage->id.'/download',
@@ -210,7 +207,7 @@ it('registers the download route outside the auth sanctum group with no throttle
 
     expect($route)->not->toBeNull()
         ->and($route->uri())->toBe('api/v1/images/{image}/download')
-        ->and($route->methods())->toBe(['GET']);
+        ->and($route->methods())->toBe(['GET', 'HEAD']);
 
     $middleware = $route->gatherMiddleware();
     expect($middleware)->not->toContain('auth:sanctum')

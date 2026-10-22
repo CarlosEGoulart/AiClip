@@ -538,3 +538,181 @@ The merge gate (`scripts/merge_gate.py`) is fail-closed on `e2e`,
 `governance`, `pr-enforcement`, `test`, and `tests`.
 
 Decision: APPROVE
+
+---
+
+## CI Round 1 Correction
+
+CI backend `tests` job (run 39767567074) failed with **two real
+test-assertion defects**, both in
+`apps/api/tests/Feature/ImageStudio/ImageDownloadTest.php`. Both were
+**test bugs, not production defects** — the controller and route were
+correct and are **unchanged** by this correction.
+
+### Defect 1 — non-owner 404 test requested the wrong image
+
+The test logged in as `$this->otherUser` and then requested
+`$this->otherUserImage`, which `beforeEach` creates with
+`'user_id' => $this->otherUser->id`. The session user WAS the owner of the
+requested image, so the controller's ownership check
+(`$image->user_id !== $user->id`) was false, the artifact guard passed
+(`generated()` status), and the request correctly returned **302** —
+contradicting the test's own `assertNotFound()`. The test exercised the
+OWNER path, not the non-owner path it claimed.
+
+**Fix:** Removed the redundant re-login as `otherUser`, so the session
+user remains `$this->user` (authenticated in `beforeEach`), who is a
+genuine non-owner of `$this->otherUserImage`. The request now hits the
+ownership check, which returns 404 as intended. The assertion remains the
+strict `assertNotFound()` — not weakened.
+
+### Defect 2 — `methods()` assertion was factually wrong
+
+The route-registration test asserted
+`$route->methods())->toBe(['GET'])`. Laravel's `Route::get()` helper
+automatically registers both `GET` and `HEAD` (HEAD is auto-added for
+every GET route), so the actual value is `['GET', 'HEAD']`. CI reported
+`Expected ['GET'] but received ['GET', 'HEAD']`.
+
+**Fix:** Corrected the expected value to the actual Laravel contract:
+`->and($route->methods())->toBe(['GET', 'HEAD'])`. The strict `toBe`
+assertion is retained (not loosened to `toContain`, not removed).
+
+### Scope of the correction
+
+- **Touched:** only
+  `apps/api/tests/Feature/ImageStudio/ImageDownloadTest.php` (the two
+  hunks above).
+- **Unchanged:** the production controller
+  (`ImageController::download`), the route registration
+  (`routes/api.php`), and every other file.
+- `vendor/bin/pint --dirty --format agent` (apps/api): **passed**.
+- No assertion was weakened, skipped, or disabled; both fixes make the
+  tests assert the CORRECT behavior they always intended to cover.
+
+---
+
+## Tester Re-review — CI Round 1
+
+This section records the Tester's independent re-review of the CI Round 1
+Correction only (the two-file uncommitted working-tree diff). It appends to,
+and does not rewrite, any prior section of this file.
+
+### Re-review verdict
+
+**APPROVE — re-affirmed.** The merge gate requires exactly one decision line
+in this file: `scripts/merge_gate.py` collects every `DECISION_RE` match over
+the whole file and blocks with `TESTER_CONFLICTING_DECISIONS` when more than
+one exists (verified in the gate source: `len(decisions) > 1`). The
+pre-existing decision at line 540 (`Decision: APPROVE`, the standing Tester
+verdict from the original review) is therefore kept untouched, and this
+re-review's verdict is recorded in prose here instead of as a second decision
+line. Result: exactly one verdict total exists in this file, it is the APPROVE
+verdict, it is also the file's final (and only) decision line, and it matches
+this re-review's current verdict. A search of this file confirms no other
+decision line of any kind was introduced and no rejecting verdict exists
+anywhere in it.
+
+### Scope of the diff
+
+`git status --porcelain` (uncommitted working tree) reports exactly two
+modified files and nothing else — no staged changes, no untracked files:
+
+- `apps/api/tests/Feature/ImageStudio/ImageDownloadTest.php`
+- `specs/115-signed-image-download-urls/evidence.md`
+
+Production files are untouched: `ImageController.php`, `routes/api.php`, and
+`ImageResource.php` do not appear in `git status` or `git diff`. No
+`specs/115-.../plan.md`, `spec.md`, or `test-plan.md`; no `docs/**`; no
+`tests/governance/**`; no `.opencode/**`; no `scripts/merge_gate.py`; no CI
+workflow, Docker, or other configuration files. The Builder's correction
+section (`## CI Round 1 Correction`) states this same scope, and it matches
+the actual diff.
+
+### Diff review — Defect 1 (non-owner 404 test)
+
+First hunk: the redundant re-login as `$this->otherUser` was removed and a
+clarifying comment added. Verified against `beforeEach` (lines 27-47 of the
+test file):
+
+- the session user remains `$this->user`, authenticated at lines 43-46;
+- the requested image is `$this->otherUserImage`, created at lines 38-40 as
+  `Image::factory()->generated()` with `'user_id' => $this->otherUser->id`.
+
+The corrected test therefore sends an unsigned request as a genuine non-owner
+for an image whose status is `generated`. Because the artifact is already
+generated, the artifact guard cannot produce the 404 — only the ownership
+check can — so the test now exercises exactly the non-owner branch it claims
+to cover. The strict `$response->assertNotFound()` assertion is retained
+(line 111); it was not weakened, loosened, skipped, or disabled. The test
+count is unchanged at 12 `it(...)` cases, and no `skip`, `markTestSkipped`,
+or `todo` marker exists anywhere in the file.
+
+### Diff review — Defect 2 (methods() assertion)
+
+Second hunk: only the expected value of a strict assertion changed:
+`->toBe(['GET'])` became `->toBe(['GET', 'HEAD'])`. Verified:
+
+- `toBe` remains strict — not relaxed to `toContain`, not removed;
+- Laravel's `Route::get()` registers `GET` together with the auto-added `HEAD`
+  method, so `['GET', 'HEAD']` is the correct actual contract for this route;
+- the CI log for run 39767567074 shows the received array literally as
+  `0 => 'GET'` plus `1 => 'HEAD'` at the old line 213 — the corrected
+  expectation now asserts precisely that observed value.
+
+The remaining assertions in that test (route URI, absence of `auth:sanctum`,
+absence of `throttle` middleware) are untouched.
+
+### CI evidence cross-check
+
+Independently fetched `gh run view 39767567074 --log-failed`. The run's
+failures are exactly the two defects described above and nothing else:
+
+- `Expected response status code [404] but received 302` at
+  `ImageDownloadTest.php:114` (the non-owner test);
+- `Failed asserting that two arrays are identical`, received
+  `0 => 'GET', + 1 => 'HEAD'`, at `ImageDownloadTest.php:213` (the route
+  test);
+- final tally `Tests: 2 failed, 8 skipped, 1607 passed`, where the 8 skips are
+  the pre-existing MinIO real-integration availability guards.
+
+Both failures were test-assertion bugs in the test file. Neither indicates a
+defect in the production controller, route, or resource. The Builder's
+correction section documents both defects, explicitly labels them test bugs
+rather than production defects, and confirms production files are unchanged —
+all three claims verified against the actual diff.
+
+### Assertion and scope integrity
+
+- No assertion was weakened, relaxed, skipped, disabled, or removed.
+- No test was deleted, renamed, or marked incomplete; the file still contains
+  the same 12 cases.
+- No production implementation file was modified by this correction.
+- No Planner-owned artifact, governance file, or CI configuration was
+  modified.
+
+### Local execution — CI-authoritative note
+
+- `vendor/bin/pint --dirty --format agent` (apps/api): **passed**.
+- `vendor/bin/pest tests/Feature/ImageStudio/ImageDownloadTest.php`: the
+  runner **discovered all 12 tests**, confirming the corrected file is
+  structurally and syntactically sound (no parse or collection error), but
+  every test then errors at bootstrap with the previously documented
+  environment failure `could not find driver (Connection: sqlite, Database:
+  :memory:)` raised from `tests/TestCase.php:13` — this sandbox lacks
+  `pdo_sqlite`/`pdo_pgsql`.
+
+Consequently this re-review claims **no local backend GREEN**: backend Pest
+execution remains CI-authoritative, exactly as recorded in the original
+review. Final approval of the corrected commit is contingent on the CI backend
+`tests` job (and the other required checks) passing green.
+
+### Conclusion
+
+The correction is minimal, correctly scoped, and precisely targeted at the two
+CI assertion failures; production files are unchanged; no assertion was
+weakened; and the evidence file retains exactly one decision line at line 540
+(`Decision: APPROVE`), which is also the file's final decision line and
+matches this re-review's verdict. The Tester re-affirms **APPROVE** for the
+CI Round 1 Correction, with CI remaining the authoritative verification
+venue.
