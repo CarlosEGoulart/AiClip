@@ -35,6 +35,7 @@ const makeImage = (overrides: Partial<ImageItem> = {}): ImageItem => ({
   width: 1080,
   height: 1920,
   status: 'generated',
+  download_url: null,
   created_at: '2026-10-01T00:00:00.000000Z',
   updated_at: '2026-10-01T00:00:00.000000Z',
   ...overrides,

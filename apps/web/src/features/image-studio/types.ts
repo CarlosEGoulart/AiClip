@@ -54,6 +54,12 @@ export interface ImageItem {
   width: number;
   height: number;
   status: ImageStatus;
+  /**
+   * Time-limited signed API URL (1 hour) minted only for generated
+   * images; null for pending/failed rows or when no artifact exists.
+   * The API always sends the key.
+   */
+  download_url: string | null;
   created_at: string;
   updated_at: string;
 }
