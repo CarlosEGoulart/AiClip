@@ -34,6 +34,7 @@ const WHITELISTED_FIELDS = [
     'status',
     'created_at',
     'updated_at',
+    'download_url',
 ];
 
 beforeEach(function () {
@@ -89,7 +90,8 @@ it('returns 202 accepted with a pending image resource and enqueues the job', fu
         ->and($data['mime_type'])->toBe('image/png')
         ->and($data['size_bytes'])->toBe(0)
         ->and($data['width'])->toBe(1024)
-        ->and($data['height'])->toBe(1024);
+        ->and($data['height'])->toBe(1024)
+        ->and($data['download_url'])->toBeNull();
 
     expect(collect(array_keys($data))->sort()->values()->all())
         ->toBe(collect(WHITELISTED_FIELDS)->sort()->values()->all());

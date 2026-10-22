@@ -29,6 +29,7 @@ const LIST_WHITELISTED_FIELDS = [
     'status',
     'created_at',
     'updated_at',
+    'download_url',
 ];
 
 beforeEach(function () {
@@ -138,6 +139,55 @@ it('exposes only whitelisted fields on every list item', function () {
         ->toBe(collect(LIST_WHITELISTED_FIELDS)->sort()->values()->all());
 
     $rendered = json_encode($item);
+    expect($rendered)->not->toContain('storage_disk')
+        ->and($rendered)->not->toContain('storage_key')
+        ->and($rendered)->not->toContain('user_id')
+        ->and($rendered)->not->toContain('bucket');
+});
+
+it('issues a signed download_url per generated item and null for pending and failed items', function () {
+    $generated = Image::factory()->generated()->create([
+        'user_id' => $this->user->id,
+        'project_id' => $this->project->id,
+    ]);
+    Image::factory()->create([
+        'user_id' => $this->user->id,
+        'project_id' => $this->project->id,
+    ]);
+    Image::factory()->failed()->create([
+        'user_id' => $this->user->id,
+        'project_id' => $this->project->id,
+    ]);
+
+    $response = $this->spaRequest('GET', '/api/v1/images', $this->cookies);
+
+    $response->assertOk();
+
+    $items = collect($response->json('data.data'))->keyBy('id');
+
+    foreach ($items as $item) {
+        expect(collect(array_keys($item))->sort()->values()->all())
+            ->toBe(collect(LIST_WHITELISTED_FIELDS)->sort()->values()->all());
+    }
+
+    expect($items[$generated->id]['download_url'])->toBeString()
+        ->and($items[$generated->id]['download_url'])->toContain('images/'.$generated->id.'/download')
+        ->and($items[$generated->id]['download_url'])->toContain('signature')
+        ->and($items[$generated->id]['download_url'])->toContain('expires');
+
+    $pendingId = Image::query()
+        ->where('user_id', $this->user->id)
+        ->where('status', 'pending')
+        ->value('id');
+    $failedId = Image::query()
+        ->where('user_id', $this->user->id)
+        ->where('status', 'failed')
+        ->value('id');
+
+    expect($items[$pendingId]['download_url'])->toBeNull()
+        ->and($items[$failedId]['download_url'])->toBeNull();
+
+    $rendered = json_encode($items->all());
     expect($rendered)->not->toContain('storage_disk')
         ->and($rendered)->not->toContain('storage_key')
         ->and($rendered)->not->toContain('user_id')

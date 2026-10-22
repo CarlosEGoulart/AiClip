@@ -42,12 +42,49 @@ const formatBytes = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+interface ImagePreviewProps {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+}
+
+/*
+ * Real preview of a generated artifact, fetched through its time-limited
+ * signed download URL (the API 302 → storage temporary URL chain). A
+ * failed load swaps the img for a readable fallback — no automatic
+ * refetch loop. The parent keys this component by
+ * `${image.id}-${image.download_url}`, so a refreshed signature on a later
+ * refetch remounts it and retries the load.
+ */
+const ImagePreview: React.FC<ImagePreviewProps> = ({ src, alt, width, height }) => {
+  const [failed, setFailed] = React.useState(false);
+
+  if (failed) {
+    return <p className="image-gallery-preview-fallback">Preview unavailable</p>;
+  }
+
+  return (
+    <img
+      className="image-gallery-card-preview"
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+};
+
 /*
  * Metadata gallery for the project's generated images. Entries show a
  * prompt excerpt, dimensions, file size, and a status badge (Pending
  * gray with an in-progress hint, Generated green, Failed red). Loading,
- * empty, and load-error states with retry are all rendered. No image
- * bytes are fetched in this slice: the gallery is metadata + status only.
+ * empty, and load-error states with retry are all rendered. Generated
+ * entries with a signed download_url additionally render a real preview
+ * plus a "Download image" link; pending and failed entries (and
+ * generated entries without a url) render no preview bytes at all.
  */
 export const ImageGallery: React.FC<ImageGalleryProps> = ({
   images,
@@ -101,30 +138,54 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({
   } else {
     content = (
       <div role="list" aria-label="Generated images" className="image-gallery-list">
-        {images.map((image) => (
-          <article key={image.id} role="listitem" className="image-gallery-card">
-            <div className="image-gallery-card-head">
-              <p className="image-gallery-card-prompt">{excerpt(image.prompt)}</p>
-              <span
-                aria-label={`Status: ${statusLabels[image.status]}`}
-                className={statusBadgeClasses[image.status]}
-              >
-                {statusLabels[image.status]}
-              </span>
-            </div>
+        {images.map((image) => {
+          const downloadUrl = image.download_url;
 
-            <div className="image-gallery-card-meta">
-              <span>
-                {image.width} × {image.height}
-              </span>
-              <span>{formatBytes(image.size_bytes)}</span>
-            </div>
+          return (
+            <article key={image.id} role="listitem" className="image-gallery-card">
+              <div className="image-gallery-card-head">
+                <p className="image-gallery-card-prompt">{excerpt(image.prompt)}</p>
+                <span
+                  aria-label={`Status: ${statusLabels[image.status]}`}
+                  className={statusBadgeClasses[image.status]}
+                >
+                  {statusLabels[image.status]}
+                </span>
+              </div>
 
-            {image.status === 'pending' && (
-              <p className="image-gallery-card-hint">Generating…</p>
-            )}
-          </article>
-        ))}
+              <div className="image-gallery-card-meta">
+                <span>
+                  {image.width} × {image.height}
+                </span>
+                <span>{formatBytes(image.size_bytes)}</span>
+              </div>
+
+              {image.status === 'pending' && (
+                <p className="image-gallery-card-hint">Generating…</p>
+              )}
+
+              {image.status === 'generated' && downloadUrl !== null && (
+                <>
+                  <ImagePreview
+                    key={`${image.id}-${downloadUrl}`}
+                    src={downloadUrl}
+                    alt={`Generated image: ${excerpt(image.prompt)}`}
+                    width={image.width}
+                    height={image.height}
+                  />
+                  <a
+                    className="image-gallery-download"
+                    href={downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Download image
+                  </a>
+                </>
+              )}
+            </article>
+          );
+        })}
       </div>
     );
   }
