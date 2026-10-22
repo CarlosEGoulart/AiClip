@@ -716,3 +716,145 @@ weakened; and the evidence file retains exactly one decision line at line 540
 matches this re-review's verdict. The Tester re-affirms **APPROVE** for the
 CI Round 1 Correction, with CI remaining the authoritative verification
 venue.
+
+---
+
+## Tester Re-review — CI Round 2
+
+This section records the Tester's independent re-review of the CI Round 2
+correction only (the one-line uncommitted working-tree diff). It appends to,
+and does not rewrite, any prior section of this file.
+
+### Reviewed files and verified diff
+
+`git status --short` (repo root, uncommitted working tree) reports exactly
+one modified file and nothing else:
+
+- `apps/api/tests/Feature/ImageStudio/ImageDownloadTest.php`
+
+`git diff` was run independently and matches the Builder's claim exactly —
+one hunk, one line changed, nothing else:
+
+```diff
+@@ -213,5 +213,5 @@ function imageSignedDownloadUrl(Image $image, $expiresAt = null): string
+     expect($middleware)->not->toContain('auth:sanctum')
+         ->and(collect($middleware)->filter(
+             fn ($entry) => is_string($entry) && str_starts_with($entry, 'throttle')
+-        )->toBeEmpty());
++        )->isEmpty());
+ });
+```
+
+No production code (`ImageController.php`, `routes/api.php`,
+`ImageResource.php`), no Planner-owned spec/plan/test-plan files, no
+`scripts/merge_gate.py`, no `.opencode/**`, no `tests/governance/**`, no CI
+workflow, Docker, or other configuration files appear in `git status` or
+`git diff`. No scope creep. (`evidence.md` itself becomes modified only by
+this appended section.)
+
+### Assertion-intent verification
+
+Full test method re-read (lines 205-217, `it('registers the download route
+outside the auth sanctum group with no throttle middleware', ...)`). The
+assertion intent is IDENTICAL before and after the fix:
+
+- `expect($route)->not->toBeNull()` — intact (line 208);
+- `->and($route->uri())->toBe('api/v1/images/{image}/download')` — intact
+  (line 209);
+- `->and($route->methods())->toBe(['GET', 'HEAD'])` — intact (line 210);
+- `expect($middleware)->not->toContain('auth:sanctum')` — intact (line 213);
+- the filter closure `fn ($entry) => is_string($entry) &&
+  str_starts_with($entry, 'throttle')` is byte-identical — unchanged (lines
+  214-215);
+- the emptiness check on the filtered result still fails the test if ANY
+  middleware entry is a string starting with `throttle`, because `isEmpty()`
+  returns `false` whenever the filtered collection is non-empty, and Pest's
+  `->and(...)->isEmpty()` chain asserts that boolean.
+
+The fix does not weaken, skip, loosen, or remove any assertion. The only
+change is the terminal method call on the filtered `Collection`.
+
+### `Collection::isEmpty()` method verification
+
+Verified against the vendored framework (Laravel 11 / illuminate/collections)
+in this repository:
+
+- `Illuminate\Support\Collection::isEmpty()` exists at
+  `vendor/laravel/framework/src/Illuminate/Collections/Collection.php:724`
+  and returns `empty($this->items)` — a boolean;
+- `isNotEmpty()` is defined in
+  `Illuminate/Collections/Traits/EnumeratesValues.php:415-417` literally as
+  `return ! $this->isEmpty();` — confirming `isEmpty()` is the
+  Collection-native boolean inverse of `isNotEmpty()`;
+- both methods are declared on the `Enumerable` interface
+  (`Enumerable.php:619/626`).
+
+The previous code called `toBeEmpty()` on the Collection, which is a Pest
+expectation, not a Collection method, so PHP dispatched to
+`Macroable::__call` and threw `BadMethodCallException` (visible in the CI
+Round 2 log at `Macroable.php:117`). The corrected code calls the real
+Collection method, so the assertion now executes instead of throwing.
+
+### CI Round 2 log cross-check
+
+Independently fetched `gh run view --job=119798886367 --log-failed`. The
+backend `tests` job shows:
+
+- the ONLY `FAILED` entry is
+  `Tests\Feature\ImageStudio\ImageDownloadTest` with
+  `BadMethodCallException — Method Illuminate\Support\Collection::toBeEmpty
+  does not exist.`, raised at `tests/Feature/ImageStudio/ImageDownloadTest.php:216`
+  (frame `2` in the trace), i.e. exactly the defect this correction targets;
+- final tally: `Tests: 1 failed, 8 skipped, 1608 passed (7188 assertions)`;
+- the 8 skips are the pre-existing MinIO real-integration availability
+  guards in `Tests\Feature\Jobs\RenderMediaClipE2ETest` /
+  `RenderMediaClipCaptionE2ETest` (`MinIO not available: Unable to check
+  existence...`), present since before this issue and unrelated to it.
+
+Cross-referencing with Round 1: the same route-registration test previously
+failed at the line 213 `methods()` assertion (never reaching line 216); after
+the Round 1 fix it progressed and revealed this latent `toBeEmpty`
+invocation defect. Test totals are consistent (Round 1: 2 failed + 1607
+passed; Round 2: 1 failed + 1608 passed; both 1609 total). No OTHER
+regressions were introduced by the PR — no other test failed in Round 2.
+
+### Local execution
+
+- `vendor/bin/pint --dirty --format agent` (apps/api): **passed**
+  (`{"tool":"pint","result":"passed"}`).
+- Backend Pest suite was NOT run locally: this sandbox's PHP lacks
+  `pdo_sqlite`/`pdo_pgsql` and `apps/api/.env` is absent (ratified
+  CI-authoritative venue by the Issue #113/#110 precedent). `php artisan
+  test` was deliberately not attempted, per that precedent. Final GREEN
+  authority for this correction is the CI backend `tests` job.
+
+### Application / Playwright / visual checks
+
+N/A — this correction is a test-only assertion-invocation fix (one line in a
+Pest feature test). No production application code, API behavior, or user
+interface changed relative to the previously reviewed state, so
+running-application interaction, Playwright scenarios, screenshots,
+console/network inspection, and the 390x844 / 768x1024 / 1440x900 viewport
+checks are not applicable to this re-review; they were covered by the
+original review whose decision stands.
+
+### Decision-line integrity
+
+Executed (via the Grep tool, the same line-anchored pattern the merge gate
+uses) against `specs/115-signed-image-download-urls/evidence.md`:
+`^\s*(\*\*)?Decision:`. Result: **exactly one match, at line 540,
+`Decision: APPROVE`**. No conflicting or additional line-start `Decision:`
+lines exist anywhere in the file. This appended section introduces none.
+
+### Verdict
+
+Verdict: APPROVE — the CI Round 2 correction is a correct, minimal,
+intent-preserving one-line fix that replaces a non-existent Pest-style
+`toBeEmpty()` call with the Collection-native boolean `isEmpty()`, making the
+throttle-middleware absence assertion execute exactly as originally intended;
+no assertion was weakened, no production code or governance artifact was
+touched, Pint passes, and the CI Round 2 log confirms this was the only
+failure in the backend `tests` job (1608 passed / 1 failed / 8 pre-existing
+environmental skips). The prior line-start Decision at the top of this file
+(line 540) remains the operative decision. Final GREEN authority is the next
+CI run of the backend `tests` job.

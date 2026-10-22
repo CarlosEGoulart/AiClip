@@ -213,5 +213,5 @@ it('registers the download route outside the auth sanctum group with no throttle
     expect($middleware)->not->toContain('auth:sanctum')
         ->and(collect($middleware)->filter(
             fn ($entry) => is_string($entry) && str_starts_with($entry, 'throttle')
-        )->toBeEmpty());
+        )->isEmpty());
 });
