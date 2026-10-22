@@ -170,8 +170,8 @@ with console/network cleanliness, governance 173 tests OK.
 
 M8 Slice 2 — Signed Image Download URLs and Gallery Previews (Issue #115,
 PR #116, merged via `scripts/merge_gate.py`): Dual-gate
-`GET /api/v1/images/{image}/download` route outside `auth:sanctum` (line 83
-of `apps/api/routes/api.php`, middleware exactly `["api"]`), mirroring the
+`GET /api/v1/images/{image}/download` route outside `auth:sanctum` (lines
+87–88 of `apps/api/routes/api.php`, middleware exactly `["api"]`), mirroring the
 M7 Slice 1 clip-review video pattern — `ImageController::download()` issues
 time-limited signed URLs redirecting to presigned storage with a dual-gate
 order (403 for invalid/expired/tampered signatures before any ownership
@@ -179,16 +179,17 @@ check; 401/404 ownership fallback for unsigned requests; 404 for non-owners
 so no ownership information leaks; 404 artifact guard for missing files;
 sanitized 500 that never leaks `storage_key`, `bucket`, or the prompt).
 `ImageResource` grows to a strict 12-field whitelist including the signed
-`downloadUrl` (generated via the `image.download` named route). Frontend
-gallery cards render real image previews with `naturalWidth > 0` byte-chain
-verification and a fallback state when a preview cannot load; a 12-field
-whitelist and six focus targets are asserted in Vitest (309/309). The
+`download_url` (generated via the `image.download` named route). Frontend
+gallery cards render real image previews with a fallback state when a preview
+cannot load; the 12-field whitelist, the six focus targets, and the
+`naturalWidth > 0` byte-chain proof are asserted by the Playwright e2e suite,
+while Vitest 309/309 covers component and hook behavior. The
 Playwright AC-07 storage-cleanliness predicate is refined to exempt only
 first-party `127.0.0.1:8000` hosts (the Laravel dev proxy serving local
 disk `serve => true` URLs) while external `amazonaws`/`bucket`/`:9000`
 tokens remain unconditionally fatal. A `real-integration` group-gated test
 (`ImageDownloadRealIntegrationTest`) covers the full signed MinIO round trip
-with no mocks. Verification: backend `tests` job green (1608 passed, 8
+with no mocks. Verification: backend `tests` job green (1609 passed, 8
 skipped MinIO environmental guards, 0 failed), Vitest 309/309, Playwright
 e2e green at all three viewports, governance and pr-enforcement green;
 merged via `scripts/merge_gate.py` after three CI rounds (Round 1: two

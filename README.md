@@ -78,7 +78,7 @@ PR #116): a dual-gate `GET /api/v1/images/{image}/download` endpoint outside
 `auth:sanctum` mirroring the clip-review video pattern (invalid/expired/
 tampered signatures 403 before any ownership check; unsigned requests fall
 back to ownership 401/404; non-owners always 404; artifact guard; sanitized
-500), a 12-field `ImageResource` whitelist including the signed `downloadUrl`,
+500), a 12-field `ImageResource` whitelist including the signed `download_url`,
 gallery image previews with real byte-chain verification and a fallback state
 when a preview cannot load, and a Playwright cleanliness predicate refined to
 exempt only first-party `127.0.0.1:8000` storage hosts while keeping external
