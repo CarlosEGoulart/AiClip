@@ -79,4 +79,11 @@ Route::prefix('v1')->group(function () {
     // through an authenticated session; the controller enforces both paths.
     Route::get('/clip-reviews/{clipReview}/video', [ClipReviewController::class, 'video'])
         ->name('clip-review.video');
+
+    // Image Studio download (M8 Slice 2) mirrors the clip review video
+    // dual gate: a time-limited signed URL (image.download, issued only
+    // for generated images via the resource) or an authenticated owner
+    // session; the controller enforces both paths and the artifact guard.
+    Route::get('/images/{image}/download', [ImageController::class, 'download'])
+        ->name('image.download');
 });

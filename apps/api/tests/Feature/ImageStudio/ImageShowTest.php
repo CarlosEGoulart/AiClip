@@ -28,6 +28,7 @@ const SHOW_WHITELISTED_FIELDS = [
     'status',
     'created_at',
     'updated_at',
+    'download_url',
 ];
 
 beforeEach(function () {
@@ -66,13 +67,72 @@ it('shows an owned image with only the whitelisted fields', function () {
         ->and($data['project_id'])->toBe($this->project->id)
         ->and($data['prompt'])->toBe($this->image->prompt)
         ->and($data['parameters'])->toBe(['style_preset' => 'digital_art', 'width' => 1920, 'height' => 1080])
-        ->and($data['status'])->toBe('pending');
+        ->and($data['status'])->toBe('pending')
+        ->and($data['download_url'])->toBeNull();
 
     $rendered = $response->getContent();
     expect($rendered)->not->toContain('storage_disk')
         ->and($rendered)->not->toContain('storage_key')
         ->and($rendered)->not->toContain('user_id')
         ->and($rendered)->not->toContain('bucket');
+});
+
+it('includes a signed download_url for a generated image', function () {
+    $generated = Image::factory()->generated()->create([
+        'user_id' => $this->user->id,
+        'project_id' => $this->project->id,
+    ]);
+
+    $response = $this->spaRequest('GET', '/api/v1/images/'.$generated->id, $this->cookies);
+
+    $response->assertOk();
+
+    $data = $response->json('data');
+    expect(collect(array_keys($data))->sort()->values()->all())
+        ->toBe(collect(SHOW_WHITELISTED_FIELDS)->sort()->values()->all());
+
+    // Signed URLs embed the route URI path plus signature/expires query
+    // parameters — never the dot-separated route name (M7 lesson).
+    expect($data['download_url'])->toBeString()
+        ->and($data['download_url'])->toContain('images/'.$generated->id.'/download')
+        ->and($data['download_url'])->toContain('signature')
+        ->and($data['download_url'])->toContain('expires')
+        ->and($data['download_url'])->not->toContain('image.download');
+});
+
+it('returns a null download_url for a failed image', function () {
+    $failed = Image::factory()->failed()->create([
+        'user_id' => $this->user->id,
+        'project_id' => $this->project->id,
+    ]);
+
+    $response = $this->spaRequest('GET', '/api/v1/images/'.$failed->id, $this->cookies);
+
+    $response->assertOk();
+
+    $data = $response->json('data');
+    expect(collect(array_keys($data))->sort()->values()->all())
+        ->toBe(collect(SHOW_WHITELISTED_FIELDS)->sort()->values()->all())
+        ->and($data['download_url'])->toBeNull();
+});
+
+it('mints the download_url for the owning image id only', function () {
+    $first = Image::factory()->generated()->create([
+        'user_id' => $this->user->id,
+        'project_id' => $this->project->id,
+    ]);
+    $second = Image::factory()->generated()->create([
+        'user_id' => $this->user->id,
+        'project_id' => $this->project->id,
+    ]);
+
+    $response = $this->spaRequest('GET', '/api/v1/images/'.$first->id, $this->cookies);
+
+    $response->assertOk();
+
+    $downloadUrl = (string) $response->json('data.download_url');
+    expect($downloadUrl)->toContain('images/'.$first->id.'/download')
+        ->and($downloadUrl)->not->toContain('images/'.$second->id.'/download');
 });
 
 it('returns 404 for an image owned by another user', function () {

@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use App\Enums\ImageStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\URL;
 
 class ImageResource extends JsonResource
 {
@@ -27,8 +28,26 @@ class ImageResource extends JsonResource
             'status' => $this->status instanceof ImageStatus
                 ? $this->status->value
                 : $this->status,
+            'download_url' => $this->downloadUrl(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * 1-hour signed API URL for the image download endpoint, minted only
+     * for images whose artifact exists (generated); null for pending and
+     * failed rows. The URL embeds the route URI path plus signature and
+     * expires parameters — never storage internals.
+     */
+    private function downloadUrl(): ?string
+    {
+        $status = $this->status instanceof ImageStatus ? $this->status->value : $this->status;
+
+        if ($status !== ImageStatus::GENERATED->value) {
+            return null;
+        }
+
+        return URL::temporarySignedRoute('image.download', now()->addHour(), ['image' => $this->id]);
     }
 }

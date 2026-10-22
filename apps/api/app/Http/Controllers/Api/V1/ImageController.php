@@ -12,8 +12,11 @@ use App\Models\Image;
 use App\Models\Project;
 use App\Services\StorageKeyBuilder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class ImageController extends Controller
 {
@@ -112,5 +115,57 @@ class ImageController extends Controller
         return response()->json([
             'data' => new ImageResource($image),
         ]);
+    }
+
+    /**
+     * Dual-gated download: a valid time-limited signature (issued only via
+     * the image resource for generated images) resolves directly to a
+     * 302 temporary storage URL; an invalid, expired, or tampered
+     * signature is rejected 403 before any ownership or storage
+     * information is exposed; an unsigned request falls back to session
+     * ownership (guest 401, non-owner and non-existent ids 404). Only
+     * generated images resolve — pending and failed rows 404 so storage
+     * internals never leak for artifacts that do not exist. Storage
+     * failures fail closed: 500 with a sanitized log.
+     */
+    public function download(Request $request, Image $image): RedirectResponse
+    {
+        if ($request->filled('signature')) {
+            abort_unless($request->hasValidSignature(), Response::HTTP_FORBIDDEN);
+        } else {
+            $user = $request->user();
+
+            if (! $user) {
+                abort(Response::HTTP_UNAUTHORIZED);
+            }
+
+            if ($image->user_id !== $user->id) {
+                abort(Response::HTTP_NOT_FOUND);
+            }
+        }
+
+        $status = $image->status instanceof ImageStatus
+            ? $image->status->value
+            : $image->status;
+
+        if ($status !== ImageStatus::GENERATED->value) {
+            abort(Response::HTTP_NOT_FOUND);
+        }
+
+        try {
+            $url = Storage::disk($image->storage_disk)->temporaryUrl(
+                $image->storage_key,
+                now()->addHour()
+            );
+
+            return redirect()->away($url);
+        } catch (\Exception $e) {
+            Log::error('Failed to generate signed image URL', [
+                'image_id' => $image->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            abort(Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 }
