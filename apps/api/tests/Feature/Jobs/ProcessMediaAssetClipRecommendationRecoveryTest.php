@@ -30,6 +30,14 @@ uses(TestCase::class);
 
 beforeEach(function () {
     Fixture::guard();
+
+    // Truncate every application table (migrations ledger preserved) so
+    // leftovers from other test classes cannot skew count assertions.
+    $tables = DB::select("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != 'migrations'");
+    foreach ($tables as $table) {
+        DB::statement("TRUNCATE TABLE \"{$table->tablename}\" CASCADE");
+    }
+
     $this->recoveryLogs = new TestHandler;
     Log::swap(new Logger('issue64-recovery', [$this->recoveryLogs]));
 });

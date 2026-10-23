@@ -145,6 +145,14 @@ function atomicCreateGoldenAction(): ProcessMediaAction
 
 beforeEach(function () {
     atomicCreateGuard();
+
+    // Truncate every application table (migrations ledger preserved) so
+    // leftovers from other test classes cannot skew count assertions.
+    $tables = DB::select("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != 'migrations'");
+    foreach ($tables as $table) {
+        DB::statement("TRUNCATE TABLE \"{$table->tablename}\" CASCADE");
+    }
+
     Artisan::call('migrate', ['--force' => true]);
 });
 
