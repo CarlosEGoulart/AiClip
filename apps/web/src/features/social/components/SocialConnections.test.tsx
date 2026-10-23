@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { SocialConnections } from './SocialConnections';
 import * as hooks from '../hooks';
 import { MemoryRouter } from 'react-router-dom';
@@ -201,8 +201,10 @@ describe('SocialConnections', () => {
     const disconnectButton = screen.getByRole('button', { name: /disconnect youtube/i });
     fireEvent.click(disconnectButton);
 
-    // Confirm in dialog
-    const confirmButton = screen.getByRole('button', { name: /disconnect$/i });
+    // Confirm in dialog - the confirm button is inside the dialog with role="dialog"
+    // and has class "btn btn-danger" with just "Disconnect" text
+    const dialog = screen.getByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: /^disconnect$/i });
     fireEvent.click(confirmButton);
 
     await waitFor(() => {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks';
+import '../design-tokens.css';
 
 export function RegisterForm() {
   const { register, state, validationErrors, errorMessage, clearErrors } = useAuth();
@@ -43,16 +44,14 @@ export function RegisterForm() {
       noValidate
       aria-busy={isLoading || undefined}
     >
-      <h2>Create Account</h2>
-
       {isLoading && (
-        <div role="status" aria-label="authentication progress">
-          Creating account...
+        <div role="status" aria-label="authentication progress" className="loading-text">
+          Creating account…
         </div>
       )}
 
       {errorMessage && (
-        <div className="error-message" role="alert">
+        <div className="auth-error" role="alert">
           {errorMessage}
         </div>
       )}
@@ -74,6 +73,7 @@ export function RegisterForm() {
           required
           aria-invalid={nameInvalid}
           aria-describedby={nameInvalid ? 'register-name-error' : undefined}
+          placeholder="Your name"
         />
         {nameInvalid && (
           <span id="register-name-error" className="field-error" role="alert">
@@ -100,6 +100,7 @@ export function RegisterForm() {
           spellCheck="false"
           aria-invalid={emailInvalid}
           aria-describedby={emailInvalid ? 'register-email-error' : undefined}
+          placeholder="you@example.com"
         />
         {emailInvalid && (
           <span id="register-email-error" className="field-error" role="alert">
@@ -125,6 +126,7 @@ export function RegisterForm() {
           required
           aria-invalid={passwordInvalid}
           aria-describedby={passwordInvalid ? 'register-password-error' : undefined}
+          placeholder="••••••••"
         />
         {passwordInvalid && (
           <span id="register-password-error" className="field-error" role="alert">
@@ -150,6 +152,7 @@ export function RegisterForm() {
           required
           aria-invalid={passwordConfirmationInvalid}
           aria-describedby={passwordConfirmationInvalid ? 'register-password-confirmation-error' : undefined}
+          placeholder="••••••••"
         />
         {passwordConfirmationInvalid && (
           <span id="register-password-confirmation-error" className="field-error" role="alert">
@@ -159,7 +162,8 @@ export function RegisterForm() {
       </div>
 
       <button type="submit" disabled={isLoading}>
-        {isLoading ? 'Creating account...' : 'Create Account'}
+        {isLoading && <span className="spinner" aria-hidden="true" />}
+        {isLoading ? 'Creating account…' : 'Create Account'}
       </button>
     </form>
   );

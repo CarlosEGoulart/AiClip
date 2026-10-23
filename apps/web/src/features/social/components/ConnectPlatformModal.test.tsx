@@ -28,7 +28,8 @@ describe('ConnectPlatformModal', () => {
   it('shows loading during initiation', () => {
     render(<ConnectPlatformModal {...defaultProps} loading={true} />);
 
-    expect(screen.getByText('Connecting...')).toBeInTheDocument();
+    // Component uses ellipsis character (U+2026) not three dots
+    expect(screen.getByText('Connecting…')).toBeInTheDocument();
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 

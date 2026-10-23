@@ -168,6 +168,17 @@ Verification: backend Pest 1714 tests (1694 passed, 20 skipped, 0 failed),
 Vitest 372 passed, Playwright E2E 102 passed at 390x844/768x1024/1440x900,
 lint/build clean, governance OK.
 
+M9 Follow-up — Design System Application & Direct Access (Issue #118 follow-up):
+Applied `design-taste-frontend` skill art direction to Auth pages (Login/Register)
+and Social Connections page. Auth: "Quiet Instrument" direction with column-on-one-line
+hero, clipped timeline fragment as live thing, 4 archival images. Social Connections:
+"Product Performs" direction with fragment-on-shaped-stage hero, connection cards as
+interface fragments, 4 archival network/social images. Both pages use design-token
+CSS custom properties, Switzer font, mono-accent palette, square corners, reduced-motion
+support. Added direct `/connections` route with authenticated access and back navigation.
+Extended Playwright E2E with 66 new tests (22 × 3 viewports) covering OAuth flow,
+keyboard navigation, focus management, accessibility, and visual regression.
+
 # Known Limitations
 
 E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
@@ -194,7 +205,10 @@ caches must never be staged.
 M0–M8 completed. M9 — Social Connection Framework (Issue #118) is completed
 and verified: backend Pest suite 1714 tests (1694 passed, 20 skipped, 0 failed),
 Vitest 372 passed, Playwright E2E 102 passed at 3 viewports, lint/build clean.
-PR pending merge via `scripts/merge_gate.py`.
+M9 Follow-up — Design System Application & Direct Access completed: Auth and
+Social Connections pages redesigned with `design-taste-frontend` skill, direct
+`/connections` route added, 66 new E2E tests added. PR pending merge via
+`scripts/merge_gate.py`.
 
 # Next Architectural Goal
 

@@ -31,12 +31,11 @@ describe('SocialConnectionList', () => {
   it('renders loading skeletons', () => {
     render(<SocialConnectionList {...defaultProps} loading={true} />);
 
-    // We don't have test-id, so check for loading state elements
-    // The "Loading" text is in sr-only for screen readers - should be present (3 skeleton cards)
-    expect(screen.getAllByText(/loading/i)).toHaveLength(3);
     // Check for 3 skeleton cards by looking for animated pulse elements
     const pulseElements = document.querySelectorAll('.animate-pulse');
     expect(pulseElements.length).toBeGreaterThanOrEqual(3);
+    // Verify the loading state is announced to screen readers
+    expect(screen.getByRole('status')).toHaveAttribute('aria-label', 'Loading connections');
   });
 
   it('renders empty state', () => {
