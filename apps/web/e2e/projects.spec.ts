@@ -36,7 +36,7 @@ test.describe('Project Management', () => {
   test('authenticated user can see project creation form', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Project User', email)
-    await expect(page.getByText('Signed in as')).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
     await expect(page.getByText('Create New Project')).toBeVisible()
     await expect(page.getByLabel('Project Name')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Create Project' })).toBeVisible()
@@ -45,7 +45,7 @@ test.describe('Project Management', () => {
   test('user can create a project after login', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Creator User', email)
-    await expect(page.getByText('Signed in as')).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     const projectName = uniqueProjectName()
     await page.getByLabel('Project Name').fill(projectName)
@@ -58,7 +58,7 @@ test.describe('Project Management', () => {
   test('project persists after page reload', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Persistent User', email)
-    await expect(page.getByText('Signed in as')).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     const projectName = uniqueProjectName()
     await page.getByLabel('Project Name').fill(projectName)
@@ -67,13 +67,13 @@ test.describe('Project Management', () => {
 
     await page.reload()
     await expect(page.getByText(projectName)).toBeVisible()
-    await expect(page.getByText('Signed in as')).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
   })
 
   test('user can delete own project', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Deleter User', email)
-    await expect(page.getByText('Signed in as')).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     const projectName = uniqueProjectName()
     await page.getByLabel('Project Name').fill(projectName)
@@ -90,7 +90,7 @@ test.describe('Project Management', () => {
   test('validation errors displayed for empty project name', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Validation User', email)
-    await expect(page.getByText('Signed in as')).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Create Project' }).click()
 
@@ -100,7 +100,7 @@ test.describe('Project Management', () => {
   test('multiple projects are listed', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Multi User', email)
-    await expect(page.getByText('Signed in as')).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     const projectName1 = uniqueProjectName()
     const projectName2 = uniqueProjectName()

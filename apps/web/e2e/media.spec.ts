@@ -40,7 +40,7 @@ async function registerUser(page: import('@playwright/test').Page, name: string,
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Create Account' }).click();
-  await expect(page.getByText('Signed in as')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 });
 }
 
 test.describe('Media Upload and Management', () => {

@@ -33,7 +33,7 @@ test.describe('Auth Lifecycle', () => {
     const email = uniqueEmail()
     await registerUser(page, 'E2E User', email)
 
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
     await expect(page.getByText('E2E User')).toBeVisible()
     await expect(page.getByText(email)).toBeVisible()
   })
@@ -41,27 +41,27 @@ test.describe('Auth Lifecycle', () => {
   test('authenticated → page reload → still authenticated', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Reload User', email)
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     await page.reload()
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
     await expect(page.getByText('Reload User')).toBeVisible()
   })
 
   test('authenticated → logout → guest', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Logout User', email)
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Log out' }).click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
-    await expect(page.getByText(/Signed in as/)).not.toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).not.toBeVisible()
   })
 
   test('old authentication no longer works after logout', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Replay User', email)
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     const cookies = await page.context().cookies()
     await page.getByRole('button', { name: 'Log out' }).click()
@@ -76,7 +76,7 @@ test.describe('Auth Lifecycle', () => {
   test('existing user → login → authenticated', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Login User', email)
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Log out' }).click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
@@ -85,14 +85,14 @@ test.describe('Auth Lifecycle', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByRole('button', { name: 'Sign In' }).click()
 
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
     await expect(page.getByText('Login User')).toBeVisible()
   })
 
   test('authenticated login → reload → still authenticated', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Persistent User', email)
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Log out' }).click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
@@ -100,10 +100,10 @@ test.describe('Auth Lifecycle', () => {
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByRole('button', { name: 'Sign In' }).click()
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     await page.reload()
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
     await expect(page.getByText('Persistent User')).toBeVisible()
   })
 
@@ -115,13 +115,13 @@ test.describe('Auth Lifecycle', () => {
 
     await expect(page.getByRole('alert')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
-    await expect(page.getByText(/Signed in as/)).not.toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).not.toBeVisible()
   })
 
   test('duplicate registration → validation feedback', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'First User', email)
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Log out' }).click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
@@ -175,7 +175,7 @@ test.describe('CSRF and Storage Security', () => {
   test('no authentication bearer token in localStorage or sessionStorage', async ({ page }) => {
     const email = uniqueEmail()
     await registerUser(page, 'Storage User', email)
-    await expect(page.getByText(/Signed in as/)).toBeVisible()
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     const localStorageKeys = await page.evaluate(() => Object.keys(localStorage))
     const sessionStorageKeys = await page.evaluate(() => Object.keys(sessionStorage))

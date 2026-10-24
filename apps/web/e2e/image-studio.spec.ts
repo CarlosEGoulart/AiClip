@@ -180,7 +180,7 @@ async function registerUser(page: Page, name: string, email: string) {
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Create Account' }).click();
-  await expect(page.getByText('Signed in as')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 });
 }
 
 async function createProjectViaUi(page: Page, projectName: string): Promise<number> {
