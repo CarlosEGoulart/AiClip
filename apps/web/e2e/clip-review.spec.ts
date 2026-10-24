@@ -84,7 +84,12 @@ function trackCleanliness(page: Page): Cleanliness {
         .startsWith('Failed to load resource: the server responded with a status of 401') &&
       url.endsWith('/api/v1/auth/me');
 
-    if (!isSessionProbeMirror) {
+    // React Router v7 Future Flag warnings are benign library compatibility
+    // notices, not application defects.
+    const isReactRouterFutureFlag =
+      message.text().includes('React Router Future Flag Warning');
+
+    if (!isSessionProbeMirror && !isReactRouterFutureFlag) {
       cleanliness.consoleProblems.push(
         `${message.type()}: ${message.text()} (${message.location().url})`,
       );

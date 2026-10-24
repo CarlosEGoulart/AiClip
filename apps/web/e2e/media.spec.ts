@@ -21,13 +21,13 @@ function signal() {
 async function waitForAuthReady(page: import('@playwright/test').Page) {
   await page.goto('/');
   await expect(
-    page.getByRole('heading', { name: 'Sign In' }).or(page.getByRole('heading', { name: 'Create Account' })),
+    page.getByRole('heading', { name: 'Sign in to your workspace' }).or(page.getByRole('heading', { name: 'Create your workspace' })),
   ).toBeVisible({ timeout: 15000 });
 }
 
 async function switchToRegister(page: import('@playwright/test').Page) {
   await waitForAuthReady(page);
-  const registerHeading = page.getByRole('heading', { name: 'Create Account' });
+  const registerHeading = page.getByRole('heading', { name: 'Create your workspace' });
   if (await registerHeading.isVisible().catch(() => false)) return;
   await page.getByRole('button', { name: 'Create one' }).click();
   await expect(registerHeading).toBeVisible();
