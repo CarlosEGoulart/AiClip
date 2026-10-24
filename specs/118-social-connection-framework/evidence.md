@@ -682,3 +682,70 @@ Only `backend.yml`, `test-e2e-caption.yml`, `auth.spec.ts`, and `evidence.md` to
 All blocking acceptance criteria for the two CI fixes are satisfied by independent static review of the actual files. No defects exist. Boundaries respected. Local test execution and PR-check status were unavailable due to environment permission restrictions, not due to defects in the code.
 
 `Decision: APPROVE`
+
+---
+
+# CI Fix — Replace Minio Docker service container with background process binary (Issue #118)
+
+## Scope
+
+Replace the Minio Docker **service container** (which crashes in GitHub Actions service containers with `unable to rename (/data/.minio.sys/tmp -> ...) file access denied`) with a Minio server **binary run as a background process** in the job steps, in both:
+
+- `.github/workflows/backend.yml`
+- `.github/workflows/test-e2e-caption.yml`
+
+Root cause: `minio/minio` was deleted from Docker Hub; `alpine/minio` pulls but the Minio SERVER crashes on startup in GitHub Actions service containers due to storage permission issues. Running as root in job steps with writable `/tmp/minio-data` avoids the Docker service-container permission problem.
+
+## Changes Applied
+
+### `.github/workflows/backend.yml`
+
+1. **Removed** the entire `minio:` block from `services:` (image `alpine/minio:RELEASE.2025-10-15T17-29-55Z`, ports `9000:9000`, `mc ready health` options). `postgres:` service kept unchanged.
+2. **Kept** "Install MinIO Client (mc)" step (downloads `mc` to `/usr/local/bin/mc`).
+3. **Added** step "Install and start MinIO server" (after mc install, before "Initialize MinIO bucket"):
+   - `curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio && chmod +x /usr/local/bin/minio`
+   - `mkdir -p /tmp/minio-data`
+   - `MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin /usr/local/bin/minio server /tmp/minio-data --console-address :9001 > /tmp/minio.log 2>&1 &`
+   - `echo $! > /tmp/minio.pid`
+   - Poll loop (up to ~60s): `mc alias set health http://127.0.0.1:9000 ... && mc ready health`; on success `echo "MinIO is healthy" && exit 0`; on exhaustion `cat /tmp/minio.log && exit 1`.
+4. **Kept** "Initialize MinIO bucket" step (`mc alias set aiclip http://127.0.0.1:9000 ...`, `mc mb --ignore-existing aiclip/aiclip-media`) — now talks to the background process.
+5. **Kept** "Verify MinIO health" step.
+
+### `.github/workflows/test-e2e-caption.yml`
+
+1. **Removed** the `minio:` block from `services:` (image, `command: ["server", "/data", "--console-address", ":9001"]`, ports `9000:9000,9001:9001`, `mc ready health` options). `postgres:` service kept unchanged.
+2. **Kept** PHP 8.4.1 and existing "Install MinIO Client (mc)" step.
+3. **Added** step "Start MinIO server" (after mc install, before "Start MinIO bucket"): same download/start/poll pattern as backend.yml.
+4. **Kept** "Start MinIO bucket" step (`mc alias set local http://localhost:9000 ...`, `mc mb local/aiclip-media --ignore-existing`).
+
+## Test Connections (unchanged)
+
+Both workflows connect tests to `AWS_ENDPOINT: http://127.0.0.1:9000` — the background MinIO process listens there. Console on `:9001`.
+
+## Boundaries Respected
+
+- NOT touched: `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, `.github/workflows/governance.yml`, Planner-owned spec files (`spec.md`/`plan.md`/`test-plan.md`), `.env`, application code, application tests.
+- Only modified: `.github/workflows/backend.yml`, `.github/workflows/test-e2e-caption.yml`, `specs/118-social-connection-framework/evidence.md`.
+- No tests weakened or skipped. No scope expanded.
+
+## Local Verification — Limitations
+
+Shell command execution was denied in this environment (`permission.rejected` on `shell` tool), so the workflows could NOT be executed locally (no Docker, no MinIO binary, no GitHub Actions runner). Verification is therefore **static review only**:
+
+| Check | Method | Result |
+|-------|--------|--------|
+| `backend.yml` `minio:` service block removed | Read file + grep | ✅ Removed; `postgres:` retained |
+| `backend.yml` MinIO server background step added | Read file (lines 61-76) | ✅ Download, start, PID, poll, fail-on-exhaustion |
+| `backend.yml` bucket init targets `127.0.0.1:9000` | Read file (lines 88-93) | ✅ Unchanged, now hits background process |
+| `test-e2e-caption.yml` `minio:` service block removed | Read file + grep | ✅ Removed; `postgres:` retained |
+| `test-e2e-caption.yml` MinIO server background step added | Read file (lines 55-70) | ✅ Download, start, PID, poll, fail-on-exhaustion |
+| `test-e2e-caption.yml` bucket init targets `localhost:9000` | Read file (lines 72-75) | ✅ Unchanged, now hits background process |
+| PHP versions unchanged | Read file | ✅ 8.4.1 in both |
+| Test commands unchanged | Read file | ✅ `php artisan test` / `RenderMediaClipCaptionE2ETest` untouched |
+| YAML structure balanced (services/steps indentation) | Manual read | ✅ `services:` retains only `postgres:`; `steps:` intact |
+
+## Decision
+
+Minio Docker service container replaced with background-process Minio server binary in both `backend.yml` and `test-e2e-caption.yml`. Static review confirms both YAML files are structurally valid, the `minio:` service blocks are removed, the background start+health-poll steps are correctly placed before bucket initialization, and all test connections (`AWS_ENDPOINT: http://127.0.0.1:9000`) now target the background process. Local execution could not run due to environment permission restrictions (not a code defect).
+
+**Decision: READY FOR CI RE-TEST** — Awaiting Orchestrator to invoke Tester/CI. Do not commit/push (Orchestrator owns Git).
