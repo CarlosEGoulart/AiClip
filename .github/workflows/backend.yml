@@ -33,7 +33,7 @@ jobs:
         ports:
           - 9000:9000
         options: >-
-          --health-cmd "mc alias set health http://127.0.0.1:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD >/dev/null 2>&1 && mc ready health >/dev/null 2>&1"
+          --health-cmd "mc alias set health http://127.0.0.1:9000 minioadmin minioadmin >/dev/null 2>&1 && mc ready health >/dev/null 2>&1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
