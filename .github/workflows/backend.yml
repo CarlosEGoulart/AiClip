@@ -53,26 +53,22 @@ jobs:
           sudo apt-get install -y ffmpeg
           ffprobe -version
 
-      - name: Install MinIO Client (mc)
+      - name: Install moto S3 server
         run: |
-          curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
-          chmod +x /usr/local/bin/mc
+          pip install moto[s3] awscli
 
-      - name: Install and start MinIO server
+      - name: Start moto S3 server
         run: |
-          curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio
-          chmod +x /usr/local/bin/minio
-          mkdir -p /tmp/minio-data
-          MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin /usr/local/bin/minio server /tmp/minio-data --console-address :9001 > /tmp/minio.log 2>&1 &
-          echo $! > /tmp/minio.pid
+          moto_server s3 -H 0.0.0.0 -p 9000 > /tmp/moto.log 2>&1 &
+          echo $! > /tmp/moto.pid
           for i in $(seq 1 30); do
-            if mc alias set health http://127.0.0.1:9000 minioadmin minioadmin >/dev/null 2>&1 && mc ready health >/dev/null 2>&1; then
-              echo "MinIO is healthy"
+            if curl -sf http://127.0.0.1:9000/ >/dev/null 2>&1; then
+              echo "moto S3 is healthy"
               exit 0
             fi
             sleep 2
           done
-          cat /tmp/minio.log
+          cat /tmp/moto.log
           exit 1
 
       - name: Install worker dependencies
@@ -85,18 +81,14 @@ jobs:
         working-directory: services/worker
         run: python -m pytest tests/ -v
 
-      - name: Initialize MinIO bucket
+      - name: Create S3 bucket
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_S3_ADDRESSING_STYLE: path
         run: |
-          mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
-          mc mb --ignore-existing aiclip/aiclip-media &&
-          mc anonymous set private aiclip/aiclip-media &&
-          echo 'MinIO bucket initialized successfully'
-
-      - name: Verify MinIO health
-        run: |
-          mc alias set health http://127.0.0.1:9000 minioadmin minioadmin >/dev/null 2>&1 &&
-          mc ready health >/dev/null 2>&1 &&
-          echo "MinIO is healthy"
+          aws --endpoint-url=http://127.0.0.1:9000 s3 mb s3://aiclip-media
 
       - name: Prepare Environment
         working-directory: apps/api
