@@ -38,4 +38,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(Project::class);
     }
+
+    /**
+     * Get the social connections for the user.
+     */
+    public function socialConnections(): HasMany
+    {
+        return $this->hasMany(SocialConnection::class);
+    }
 }

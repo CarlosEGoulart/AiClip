@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks';
+import '../design-tokens.css';
 
 export function LoginForm() {
   const { login, state, validationErrors, errorMessage, clearErrors } = useAuth();
@@ -34,16 +35,14 @@ export function LoginForm() {
       noValidate
       aria-busy={isLoading || undefined}
     >
-      <h2>Sign In</h2>
-
       {isLoading && (
-        <div role="status" aria-label="authentication progress">
+        <div role="status" aria-label="authentication progress" className="loading-text">
           Signing in...
         </div>
       )}
 
       {errorMessage && (
-        <div className="error-message" role="alert">
+        <div className="auth-error" role="alert">
           {errorMessage}
         </div>
       )}
@@ -66,6 +65,7 @@ export function LoginForm() {
           spellCheck="false"
           aria-invalid={emailInvalid}
           aria-describedby={emailInvalid ? 'login-email-error' : undefined}
+          placeholder="you@example.com"
         />
         {emailInvalid && (
           <span id="login-email-error" className="field-error" role="alert">
@@ -91,6 +91,7 @@ export function LoginForm() {
           required
           aria-invalid={passwordInvalid}
           aria-describedby={passwordInvalid ? 'login-password-error' : undefined}
+          placeholder="••••••••"
         />
         {passwordInvalid && (
           <span id="login-password-error" className="field-error" role="alert">
@@ -100,7 +101,8 @@ export function LoginForm() {
       </div>
 
       <button type="submit" disabled={isLoading}>
-        {isLoading ? 'Signing in...' : 'Sign In'}
+        {isLoading && <span className="spinner" aria-hidden="true" />}
+        {isLoading ? 'Signing in…' : 'Sign In'}
       </button>
     </form>
   );

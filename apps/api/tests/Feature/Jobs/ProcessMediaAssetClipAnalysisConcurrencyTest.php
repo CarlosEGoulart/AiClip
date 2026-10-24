@@ -37,7 +37,14 @@ it('concurrent first creation yields one durable row with one worker call and lo
     $parentPgPid = (int) ($parentPidRow[0]->pid ?? 0);
     expect($parentPgPid)->toBeGreaterThan(0);
 
-    // Migrate only the authorized disposable target.
+    // Truncate every application table (migrations ledger preserved) after the
+    // database-identity guard so leftovers from other test classes cannot skew
+    // durable-row counts, then migrate the authorized disposable target.
+    $tables = DB::select("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != 'migrations'");
+    foreach ($tables as $table) {
+        DB::statement("TRUNCATE TABLE \"{$table->tablename}\" CASCADE");
+    }
+
     Artisan::call('migrate', ['--force' => true]);
 
     $idempotencyKey = '660e8400-e29b-41d4-a716-446655440060';

@@ -81,7 +81,11 @@ describe('embedded clip review section (production topology)', () => {
     render(<App />);
 
     // Authenticated shell restores the session and lists the project.
-    expect(await screen.findByText('Signed in as')).toBeVisible();
+    // Wait for session check to complete and user to be restored
+    // There are two "Signed in as" elements (AuthenticatedShell and AuthenticatedLayoutWrapper)
+    const welcomeMessages = await screen.findAllByText(/signed in as/i);
+    expect(welcomeMessages.length).toBeGreaterThanOrEqual(1);
+    expect(welcomeMessages[0]).toBeVisible();
     const openButton = await screen.findByRole('button', { name: 'Open Review Project' });
     fireEvent.click(openButton);
     expect(await screen.findByRole('button', { name: 'Back to projects' })).toBeVisible();
