@@ -613,8 +613,6 @@ Failure annotations:
 #### Evidence.md assumption disproven
 evidence.md (lines 414-418) claimed `RELEASE.2025-10-15T17-29-55Z` is "a valid, pinned public image tag" based on the GitHub MinIO releases API. The live CI proves otherwise: `docker pull` of that tag fails with exit code 1, so it is NOT a valid/pullable Docker image tag (a GitHub release tag does not guarantee a matching Docker Hub image). This is an assumption recorded as fact, not an actual execution result.
 
-### Decision
-`Decision: REJECT` — CI checks are red/blocked (`tests` and `e2e` workflows failing). Per AGENTS.md §4.4 decision rules, mandatory verification cannot be approved when CI checks are red. The invalid MinIO image tag in `backend.yml` and `test-e2e-caption.yml` must be corrected to a pullable Docker image tag before re-testing. Do not proceed to `scripts/merge_gate.py` or issue closure until CI is green.
 
 ---
 
