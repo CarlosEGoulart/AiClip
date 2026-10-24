@@ -105,6 +105,13 @@ it('serves a real presigned MinIO URL that streams the exact stored PNG bytes', 
 })->group('real-integration');
 
 it('no mocks for storage or queue in this file', function () {
+    // Guard: this test asserts the real S3 adapter; skip when the test
+    // environment uses the local media disk (no S3 infrastructure available).
+    $disk = config('filesystems.disks.media');
+    if (($disk['driver'] ?? '') !== 's3') {
+        $this->markTestSkipped('Media disk not configured as S3');
+    }
+
     // This file contains no Storage::fake()/Queue::fake() (grep-verifiable).
     // Runtime proof that the real implementations are in use: the media disk
     // is backed by the real S3 adapter (a Storage::fake would substitute a

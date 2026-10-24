@@ -37,16 +37,6 @@ jobs:
           extensions: pdo, pdo_pgsql, mbstring, xml, ctype, bcmath
           coverage: none
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-
-      - name: Install moto S3 server
-        run: |
-          pip install moto[server] awscli
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -73,6 +63,7 @@ jobs:
           DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
+          FILESYSTEM_MEDIA_DRIVER: local
         run: php artisan migrate --force
 
       - name: Install frontend dependencies
@@ -83,29 +74,6 @@ jobs:
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
-      - name: Start moto S3 server
-        run: |
-          moto_server s3 -H 0.0.0.0 -p 9000 > /tmp/moto.log 2>&1 &
-          echo $! > /tmp/moto.pid
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:9000/ >/dev/null 2>&1; then
-              echo "moto S3 is healthy"
-              exit 0
-            fi
-            sleep 2
-          done
-          cat /tmp/moto.log
-          exit 1
-
-      - name: Create S3 bucket
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          AWS_DEFAULT_REGION: us-east-1
-          AWS_S3_ADDRESSING_STYLE: path
-        run: |
-          aws --endpoint-url=http://127.0.0.1:9000 s3 mb s3://aiclip-media
-
       - name: Run Playwright E2E (managed Laravel and Vite servers)
         working-directory: apps/web
         env:
@@ -115,12 +83,7 @@ jobs:
           DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          AWS_DEFAULT_REGION: us-east-1
-          AWS_BUCKET: aiclip-media
-          AWS_ENDPOINT: http://127.0.0.1:9000
-          AWS_USE_PATH_STYLE_ENDPOINT: true
+          FILESYSTEM_MEDIA_DRIVER: local
         run: npm run test:e2e
 
       - name: Upload viewport screenshots
