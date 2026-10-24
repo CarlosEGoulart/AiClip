@@ -309,7 +309,24 @@ Security maintenance update executed within M9 scope: PHP/Laravel dependency upd
 
 2. **React Router moderate vulnerabilities**: Two moderate vulnerabilities remain in react-router v6.x. Fixing requires upgrading to v7 which is a breaking change. Accepted with justification.
 
+## CI Fixes Applied (Post-Commit)
+
+The following CI fixes were pushed to `@carlosegoulart/118/feat/social-connection-framework`:
+
+### backend.yml
+- Database name: `aiclip_test_issue64` → `aiclip` (consistent with Issue64RecoveryFixture guard)
+- MinIO image: `bitnami/minio:2025.10.02` → `minio/minio:RELEASE.2025-10-02T04-12-34Z`
+- Health check: `curl -f http://localhost:9000/minio/health/live` → `mc ready health`
+- Added `Install MinIO Client (mc)` step
+- MinIO bucket initialization uses `mc` client directly (no `docker run`)
+- `DB_DATABASE: aiclip_test_issue64` → `DB_DATABASE: aiclip` (2 locations)
+
+### apps/web/.nvmrc
+- Removed (root `.nvmrc` with `22.14.0` is authoritative)
+
 ---
+
+## Conclusion
 
 ## Conclusion
 
