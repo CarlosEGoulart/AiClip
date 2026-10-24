@@ -53,7 +53,7 @@ test.describe('Auth Lifecycle', () => {
     await registerUser(page, 'Logout User', email)
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.getByRole('button', { name: 'Log out' }).first().click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
     await expect(page.getByText(/Signed in as/).first()).not.toBeVisible()
   })
@@ -64,7 +64,7 @@ test.describe('Auth Lifecycle', () => {
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     const cookies = await page.context().cookies()
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.getByRole('button', { name: 'Log out' }).first().click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
 
     await page.context().addCookies(cookies)
@@ -78,7 +78,7 @@ test.describe('Auth Lifecycle', () => {
     await registerUser(page, 'Login User', email)
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.getByRole('button', { name: 'Log out' }).first().click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
 
     await page.getByLabel('Email').fill(email)
@@ -94,7 +94,7 @@ test.describe('Auth Lifecycle', () => {
     await registerUser(page, 'Persistent User', email)
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.getByRole('button', { name: 'Log out' }).first().click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
 
     await page.getByLabel('Email').fill(email)
@@ -123,7 +123,7 @@ test.describe('Auth Lifecycle', () => {
     await registerUser(page, 'First User', email)
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.getByRole('button', { name: 'Log out' }).first().click()
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
 
     await switchToRegister(page)
