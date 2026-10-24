@@ -12,28 +12,15 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16.4-alpine
         env:
-          POSTGRES_DB: aiclip_test_issue64
+          POSTGRES_DB: aiclip
           POSTGRES_USER: aiclip
           POSTGRES_PASSWORD: secret
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U aiclip -d aiclip_test_issue64"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      minio:
-        image: bitnamilegacy/minio:2025.4.22-debian-12-r2
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-        ports:
-          - 9000:9000
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-cmd "pg_isready -U aiclip -d aiclip"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -46,7 +33,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '8.4.1'
           extensions: pdo, pdo_pgsql, mbstring, xml, ctype, bcmath
           coverage: none
 
@@ -58,6 +45,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
       - name: Install FFmpeg
         run: |
@@ -75,22 +63,6 @@ jobs:
         working-directory: services/worker
         run: python -m pytest tests/ -v
 
-      - name: Initialize MinIO bucket
-        run: |
-          docker run --rm --network host --entrypoint sh \
-            -e MC_CONFIG_DIR=/tmp/.mc \
-            bitnamilegacy/minio:2025.4.22-debian-12-r2 -c "
-              mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
-              mc mb --ignore-existing aiclip/aiclip-media &&
-              mc anonymous set private aiclip/aiclip-media &&
-              echo 'MinIO bucket initialized successfully'
-            "
-
-      - name: Verify MinIO health
-        run: |
-          curl -f http://127.0.0.1:9000/minio/health/live || exit 1
-          echo "MinIO is healthy"
-
       - name: Prepare Environment
         working-directory: apps/api
         run: |
@@ -103,16 +75,10 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: aiclip_test_issue64
+          DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
-          MEDIA_DISK: media
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          AWS_DEFAULT_REGION: us-east-1
-          AWS_BUCKET: aiclip-media
-          AWS_ENDPOINT: http://127.0.0.1:9000
-          AWS_USE_PATH_STYLE_ENDPOINT: true
+          FILESYSTEM_MEDIA_DRIVER: local
         run: php artisan migrate --force
 
       - name: Run Tests
@@ -121,14 +87,8 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: aiclip_test_issue64
+          DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
-          MEDIA_DISK: media
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          AWS_DEFAULT_REGION: us-east-1
-          AWS_BUCKET: aiclip-media
-          AWS_ENDPOINT: http://127.0.0.1:9000
-          AWS_USE_PATH_STYLE_ENDPOINT: true
+          FILESYSTEM_MEDIA_DRIVER: local
         run: php artisan test

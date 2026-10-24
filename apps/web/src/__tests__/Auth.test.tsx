@@ -55,7 +55,10 @@ describe('root provider, forms and HTTP integration (F1–F3)', () => {
     expect(screen.getByText(/checking.*session/i)).toHaveAttribute('role', 'status');
     expect(screen.queryByRole('button', { name: 'Sign In' })).not.toBeInTheDocument();
     await act(async () => resolve(json(200, { user })));
-    expect(await screen.findByText(user.email)).toBeVisible();
+    // There are two user-email elements (AuthenticatedShell and AuthenticatedLayoutWrapper)
+    const userEmails = await screen.findAllByText(user.email);
+    expect(userEmails.length).toBeGreaterThanOrEqual(1);
+    expect(userEmails[0]).toBeVisible();
     expect(screen.getAllByRole('main')).toHaveLength(1);
   });
 
@@ -65,7 +68,9 @@ describe('root provider, forms and HTTP integration (F1–F3)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(type === 'network' ? /connection/i : /server/i);
     me = async () => json(200, { user });
     fireEvent.click(screen.getByRole('button', { name: /retry.*session/i }));
-    expect(await screen.findByText(user.email)).toBeVisible();
+    const userEmails = await screen.findAllByText(user.email);
+    expect(userEmails.length).toBeGreaterThanOrEqual(1);
+    expect(userEmails[0]).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -91,7 +96,9 @@ describe('root provider, forms and HTTP integration (F1–F3)', () => {
       ...(register ? { name: user.name, password_confirmation: 'test-password' } : {}),
     });
     await act(async () => resolve(json(register ? 201 : 200, { user })));
-    expect(await screen.findByText(user.email)).toBeVisible();
+    const userEmails = await screen.findAllByText(user.email);
+    expect(userEmails.length).toBeGreaterThanOrEqual(1);
+    expect(userEmails[0]).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -143,7 +150,9 @@ describe('root provider, forms and HTTP integration (F1–F3)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     mutation = async () => json(200, { user });
     submit();
-    expect(await screen.findByText(user.email)).toBeVisible();
+    const userEmails = await screen.findAllByText(user.email);
+    expect(userEmails.length).toBeGreaterThanOrEqual(1);
+    expect(userEmails[0]).toBeVisible();
   });
 
   it.each([false, true])('switches views without carrying validation or transport errors for register=%s', async register => {
@@ -181,22 +190,33 @@ describe('root provider, forms and HTTP integration (F1–F3)', () => {
     let resolve!: (value: Response) => void;
     mutation = () => new Promise((yes, no) => { resolve = yes; reject = no; });
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
+    // There are two "Log out" buttons (AuthenticatedShell and AuthenticatedLayoutWrapper)
+    // Click the one in the layout wrapper (last one rendered)
+    const logoutButtons = await screen.findAllByRole('button', { name: 'Log out' });
+    fireEvent.click(logoutButtons[logoutButtons.length - 1]);
     await waitFor(() => expect(mutations()).toHaveLength(1));
-    expect(screen.getByText(user.email)).toBeVisible();
-    expect(screen.getByRole('button', { name: /logging out/i })).toBeDisabled();
+    const userEmails = screen.getAllByText(user.email);
+    expect(userEmails.length).toBeGreaterThanOrEqual(1);
+    expect(userEmails[0]).toBeVisible();
+    // There are two "Logging out..." buttons - use getAllByRole
+    const loggingOutButtons = screen.getAllByRole('button', { name: /logging out/i });
+    expect(loggingOutButtons.length).toBeGreaterThanOrEqual(1);
+    expect(loggingOutButtons[0]).toBeDisabled();
     await act(async () => {
       mutation = async () => json(419);
       if (failure === 'network') reject(new TypeError('offline'));
       else resolve(json(failure));
     });
     expect(await screen.findByRole('alert')).toHaveTextContent(failure === 'network' ? /connection/i : failure === 419 ? /session.*expired/i : failure === 429 ? /too many/i : /server/i);
-    expect(screen.getByText(user.email)).toBeVisible();
+    const userEmails2 = screen.getAllByText(user.email);
+    expect(userEmails2.length).toBeGreaterThanOrEqual(1);
+    expect(userEmails2[0]).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Sign In' })).not.toBeInTheDocument();
     mutation = async () => json(204);
-    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
+    const logoutButtons2 = await screen.findAllByRole('button', { name: 'Log out' });
+    fireEvent.click(logoutButtons2[logoutButtons2.length - 1]);
     expect(await screen.findByRole('button', { name: 'Sign In' })).toBeVisible();
-    expect(screen.queryByText(user.email)).not.toBeInTheDocument();
+    expect(screen.queryAllByText(user.email)).toHaveLength(0);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -204,9 +224,11 @@ describe('root provider, forms and HTTP integration (F1–F3)', () => {
     me = async () => json(200, { user });
     mutation = async () => json(401);
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
+    // There are two "Log out" buttons - click the one in the layout wrapper
+    const logoutButtons = await screen.findAllByRole('button', { name: 'Log out' });
+    fireEvent.click(logoutButtons[logoutButtons.length - 1]);
     expect(await screen.findByRole('button', { name: 'Sign In' })).toBeVisible();
     expect(screen.getByRole('alert')).toHaveTextContent(/session.*expired/i);
-    expect(screen.queryByText(user.email)).not.toBeInTheDocument();
+    expect(screen.queryAllByText(user.email)).toHaveLength(0);
   });
 });

@@ -21,13 +21,13 @@ function signal() {
 async function waitForAuthReady(page: import('@playwright/test').Page) {
   await page.goto('/');
   await expect(
-    page.getByRole('heading', { name: 'Sign In' }).or(page.getByRole('heading', { name: 'Create Account' })),
+    page.getByRole('heading', { name: 'Sign in to your workspace' }).or(page.getByRole('heading', { name: 'Create your workspace' })),
   ).toBeVisible({ timeout: 15000 });
 }
 
 async function switchToRegister(page: import('@playwright/test').Page) {
   await waitForAuthReady(page);
-  const registerHeading = page.getByRole('heading', { name: 'Create Account' });
+  const registerHeading = page.getByRole('heading', { name: 'Create your workspace' });
   if (await registerHeading.isVisible().catch(() => false)) return;
   await page.getByRole('button', { name: 'Create one' }).click();
   await expect(registerHeading).toBeVisible();
@@ -40,7 +40,7 @@ async function registerUser(page: import('@playwright/test').Page, name: string,
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Create Account' }).click();
-  await expect(page.getByText('Signed in as')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 });
 }
 
 test.describe('Media Upload and Management', () => {

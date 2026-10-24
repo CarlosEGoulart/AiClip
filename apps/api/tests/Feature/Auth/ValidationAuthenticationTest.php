@@ -2,11 +2,24 @@
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\Support\SpaTestCase;
 
 uses(SpaTestCase::class, RefreshDatabase::class);
+
+beforeEach(function () {
+    // Truncate every application table (migrations ledger preserved) so
+    // leftovers from other test classes cannot skew database-count assertions.
+    // RefreshDatabase's transaction rolls back per-test writes; this
+    // pre-truncation removes cross-test leftovers that committed via Artisan
+    // migrate in Issue #60 Job tests (DDL auto-commits on PostgreSQL).
+    $tables = DB::select("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != 'migrations'");
+    foreach ($tables as $table) {
+        DB::statement("TRUNCATE TABLE \"{$table->tablename}\" CASCADE");
+    }
+});
 
 it('rejects registration validation failures without creating users or authenticating', function (string $field, mixed $value, string $error) {
     $existing = User::factory()->create(['email' => 'existing@example.com']);

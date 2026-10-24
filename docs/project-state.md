@@ -62,54 +62,6 @@ M6.2 Slices 3A–3E — Caption Flow Integration (Issues #81, #81B, #87, #89, #1
 - **Slice 3D (Issue #89 / PR #90)**: `RenderMediaClip` job integrates caption flow — fetches `STATUS_COMPLETED` transcripts, projects segments, generates SRT, stores caption file, includes `caption_file` in contract only when projection yields content. Backward compatible: caption_file omitted when no transcript, status not completed, or empty projection.
 - **Slice 3E (Issue #101 / PR #103)**: End-to-end caption flow integration test — validates complete pipeline: upload → transcribe → detect scenes → recommend → render with captions → validate output → persist. Uses real MinIO, FFmpeg, Python worker, FFprobe. No mocks for storage, worker, or FFmpeg.
 
-M7 Slice 1 decisions (Issue #106, PR #107): clip-review video playback
-issues time-limited (1 hour) signed API URLs that redirect to presigned
-storage URLs; invalid, expired, or tampered signatures return 403 before
-any ownership check, unsigned requests fall back to ownership 401/404, and
-non-owners always receive 404 so no ownership information leaks. Review
-list endpoints return the standard Laravel pagination envelope. The
-frontend is a single-page shell with no client-side router library;
-deep-link state uses the native History API.
-
-# Known Limitations
-
-E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
-5173/8000. Email verification not implemented. No project update/edit endpoint
-yet (out of scope for #30). Real runtime transcription model requires the
-faster-whisper optional dependency and model download. Real runtime scene
-detection requires the scenedetect[opencv-headless] optional dependency.
-Mandatory CI contains deterministic worker/unit coverage, mocked PySceneDetect
-adapter coverage, AND real FFmpeg-generated video + real PySceneDetect
-integration coverage. The signed clip-review video redirect requires S3-compatible storage; the
-local filesystem driver fails closed with 500. Full approve/reject/
-video-workflow e2e coverage is deferred until rendered-clip fixtures can
-exist in the e2e environment; the reachable review states are covered
-instead. Social features do not exist yet. Semantic
-clip ranking ships in the mainline via `rank_clips` v1.0.0 while
-`scene_timing_baseline` v1.0.0 remains the deterministic M4 scoring; there is
-no recommendation UI or public recommendation API. The agent
-runtime does not allow local execution of `tests/governance/pr_enforcement.py`
-(it runs in Actions) or deletion of generated `__pycache__` files; generated
-caches must never be staged.
-
-# Current Milestone
-
-M0–M5 completed. Issue #64 (M5 first slice, model-backed semantic clip
-recommendation) is closed as completed following the merge of PR #66. PR #65
-was superseded without merge, closed unmerged, and remains as history with
-both Issue #64 branches preserved. M6.1 — Durable Baseline Vertical Clip
-Render Pipeline (Issue #69, PR #73) is completed and merged. M6.1 delivers
-`ffmpeg_vertical_baseline` v1.0.0 render profile `vertical_v1` producing
-persisted `DerivedAsset` records with `type=clip_rendered`, candidate index,
-render timestamps, and error capture.
-
-M6.2 Slices 3A–3E — Caption Flow Integration (Issues #81, #81B, #87, #89, #101 / PRs #83, #85, #88, #90, #103 — all merged and closed):
-- **Slice 3A (Issue #81 / PR #83)**: `CaptionProjection` — pure PHP segment projection matching Slice 2 algorithm; `SrtGenerator` — SRT format generation from projected segments.
-- **Slice 3B (Issue #81B / PR #85)**: Dedicated `SrtGenerator` implementation with 6 unit tests covering single/multiple segments, empty text, multi-line text, timestamp format, and empty input.
-- **Slice 3C (Issue #87 / PR #88)**: `StorageKeyBuilder::captionFile()` for deterministic S3 key generation; `MediaProcessingContract::renderClipRequest()` extended with optional `caption_file` parameter; worker schema `media_processing_v1.json` updated with `caption_file` in `render_clip_request`.
-- **Slice 3D (Issue #89 / PR #90)**: `RenderMediaClip` job integrates caption flow — fetches `STATUS_COMPLETED` transcripts, projects segments, generates SRT, stores caption file, includes `caption_file` in contract only when projection yields content. Backward compatible: caption_file omitted when no transcript, status not completed, or empty projection.
-- **Slice 3E (Issue #101 / PR #103)**: End-to-end caption flow integration test — validates complete pipeline: upload → transcribe → detect scenes → recommend → render with captions → validate output → persist. Uses real MinIO, FFmpeg, Python worker, FFprobe. No mocks for storage, worker, or FFmpeg.
-
 REC-04 (Issue #94): E2E caption flow integration test gap resolved; Slice 3E implemented and tested.
 
 REC-05 (Issue #95): Governance automation audit completed; GOV-01 through GOV-04 follow-up issues defined.
@@ -195,6 +147,68 @@ e2e green at all three viewports, governance and pr-enforcement green;
 merged via `scripts/merge_gate.py` after three CI rounds (Round 1: two
 test-assertion bugs fixed in `0518d47`; Round 2: `toBeEmpty()` → `isEmpty()`
 Collection-native fix in `0b11297`; Round 3: all five checks green).
+
+M9 — Social Connection Framework (Issue #118): OAuth provider connection
+lifecycle for YouTube, Instagram, and TikTok. Backend: `create_social_connections_table`
+migration with encrypted token storage, `SocialConnection` model with hidden
+token fields and status enum (connected/expired/revoked/error),
+`SocialConnectionProvider` contract with `FakeYouTubeProvider`/`FakeInstagramProvider`/
+`FakeTikTokProvider` fakes, `SocialConnectionManager` service (initiate,
+callback, refresh, disconnect, validate), 5 REST endpoints (list, connect,
+callback, disconnect, status) under `auth:sanctum` with `VerifyCsrfToken` on
+state-changing routes, rate limiters (connect 20/min, list 60/min,
+disconnect 30/min), and `config/social.php`. Frontend: API client with CSRF
+handling and error classification, React Query hooks (`useSocialConnections`,
+`useConnectPlatform`, `useDisconnectConnection`), `SocialConnectionCard`
+with 4 status badges and action buttons, `SocialConnectionList` with skeleton
+loading and empty state, `ConnectPlatformModal` with keyboard navigation and
+focus trap, `SocialConnections` page with toast notifications, full
+accessibility (focus rings, ARIA labels, live regions, 44px touch targets).
+Verification: backend Pest 1714 tests (1694 passed, 20 skipped, 0 failed),
+Vitest 372 passed, Playwright E2E 102 passed at 390x844/768x1024/1440x900,
+lint/build clean, governance OK.
+
+M9 Follow-up — Design System Application & Direct Access (Issue #118 follow-up):
+Applied `design-taste-frontend` skill art direction to Auth pages (Login/Register)
+and Social Connections page. Auth: "Quiet Instrument" direction with column-on-one-line
+hero, clipped timeline fragment as live thing, 4 archival images. Social Connections:
+"Product Performs" direction with fragment-on-shaped-stage hero, connection cards as
+interface fragments, 4 archival network/social images. Both pages use design-token
+CSS custom properties, Switzer font, mono-accent palette, square corners, reduced-motion
+support. Added direct `/connections` route with authenticated access and back navigation.
+Extended Playwright E2E with 66 new tests (22 × 3 viewports) covering OAuth flow,
+keyboard navigation, focus management, accessibility, and visual regression.
+
+# Known Limitations
+
+E2E needs prepared PostgreSQL, installed Chromium browsers, and free ports
+5173/8000. Email verification not implemented. No project update/edit endpoint
+yet (out of scope for #30). Real runtime transcription model requires the
+faster-whisper optional dependency and model download. Real runtime scene
+detection requires the scenedetect[opencv-headless] optional dependency.
+Mandatory CI contains deterministic worker/unit coverage, mocked PySceneDetect
+adapter coverage, AND real FFmpeg-generated video + real PySceneDetect
+integration coverage. The signed clip-review video redirect requires S3-compatible storage; the
+local filesystem driver fails closed with 500. Full approve/reject/
+video-workflow e2e coverage is deferred until rendered-clip fixtures can
+exist in the e2e environment; the reachable review states are covered
+instead. Semantic
+clip ranking ships in the mainline via `rank_clips` v1.0.0 while
+`scene_timing_baseline` v1.0.0 remains the deterministic M4 scoring; there is
+no recommendation UI or public recommendation API. The agent
+runtime does not allow local execution of `tests/governance/pr_enforcement.py`
+(it runs in Actions) or deletion of generated `__pycache__` files; generated
+caches must never be staged.
+
+# Current Milestone
+
+M0–M8 completed. M9 — Social Connection Framework (Issue #118) is completed
+and verified: backend Pest suite 1714 tests (1694 passed, 20 skipped, 0 failed),
+Vitest 372 passed, Playwright E2E 102 passed at 3 viewports, lint/build clean.
+M9 Follow-up — Design System Application & Direct Access completed: Auth and
+Social Connections pages redesigned with `design-taste-frontend` skill, direct
+`/connections` route added, 66 new E2E tests added. PR pending merge via
+`scripts/merge_gate.py`.
 
 # Next Architectural Goal
 

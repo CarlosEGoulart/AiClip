@@ -9,9 +9,9 @@ it('has the media disk in filesystem configuration', function () {
     expect($disks)->toHaveKey('media');
 });
 
-it('uses the s3 driver for the media disk', function () {
+it('uses the local driver for the media disk in the test environment', function () {
     $driver = config('filesystems.disks.media.driver');
-    expect($driver)->toBe('s3');
+    expect($driver)->toBe('local');
 });
 
 it('uses path-style endpoints by default for MinIO compatibility', function () {

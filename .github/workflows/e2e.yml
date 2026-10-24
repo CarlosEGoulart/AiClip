@@ -12,7 +12,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16.4-alpine
         env:
           POSTGRES_DB: aiclip
           POSTGRES_USER: aiclip
@@ -33,7 +33,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '8.4.1'
           extensions: pdo, pdo_pgsql, mbstring, xml, ctype, bcmath
           coverage: none
 
@@ -41,6 +41,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install Composer dependencies
         working-directory: apps/api
@@ -61,6 +63,7 @@ jobs:
           DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
+          FILESYSTEM_MEDIA_DRIVER: local
         run: php artisan migrate --force
 
       - name: Install frontend dependencies
@@ -80,6 +83,7 @@ jobs:
           DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
+          FILESYSTEM_MEDIA_DRIVER: local
         run: npm run test:e2e
 
       - name: Upload viewport screenshots

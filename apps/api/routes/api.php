@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\V1\ClipReviewController;
 use App\Http\Controllers\Api\V1\ImageController;
 use App\Http\Controllers\Api\V1\MediaAssetController;
 use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\SocialConnectionController;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
@@ -72,7 +74,21 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:image-list');
         Route::get('/images/{image}', [ImageController::class, 'show'])
             ->middleware('throttle:image-show');
+
+        // Social Connection routes (authenticated + CSRF for state-changing ops)
+        Route::get('/social/connections', [SocialConnectionController::class, 'index'])
+            ->middleware('throttle:social-list');
+        Route::post('/social/{platform}/connect', [SocialConnectionController::class, 'connect'])
+            ->middleware(['throttle:social-connect', VerifyCsrfToken::class]);
+        Route::delete('/social/connections/{connection}', [SocialConnectionController::class, 'disconnect'])
+            ->middleware(['throttle:social-disconnect', VerifyCsrfToken::class]);
+        Route::get('/social/connections/{connection}/status', [SocialConnectionController::class, 'status'])
+            ->middleware('throttle:social-list');
     });
+
+    // Callback must be accessible without authentication (OAuth redirect from provider)
+    Route::get('/social/{platform}/callback', [SocialConnectionController::class, 'callback'])
+        ->middleware('throttle:social-connect');
 
     // Clip review video playback is reachable either through a time-limited
     // signed URL (clip-review.video, issued to owners via the resource) or

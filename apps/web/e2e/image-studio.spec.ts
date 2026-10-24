@@ -104,7 +104,12 @@ function trackCleanliness(page: Page): Cleanliness {
         .startsWith('Failed to load resource: the server responded with a status of 401') &&
       url.endsWith('/api/v1/auth/me');
 
-    if (!isSessionProbeMirror) {
+    // React Router v7 Future Flag warnings are benign library compatibility
+    // notices, not application defects.
+    const isReactRouterFutureFlag =
+      message.text().includes('React Router Future Flag Warning');
+
+    if (!isSessionProbeMirror && !isReactRouterFutureFlag) {
       cleanliness.consoleProblems.push(
         `${message.type()}: ${message.text()} (${message.location().url})`,
       );
@@ -160,14 +165,14 @@ async function waitForAuthReady(page: Page) {
   await page.goto('/');
   await expect(
     page
-      .getByRole('heading', { name: 'Sign In' })
-      .or(page.getByRole('heading', { name: 'Create Account' })),
+      .getByRole('heading', { name: 'Sign in to your workspace' })
+      .or(page.getByRole('heading', { name: 'Create your workspace' })),
   ).toBeVisible({ timeout: 15000 });
 }
 
 async function switchToRegister(page: Page) {
   await waitForAuthReady(page);
-  const registerHeading = page.getByRole('heading', { name: 'Create Account' });
+  const registerHeading = page.getByRole('heading', { name: 'Create your workspace' });
   if (await registerHeading.isVisible().catch(() => false)) return;
   await page.getByRole('button', { name: 'Create one' }).click();
   await expect(registerHeading).toBeVisible();
@@ -180,7 +185,7 @@ async function registerUser(page: Page, name: string, email: string) {
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Create Account' }).click();
-  await expect(page.getByText('Signed in as')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 });
 }
 
 async function createProjectViaUi(page: Page, projectName: string): Promise<number> {

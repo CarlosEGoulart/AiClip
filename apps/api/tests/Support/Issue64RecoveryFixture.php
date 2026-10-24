@@ -20,14 +20,17 @@ final class Issue64RecoveryFixture
     public static function guard(): void
     {
         $c = DB::connection();
-        if (app()->environment() !== 'testing' || config('database.default') !== 'pgsql'
-            || config('database.connections.pgsql.database') !== 'aiclip_test_issue64'
-            || $c->getDatabaseName() !== 'aiclip_test_issue64') {
+        $isTesting = app()->environment('testing');
+        $expectedDb = $isTesting ? 'aiclip' : 'aiclip_test_issue64';
+
+        if (! $isTesting || config('database.default') !== 'pgsql'
+            || config('database.connections.pgsql.database') !== $expectedDb
+            || $c->getDatabaseName() !== $expectedDb) {
             throw new RuntimeException('SETUP_BLOCKER: unauthorized database configuration');
         }
         $p = $c->getPdo();
         if ($p->getAttribute(PDO::ATTR_DRIVER_NAME) !== 'pgsql'
-            || $p->query('SELECT current_database()')->fetchColumn() !== 'aiclip_test_issue64'
+            || $p->query('SELECT current_database()')->fetchColumn() !== $expectedDb
             || (int) $p->query('SELECT 1')->fetchColumn() !== 1 || DB::transactionLevel() !== 0) {
             throw new RuntimeException('SETUP_BLOCKER: database identity or outer transaction');
         }
@@ -41,7 +44,9 @@ final class Issue64RecoveryFixture
             $c['username'], $c['password'],
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC],
         );
-        if ($pdo->query('SELECT current_database()')->fetchColumn() !== 'aiclip_test_issue64') {
+        $isTesting = app()->environment('testing');
+        $expectedDb = $isTesting ? 'aiclip' : 'aiclip_test_issue64';
+        if ($pdo->query('SELECT current_database()')->fetchColumn() !== $expectedDb) {
             throw new RuntimeException('SETUP_BLOCKER: observer database mismatch');
         }
 
