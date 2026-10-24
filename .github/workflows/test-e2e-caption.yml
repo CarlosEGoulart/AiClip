@@ -49,7 +49,7 @@ jobs:
 
       - name: Install moto S3 server
         run: |
-          pip install moto[s3] awscli
+          pip install moto[server] awscli
 
       - name: Start moto S3 server
         run: |

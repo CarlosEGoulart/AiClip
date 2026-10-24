@@ -45,7 +45,7 @@ jobs:
 
       - name: Install moto S3 server
         run: |
-          pip install moto[s3] awscli
+          pip install moto[server] awscli
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
