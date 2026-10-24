@@ -34,8 +34,8 @@ test.describe('Auth Lifecycle', () => {
     await registerUser(page, 'E2E User', email)
 
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
-    await expect(page.getByText('E2E User')).toBeVisible()
-    await expect(page.getByText(email)).toBeVisible()
+    await expect(page.getByText('E2E User').first()).toBeVisible()
+    await expect(page.getByText(email).first()).toBeVisible()
   })
 
   test('authenticated → page reload → still authenticated', async ({ page }) => {
@@ -45,7 +45,7 @@ test.describe('Auth Lifecycle', () => {
 
     await page.reload()
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
-    await expect(page.getByText('Reload User')).toBeVisible()
+    await expect(page.getByText('Reload User').first()).toBeVisible()
   })
 
   test('authenticated → logout → guest', async ({ page }) => {
@@ -70,7 +70,7 @@ test.describe('Auth Lifecycle', () => {
     await page.context().addCookies(cookies)
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
-    await expect(page.getByText('Replay User')).not.toBeVisible()
+    await expect(page.getByText('Replay User').first()).not.toBeVisible()
   })
 
   test('existing user → login → authenticated', async ({ page }) => {
@@ -86,7 +86,7 @@ test.describe('Auth Lifecycle', () => {
     await page.getByRole('button', { name: 'Sign In' }).click()
 
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
-    await expect(page.getByText('Login User')).toBeVisible()
+    await expect(page.getByText('Login User').first()).toBeVisible()
   })
 
   test('authenticated login → reload → still authenticated', async ({ page }) => {
@@ -104,7 +104,7 @@ test.describe('Auth Lifecycle', () => {
 
     await page.reload()
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
-    await expect(page.getByText('Persistent User')).toBeVisible()
+    await expect(page.getByText('Persistent User').first()).toBeVisible()
   })
 
   test('invalid credentials → generic controlled error', async ({ page }) => {
