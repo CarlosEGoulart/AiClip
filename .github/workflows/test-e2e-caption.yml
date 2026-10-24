@@ -31,17 +31,17 @@ jobs:
           --health-retries 5
 
       minio:
-        image: minio/minio:RELEASE.2025-10-02T04-12-34Z
+        image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
         command: ["server", "/data", "--console-address", ":9001"]
         ports: ['9000:9000', '9001:9001']
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
         options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-cmd "mc alias set health http://127.0.0.1:9000 minioadmin minioadmin >/dev/null 2>&1 && mc ready health >/dev/null 2>&1"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -50,7 +50,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '8.4.1'
           extensions: pdo_pgsql, redis, pcntl
           coverage: none
 

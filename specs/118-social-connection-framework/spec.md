@@ -869,4 +869,69 @@ All GitHub Actions workflows pin action versions and runtime versions:
 | Backend/frontend tests, lint, build, governance, E2E pass | §11 |
 | Security hardening verified (audits clean, CI pinned) | §12 |
 | Independent Tester approval | Orchestrator workflow |
-| CI green before merge | Orchestrator workflow |
+| CI green before merge | §14 CI Requirements |
+| All four CI workflows green on issue branch | §14 CI Requirements |
+
+---
+
+## 14. CI Requirements
+
+### 14.1 Requirement
+
+All four GitHub Actions CI workflows must pass on the issue branch before the issue is considered done:
+
+| Workflow | File | Status target |
+|----------|------|---------------|
+| Backend CI | `.github/workflows/backend.yml` | green |
+| E2E CI | `.github/workflows/e2e.yml` | green |
+| Frontend CI | `.github/workflows/frontend.yml` | green |
+| Governance | `.github/workflows/governance.yml` | green |
+
+Failure of any single workflow blocks merge via `scripts/merge_gate.py` and blocks issue closure.
+
+### 14.2 Known CI Defects to Fix
+
+The following defects were observed in CI run `737a26a` (Backend CI = failure, E2E CI = failure, Frontend CI = success, Governance = success). Each must be resolved before the issue can close.
+
+**(a) Invalid MinIO image tags**
+
+`backend.yml` uses `minio/minio:RELEASE.2024-01-20T00-00-00Z` and `test-e2e-caption.yml` uses `minio/minio:RELEASE.2025-10-02T04-12-34Z`. Neither is a valid public MinIO release tag; MinIO release tags use real timestamped release identifiers (e.g. `RELEASE.2023-01-01T00-00-00Z` patterns are not real tags either — real tags are like `RELEASE.2023-10-26T21-48-09Z`). The invalid tag prevents the service container from starting, causing backend/E2E composer failures.
+
+Success behavior: both workflows pull a valid public MinIO image and the MinIO service container becomes healthy.
+Failure behavior: container fails to start; database/object-storage-dependent tests error out; workflow fails.
+
+**(b) PHP version conflict with `composer.lock` / `symfony/clock`**
+
+`apps/api/composer.json` requires `php: ^8.3.14`, but `composer.lock` contains `symfony/clock v8.1.9` which requires `PHP >= 8.4.1`. `test-e2e-caption.yml` still runs PHP 8.3, which fails the composer platform check and aborts installation before tests run.
+
+Success behavior: the PHP runtime used in CI satisfies `composer.lock` platform requirements (PHP >= 8.4.1 when `symfony/clock v8.1.9` is locked); `composer install` succeeds; tests run.
+Failure behavior: `composer install` errors with platform mismatch; workflow aborts; no tests execute.
+
+**(c) Verify `backend.yml` / `e2e.yml` PHP 8.4.1 resolves composer platform checks**
+
+`backend.yml` and `e2e.yml` currently run PHP 8.4.1. This must be verified against `composer.json` (`^8.3.14`) and `composer.lock` (`symfony/clock v8.1.9` needs >= 8.4.1) to confirm `composer install` passes with no platform mismatch.
+
+Success behavior: `composer install` completes with PHP 8.4.1 in backend.yml/e2e.yml; lint/test/build jobs run green.
+Failure behavior: platform check failure or missing extensions cause workflow failure.
+
+**(d) `test-e2e-caption.yml` MinIO + PHP + health check**
+
+`test-e2e-caption.yml` combines the invalid MinIO image tag, PHP 8.3 (conflicting with `symfony/clock v8.1.9`), and health check `curl -f http://localhost:9000/minio/health/live`. All three must be corrected together so the caption E2E workflow can provision MinIO and run.
+
+Success behavior: MinIO service starts, health check passes, PHP satisfies composer platform, caption E2E tests run green.
+Failure behavior: any one of the three defects leaves the workflow red.
+
+### 14.3 Observable Success / Failure Behavior
+
+Success (all gates):
+- `backend.yml`: composer install passes (PHP >= 8.4.1 satisfied), MinIO service healthy, lint + unit + feature + governance backend tests pass, `composer audit` clean.
+- `e2e.yml`: composer install passes (PHP >= 8.4.1 satisfied), MinIO service healthy, E2E caption tests pass at required viewports.
+- `frontend.yml`: Vitest unit tests pass, ESLint clean, TypeScript build succeeds.
+- `governance.yml`: governance tests pass under pinned Python 3.12.7, all actions pinned, YAML valid.
+
+Failure (any gate):
+- Invalid MinIO tag → service container does not start → dependent tests error → workflow red.
+- PHP 8.3 with `symfony/clock v8.1.9` locked → `composer install` platform mismatch → workflow aborts red.
+- Any lint/test/build/audit failure → workflow red → blocks merge and issue closure.
+
+Secrets: none introduced. Workflow files contain no OAuth tokens, refresh tokens, API secrets, or credentials. Encrypted token storage in the implementation is not weakened.

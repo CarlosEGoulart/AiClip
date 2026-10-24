@@ -584,3 +584,76 @@ jobs:
 - [ ] Gate S3: `/.nvmrc` at root with `22.14.0`
 - [ ] Gate S4: Governance tests pass under pinned Python
 - [ ] Gate S5: CI green with pinned runtime versions
+
+---
+
+## 14. CI Validation Test Scenarios
+
+M9 implementation is complete and committed. The open blocker is CI (Backend CI = failure, E2E CI = failure, Frontend CI = success, Governance = success, run `737a26a`). This section defines the test scenarios that validate the CI fixes and confirm all four workflows green before merge.
+
+### 14.1 Backend CI (`backend.yml`)
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| Backend CI - MinIO service starts | Run backend.yml; inspect service container logs | MinIO image pulls successfully; container becomes healthy; no image-pull error |
+| Backend CI - composer platform check | Run `composer install` with PHP 8.4.1 | No platform mismatch error; `symfony/clock v8.1.9` (requires PHP >= 8.4.1) satisfied; install completes |
+| Backend CI - test suite | Run `php artisan test --compact` | All unit, feature, and integration tests pass |
+| Backend CI - lint | Run `vendor/bin/pint --dirty --format agent` | 0 errors |
+| Backend CI - audit | Run `composer audit` | 0 high/critical vulnerabilities |
+| Backend CI - governance | Run `php artisan test --filter=Governance` | All governance tests pass |
+
+**Failure**: invalid MinIO tag (container won't start) or PHP < 8.4.1 (composer platform abort) → workflow red → blocks merge.
+
+### 14.2 E2E CI (`e2e.yml`)
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| E2E CI - MinIO service starts | Run e2e.yml; inspect service container logs | MinIO image pulls; container healthy |
+| E2E CI - composer platform check | Run `composer install` with PHP 8.4.1 | No platform mismatch; install completes |
+| E2E CI - caption E2E tests | Run caption E2E suite | All caption E2E tests pass at required viewports |
+| E2E CI - viewports | Execute E2E at 390x844, 768x1024, 1440x900 | Layout/behavior verified at all 3 viewports; no unexpected console errors or 4xx/5xx |
+
+**Failure**: invalid MinIO tag or PHP < 8.4.1 → workflow red → blocks merge.
+
+### 14.3 `test-e2e-caption.yml` Combined Fix
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| Caption CI - valid MinIO tag | Replace invalid tag; run workflow | Image pulls; MinIO healthy |
+| Caption CI - PHP >= 8.4.1 | Set PHP to 8.4.1; run `composer install` | No platform mismatch; install completes |
+| Caption CI - health check | `curl -f http://localhost:9000/minio/health/live` | Returns 200 before tests run |
+| Caption CI - tests run | Execute caption E2E suite | All pass; workflow green |
+
+**Failure**: any of the three defects (tag, PHP, health check) leaves the workflow red.
+
+### 14.4 Frontend CI (`frontend.yml`)
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| Frontend CI - unit tests | Run `npm run test` (Vitest) | All pass |
+| Frontend CI - lint | Run `npm run lint` (ESLint) | 0 errors |
+| Frontend CI - build | Run `npm run build` (TypeScript) | Compiles without errors |
+| Frontend CI - audit | Run `npm audit` | 0 high/critical vulnerabilities |
+
+**Status**: already success; must remain green after any dependency changes.
+
+### 14.5 Governance CI (`governance.yml`)
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| Governance CI - tests | Run governance test suite under Python 3.12.7 | All tests pass |
+| Governance CI - pinned actions | Verify `actions/checkout` and `actions/setup-python` pinned by SHA | No unpinned `v4`/`v5` references |
+| Governance CI - YAML validity | Validate workflow YAML | Valid syntax |
+
+**Status**: already success; must remain green.
+
+### 14.6 Merge Gate and Issue Closure
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| Merge gate | Run `scripts/merge_gate.py` on issue branch | All four CI workflows green; gate passes |
+| Issue closure | Orchestrator closes issue #118 | Issue moved to CLOSED; no active issue remains |
+
+**Failure**: any workflow red → merge gate blocked → issue remains OPEN.
+
+---

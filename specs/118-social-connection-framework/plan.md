@@ -328,6 +328,42 @@ This plan breaks down the implementation into sequential, testable increments fo
 
 ---
 
+## Phase 9: CI Fix Verification
+
+M9 implementation code is complete and committed. The remaining blocker is CI: Backend CI = failure, E2E CI = failure, Frontend CI = success, Governance = success (run `737a26a`). All four workflows must be green before merge.
+
+### 9.1 Fix Invalid MinIO Image Tags
+- [ ] Replace invalid MinIO tag in `.github/workflows/backend.yml` (`minio/minio:RELEASE.2024-01-20T00-00-00Z`) with a valid public MinIO release tag.
+- [ ] Replace invalid MinIO tag in `.github/workflows/test-e2e-caption.yml` (`minio/minio:RELEASE.2025-10-02T04-12-34Z`) with a valid public MinIO release tag.
+- [ ] Verify both workflows pull the image and the MinIO service container becomes healthy.
+
+### 9.2 Align PHP Version with `composer.lock` / `symfony/clock`
+- [ ] Confirm `symfony/clock v8.1.9` in `composer.lock` requires `PHP >= 8.4.1`.
+- [ ] Fix `.github/workflows/test-e2e-caption.yml` PHP version from 8.3 to >= 8.4.1 (matching `composer.lock` platform requirement).
+- [ ] Verify `.github/workflows/backend.yml` and `.github/workflows/e2e.yml` PHP 8.4.1 satisfies `composer.json` (`^8.3.14`) and `composer.lock` (`symfony/clock v8.1.9` needs >= 8.4.1) — `composer install` must pass with no platform mismatch.
+- [ ] Verify no secrets/tokens introduced in workflow files; encrypted token storage not weakened.
+
+### 9.3 Fix `test-e2e-caption.yml` MinIO + PHP + Health Check
+- [ ] Correct the invalid MinIO image tag (task 9.1).
+- [ ] Correct PHP version to >= 8.4.1 (task 9.2).
+- [ ] Verify/fix health check `curl -f http://localhost:9000/minio/health/live` so MinIO is deemed healthy before tests run.
+- [ ] Confirm caption E2E workflow provisions MinIO and runs green.
+
+### 9.4 Run Local Verification
+- [ ] Backend: `php artisan test --compact` → all pass.
+- [ ] Frontend: `npm run test` → all pass; `npm run lint` → no errors; `npm run build` → succeeds.
+- [ ] Governance: `php artisan test --filter=Governance` → all pass.
+- [ ] `composer audit` → 0 high/critical; `npm audit` → 0 high/critical.
+
+### 9.5 Confirm All Four CI Workflows Green
+- [ ] Backend CI green on issue branch.
+- [ ] E2E CI green on issue branch.
+- [ ] Frontend CI green on issue branch.
+- [ ] Governance CI green on issue branch.
+- [ ] `scripts/merge_gate.py` can proceed (all gates green).
+
+---
+
 ## File Creation Summary
 
 ### Backend (Laravel)
