@@ -12,7 +12,7 @@ on:
 
 jobs:
   e2e-caption-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-24
     timeout-minutes: 30
     if: github.event_name == 'push' || startsWith(github.head_ref, '@carlosegoulart/101/')
 
@@ -45,12 +45,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v4
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2.30.0
+        uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.14'
+          php-version: '8.3'
           extensions: pdo_pgsql, redis, pcntl
           coverage: none
 
@@ -84,11 +84,11 @@ jobs:
           cd apps/api
           php -r "
           require 'vendor/autoload.php';
-          use Symfony\Component\Process\Process;
-          \$cmd = ['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=30:size=1920x1080:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-shortest', 'tests/fixtures/caption_test_video.mp4'];
-          \$p = new Process(\$cmd, null, null, null, 120);
-          \$p->run();
-          if (!\$p->isSuccessful()) { echo 'FAILED: ' . \$p->getErrorOutput(); exit(1); }
+          use SymfonyComponentProcessProcess;
+          $cmd = ['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=30:size=1920x1080:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-shortest', 'tests/fixtures/caption_test_video.mp4'];
+          $p = new Process($cmd, null, null, null, 120);
+          $p->run();
+          if (!$p->isSuccessful()) { echo 'FAILED: ' . $p->getErrorOutput(); exit(1); }
           echo 'Generated: ' . filesize('tests/fixtures/caption_test_video.mp4') . ' bytes';
           "
 
