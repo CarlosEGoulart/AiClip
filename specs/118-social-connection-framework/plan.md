@@ -407,5 +407,63 @@ This plan breaks down the implementation into sequential, testable increments fo
 12. `test(social): add frontend E2E tests`
 13. `docs(social): add provider onboarding documentation`
 14. `chore(social): lint, governance, final verification`
+15. `feat(social): apply design-taste-frontend to auth and social connections`
+16. `chore(security): pin PHP 8.3.14+, Node 22.14.0, Docker images, and CI actions`
 
 Each commit references: `Refs #118`
+
+---
+
+## Security Hardening Phases (Part of M9)
+
+Security maintenance executed within M9 scope. All phases completed.
+
+### Phase S1: Dependency Updates ✅
+
+#### Task S1.1: PHP/Laravel (apps/api)
+- [x] Update `composer.json`: PHP `^8.3` → `^8.3.14`
+- [x] Run `composer update` (Laravel v13.38.0, symfony v8.1.9, Pest, PHPUnit latest)
+- [x] Verify `composer audit` → 0 high/critical vulnerabilities
+- [x] Update `composer.lock`
+
+#### Task S1.2: Frontend (apps/web)
+- [x] Add `engines` field: `"node": ">=22.14.0 <23"`
+- [x] Run `npm ci` and `npm audit fix` (resolved vite, source-map-js high vulnerabilities)
+- [x] Update `package-lock.json`
+
+### Phase S2: Docker Base Images ✅
+
+#### Task S2.1: Update docker-compose.yml
+- [x] `postgres`: `16-alpine` → `16.4-alpine`
+- [x] `minio`: `RELEASE.2025-04-22T22-12-26Z` → `RELEASE.2025-10-02T04-12-34Z`
+- [x] `minio-init`: updated to match minio version
+
+### Phase S3: CI Supply Chain Pinning ✅
+
+#### Task S3.1: Pin workflow actions
+- [x] `backend.yml`: checkout v4.2.2, setup-php v2.30.0, setup-python v5.3.0, upload-artifact v4.6.0; PHP 8.3.14, Python 3.12.7
+- [x] `frontend.yml`: checkout v4.2.2, setup-node v4.1.0; Node 22
+- [x] `e2e.yml`: checkout v4.2.2, setup-php v2.30.0, setup-node v4.1.0, upload-artifact v4.6.0; PHP 8.3.14, Node 22
+- [x] `test-e2e-caption.yml`: checkout v4.2.2, setup-php v2.30.0; PHP 8.3.14
+- [x] `governance.yml`: checkout `11bd71901bbe5b1630ceea73d27597364c9af683` (v4.2.2), setup-python `0b93645e9fea7318ecaed2b359559ac225c90a2b` (v5.3.0); Python 3.12.7
+
+### Phase S4: Runtime Pinning ✅
+
+#### Task S4.1: Node.js version pinning
+- [x] Create `/.nvmrc` at repository root with `22.14.0`
+- [x] Empty `apps/web/.nvmrc` (root file is authoritative)
+
+### Phase S5: Security Verification
+
+#### Task S5.1: Local verification
+- [x] `npm test` → 372 passed
+- [x] `npm run lint` → no errors
+- [x] `npm run build` → succeeds
+- [ ] `php artisan test --compact` → pending CI (local PHP 8.3.6 incompatible with symfony v8.1.9; CI uses PHP 8.3.14)
+
+## Security Rollback Plan
+
+If any security change breaks CI:
+1. Revert the specific file change
+2. Document the issue in evidence.md
+3. Investigate before retrying

@@ -820,7 +820,43 @@ Each platform adapter MUST implement `SocialConnectionProvider` and provide:
 
 ---
 
-## 11. Acceptance Criteria Mapping
+## 12. Security Hardening (Part of M9)
+
+Security maintenance executed within M9 scope to guarantee supply chain integrity of the runtime and CI pipeline.
+
+### 12.1 Dependency Updates
+
+| Layer | Change | Rationale |
+|-------|--------|-----------|
+| PHP | `^8.3` → `^8.3.14` | Patch-level security fixes (PHP 8.3.0–8.3.13 contain CVEs) |
+| Laravel | v13.31.0 → v13.38.0 | Latest security patches |
+| Node.js | unpinned → `>=22.14.0 <23` (engines + `/.nvmrc`) | LTS pinning against known CVEs |
+| Docker postgres | `16-alpine` → `16.4-alpine` | Latest security patches |
+| Docker minio | `RELEASE.2025-04-22` → `RELEASE.2025-10-02T04-12-34Z` | Latest security patches |
+
+### 12.2 CI Supply Chain Pinning
+
+All GitHub Actions workflows pin action versions and runtime versions:
+
+| Workflow | Pinned Actions | Runtime Versions |
+|----------|----------------|------------------|
+| `backend.yml` | checkout v4.2.2, setup-php v2.30.0, setup-python v5.3.0, upload-artifact v4.6.0 | PHP 8.3.14, Python 3.12.7 |
+| `frontend.yml` | checkout v4.2.2, setup-node v4.1.0 | Node 22 |
+| `e2e.yml` | checkout v4.2.2, setup-php v2.30.0, setup-node v4.1.0, upload-artifact v4.6.0 | PHP 8.3.14, Node 22 |
+| `test-e2e-caption.yml` | checkout v4.2.2, setup-php v2.30.0 | PHP 8.3.14 |
+| `governance.yml` | checkout `11bd71901bbe5b1630ceea73d27597364c9af683` (v4.2.2), setup-python `0b93645e9fea7318ecaed2b359559ac225c90a2b` (v5.3.0) | Python 3.12.7 |
+
+### 12.3 Security Acceptance Criteria
+
+- [ ] `composer audit` → 0 high/critical vulnerabilities
+- [ ] `npm audit` → 0 high/critical vulnerabilities (low/moderate may be accepted with justification)
+- [ ] All GitHub Actions workflows use pinned action versions
+- [ ] `/.nvmrc` at repository root with `22.14.0`; `apps/web/.nvmrc` removed
+- [ ] Governance tests pass under pinned Python 3.12.7
+
+---
+
+## 13. Acceptance Criteria Mapping
 
 | AC | Coverage |
 |----|----------|
@@ -831,5 +867,6 @@ Each platform adapter MUST implement `SocialConnectionProvider` and provide:
 | Connect, callback failure, disconnect, expired, unauthorized tested | §11 (test-plan.md) |
 | UI states keyboard accessible, visible focus | §6.6 |
 | Backend/frontend tests, lint, build, governance, E2E pass | §11 |
+| Security hardening verified (audits clean, CI pinned) | §12 |
 | Independent Tester approval | Orchestrator workflow |
 | CI green before merge | Orchestrator workflow |

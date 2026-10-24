@@ -225,14 +225,103 @@ The new E2E tests cover:
 
 ---
 
+# Security Hardening (Part of M9)
+
+## Overview
+
+Security maintenance update executed within M9 scope: PHP/Laravel dependency updates, Node.js/ npm pinning, Docker base image updates, and GitHub Actions workflow pinning to prevent supply chain attacks.
+
+## Phase 1: PHP / Laravel Updates (apps/api) ✅
+
+### Changes Made:
+- Updated `composer.json`: PHP requirement from `^8.3` to `^8.3.14`
+- Ran `composer update --ignore-platform-req=php` (local PHP 8.3.6 doesn't satisfy 8.3.14+)
+- Key package updates:
+  - `laravel/framework`: v13.31.0 → v13.38.0
+  - `laravel/boost`: v2.8.0 → v2.10.3
+  - `laravel/pint`: v1.32.0 → v1.32.1
+  - `pestphp/pest`: v4.7 → v4.7+ (latest within ^4.7)
+  - `phpunit/phpunit`: v12.5.12 → v12.5+ (latest within ^12.5)
+  - `symfony/*`: v7.4 → v8.1.9 (major update, requires PHP 8.3+)
+
+### Security Audit:
+- `composer audit`: **0 vulnerabilities found**
+
+### Lock File:
+- `composer.lock` updated with new content-hash
+
+## Phase 2: Frontend Updates (apps/web) ✅
+
+### Changes Made:
+- Added `engines` field to `package.json`: `"node": ">=22.14.0 <23"`
+- Created `/.nvmrc` at repository root with content: `22.14.0`
+- Ran `npm ci` and `npm audit fix`
+
+### Security Audit:
+- `npm audit fix` resolved high vulnerabilities in `vite` and `source-map-js`
+- Remaining: **2 moderate vulnerabilities** in `react-router` (v6.x)
+  - Require breaking change to React Router v7 (`npm audit fix --force`)
+  - Accepted with justification: Application doesn't use SSR hydration; open redirect requires specific conditions
+
+### Test Results:
+- `npm run test`: **372 tests passed**
+- `npm run lint`: Passes (warnings only, no errors)
+- `npm run build`: **Production build succeeds**
+
+## Phase 3: Docker Base Images ✅
+
+### Changes Made to `docker-compose.yml`:
+- `postgres`: `16-alpine` → `16.4-alpine`
+- `minio`: `RELEASE.2025-04-22T22-12-26Z` → `RELEASE.2025-10-02T04-12-34Z`
+- `minio-init`: Updated to match minio version
+
+## Phase 4: GitHub Actions Version Pinning ✅
+
+### Updated Workflow Files:
+
+| Workflow | Actions Updated | Runtime Versions |
+|----------|-----------------|------------------|
+| `backend.yml` | `actions/checkout@v4.2.2`, `shivammathur/setup-php@v2.30.0`, `actions/setup-python@v5.3.0`, `actions/upload-artifact@v4.6.0` | PHP 8.3.14, Python 3.12.7, Postgres 16.4-alpine |
+| `frontend.yml` | `actions/checkout@v4.2.2`, `actions/setup-node@v4.1.0` | Node 22 |
+| `e2e.yml` | `actions/checkout@v4.2.2`, `shivammathur/setup-php@v2.30.0`, `actions/setup-node@v4.1.0`, `actions/upload-artifact@v4.6.0` | PHP 8.3.14, Node 22, Postgres 16.4-alpine |
+| `test-e2e-caption.yml` | `actions/checkout@v4.2.2`, `shivammathur/setup-php@v2.30.0` | PHP 8.3.14, MinIO RELEASE.2025-10-02T04-12-34Z |
+| `governance.yml` | ✅ Pinned `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683` (v4.2.2), `actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b` (v5.3.0), Python 3.12.7 |
+
+## Security Verification Status
+
+| Criteria | Status |
+|----------|--------|
+| `composer audit` → 0 high/critical vulnerabilities | ✅ PASS |
+| `npm audit` → 0 high/critical vulnerabilities | ✅ PASS (2 moderate accepted) |
+| Backend tests (1714+) pass | ⏳ Pending CI (local PHP version incompatible) |
+| Frontend tests (372+) pass | ✅ PASS |
+| Frontend lint passes | ✅ PASS |
+| Frontend build succeeds | ✅ PASS |
+| E2E tests (102+ × 3 viewports) pass | ⏳ Pending CI |
+| Governance tests (173) pass | ⏳ Pending CI |
+| governance.yml pinned actions + Python 3.12.7 | ✅ PASS |
+| .nvmrc at repository root with 22.14.0 | ✅ PASS |
+| apps/web/.nvmrc emptied | ✅ PASS |
+
+## Known Security Limitations
+
+1. **Local testing limitation**: Local PHP version is 8.3.6, but the updated dependencies require PHP 8.3.14+ (specifically symfony/http-foundation v8.1.9). The CI environment will use PHP 8.3.14 via `shivammathur/setup-php@v2.30.0`.
+
+2. **React Router moderate vulnerabilities**: Two moderate vulnerabilities remain in react-router v6.x. Fixing requires upgrading to v7 which is a breaking change. Accepted with justification.
+
+---
+
 ## Conclusion
 
 **M9 Original**: ✅ **APPROVED** — All acceptance criteria satisfied (documented above)
 
-**M9 Follow-up**: ⚠️ **VERIFICATION INCOMPLETE** — Frontend implementation complete and passes all local checks (lint, build, unit tests). Backend and E2E verification blocked by PostgreSQL infrastructure in current environment. Original M9 verification with PostgreSQL running confirmed 1714 backend tests + 102 E2E tests passing.
+**M9 Follow-up (Design System)**: ⚠️ **VERIFICATION INCOMPLETE** — Frontend implementation complete and passes all local checks (lint, build, unit tests). Backend and E2E verification blocked by PostgreSQL infrastructure in current environment. Original M9 verification with PostgreSQL running confirmed 1714 backend tests + 102 E2E tests passing.
+
+**Security Hardening**: ✅ **IMPLEMENTED** — All local-verifiable criteria pass (composer/npm audits clean, frontend tests/lint/build green, CI workflows pinned). CI-dependent criteria pending green pipeline run.
 
 **Required for Full Approval**:
 1. Start PostgreSQL container (`docker compose up -d postgres`)
 2. Run `php artisan test --compact` — confirm 1714 tests pass
 3. Run `npm run test:e2e` — confirm 168 tests pass at 3 viewports
 4. Run `node .opencode/skills/design-taste-frontend/scripts/inspect.mjs` on `/login` and `/connections` — confirm no FAILs at 3 viewports
+5. Trigger CI — confirm governance workflow passes with pinned versions (PHP 8.3.14, Python 3.12.7, Node 22.14.0)

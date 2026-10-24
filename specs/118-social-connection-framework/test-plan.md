@@ -520,3 +520,67 @@ jobs:
 - [ ] Manual verification checklist complete
 - [ ] Evidence.md updated with results
 - [ ] Independent Tester review approves
+
+---
+
+## 13. Security Hardening Test Scenarios (Part of M9)
+
+### 13.1 Security Test Matrix
+
+| Layer | Tool | Target |
+|-------|------|--------|
+| Composer audit | `composer audit` | 0 high/critical vulnerabilities |
+| npm audit | `npm audit` | 0 high/critical vulnerabilities |
+| Governance Workflow | YAML validation | Valid syntax, pinned versions |
+| Governance Tests | Python unittest | All 173 tests pass |
+| .nvmrc Location | File system | Root exists, apps/web removed |
+| Runtime versions | CI logs | PHP 8.3.14, Python 3.12.7, Node 22.14.0 |
+
+### 13.2 Security Test Scenarios
+
+#### Scenario S1: Dependency Audits
+**Steps**:
+1. `cd apps/api && composer audit`
+2. `cd apps/web && npm audit`
+
+**Expected**: 0 high/critical vulnerabilities (low/moderate accepted with justification)
+
+#### Scenario S2: Governance Workflow Validation
+**Steps**:
+1. Validate `governance.yml` YAML syntax
+2. Verify pinned `actions/checkout` SHA (`11bd71901bbe5b1630ceea73d27597364c9af683`) in both jobs
+3. Verify pinned `actions/setup-python` SHA (`0b93645e9fea7318ecaed2b359559ac225c90a2b`) in both jobs
+4. Verify `python-version: "3.12.7"` in both jobs
+5. Verify no unpinned `v4`/`v5` references remain
+
+**Expected**: Valid YAML, all actions pinned, Python 3.12.7
+
+#### Scenario S3: .nvmrc Location Verification
+**Steps**:
+1. Verify `/.nvmrc` exists with content `22.14.0`
+2. Verify `apps/web/.nvmrc` is empty (root file is authoritative)
+
+**Expected**: Root .nvmrc correct
+
+#### Scenario S4: Governance Test Execution
+**Steps**:
+1. `python -m pip install -r tests/governance/requirements.txt`
+2. `python -m unittest discover -s tests/governance -p 'test_*.py' -v`
+
+**Expected**: All governance tests pass
+
+#### Scenario S5: CI Integration (Post-Merge)
+**Steps**:
+1. Trigger CI pipeline
+2. Verify workflow logs show PHP 8.3.14, Python 3.12.7, Node 22
+3. Verify all jobs green
+
+**Expected**: CI green with pinned versions
+
+### 13.3 Security Acceptance Gates
+
+- [ ] Gate S1: `composer audit` and `npm audit` clean (high/critical = 0)
+- [ ] Gate S2: governance.yml fully pinned (SHAs + Python 3.12.7)
+- [ ] Gate S3: `/.nvmrc` at root with `22.14.0`
+- [ ] Gate S4: Governance tests pass under pinned Python
+- [ ] Gate S5: CI green with pinned runtime versions

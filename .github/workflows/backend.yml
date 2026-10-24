@@ -12,7 +12,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16.4-alpine
         env:
           POSTGRES_DB: aiclip_test_issue64
           POSTGRES_USER: aiclip
@@ -26,7 +26,7 @@ jobs:
           --health-retries 5
 
       minio:
-        image: bitnamilegacy/minio:2025.4.22-debian-12-r2
+        image: bitnami/minio:2025.10.02
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
@@ -39,14 +39,14 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
         with:
           persist-credentials: false
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@v2.30.0
         with:
-          php-version: '8.3'
+          php-version: '8.3.14'
           extensions: pdo, pdo_pgsql, mbstring, xml, ctype, bcmath
           coverage: none
 
@@ -55,9 +55,9 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.3.0
         with:
-          python-version: '3.12'
+          python-version: '3.12.7'
 
       - name: Install FFmpeg
         run: |
@@ -79,7 +79,7 @@ jobs:
         run: |
           docker run --rm --network host --entrypoint sh \
             -e MC_CONFIG_DIR=/tmp/.mc \
-            bitnamilegacy/minio:2025.4.22-debian-12-r2 -c "
+            bitnami/minio:2025.10.02 -c "
               mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
               mc mb --ignore-existing aiclip/aiclip-media &&
               mc anonymous set private aiclip/aiclip-media &&

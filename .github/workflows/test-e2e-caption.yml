@@ -18,7 +18,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16.4-alpine
         ports: ['5432:5432']
         env:
           POSTGRES_DB: aiclip
@@ -31,7 +31,7 @@ jobs:
           --health-retries 5
 
       minio:
-        image: minio/minio:latest
+        image: minio/minio:RELEASE.2025-10-02T04-12-34Z
         command: ["server", "/data", "--console-address", ":9001"]
         ports: ['9000:9000', '9001:9001']
         env:
@@ -45,12 +45,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@v2.30.0
         with:
-          php-version: '8.3'
+          php-version: '8.3.14'
           extensions: pdo_pgsql, redis, pcntl
           coverage: none
 
