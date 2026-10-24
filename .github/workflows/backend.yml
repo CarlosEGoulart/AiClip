@@ -14,26 +14,26 @@ jobs:
       postgres:
         image: postgres:16.4-alpine
         env:
-          POSTGRES_DB: aiclip_test_issue64
+          POSTGRES_DB: aiclip
           POSTGRES_USER: aiclip
           POSTGRES_PASSWORD: secret
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U aiclip -d aiclip_test_issue64"
+          --health-cmd "pg_isready -U aiclip -d aiclip"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
       minio:
-        image: bitnami/minio:2025.10.02
+        image: minio/minio:RELEASE.2025-10-02T04-12-34Z
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
         ports:
           - 9000:9000
         options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-cmd "mc alias set health http://127.0.0.1:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD >/dev/null 2>&1 && mc ready health >/dev/null 2>&1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -65,6 +65,11 @@ jobs:
           sudo apt-get install -y ffmpeg
           ffprobe -version
 
+      - name: Install MinIO Client (mc)
+        run: |
+          curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+          chmod +x /usr/local/bin/mc
+
       - name: Install worker dependencies
         working-directory: services/worker
         run: |
@@ -77,18 +82,15 @@ jobs:
 
       - name: Initialize MinIO bucket
         run: |
-          docker run --rm --network host --entrypoint sh \
-            -e MC_CONFIG_DIR=/tmp/.mc \
-            bitnami/minio:2025.10.02 -c "
-              mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
-              mc mb --ignore-existing aiclip/aiclip-media &&
-              mc anonymous set private aiclip/aiclip-media &&
-              echo 'MinIO bucket initialized successfully'
-            "
+          mc alias set aiclip http://127.0.0.1:9000 minioadmin minioadmin &&
+          mc mb --ignore-existing aiclip/aiclip-media &&
+          mc anonymous set private aiclip/aiclip-media &&
+          echo 'MinIO bucket initialized successfully'
 
       - name: Verify MinIO health
         run: |
-          curl -f http://127.0.0.1:9000/minio/health/live || exit 1
+          mc alias set health http://127.0.0.1:9000 minioadmin minioadmin >/dev/null 2>&1 &&
+          mc ready health >/dev/null 2>&1 &&
           echo "MinIO is healthy"
 
       - name: Prepare Environment
@@ -103,7 +105,7 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: aiclip_test_issue64
+          DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
           MEDIA_DISK: media
@@ -121,7 +123,7 @@ jobs:
           DB_CONNECTION: pgsql
           DB_HOST: 127.0.0.1
           DB_PORT: 5432
-          DB_DATABASE: aiclip_test_issue64
+          DB_DATABASE: aiclip
           DB_USERNAME: aiclip
           DB_PASSWORD: secret
           MEDIA_DISK: media
