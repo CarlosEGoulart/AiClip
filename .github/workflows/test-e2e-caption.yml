@@ -12,7 +12,7 @@ on:
 
 jobs:
   e2e-caption-test:
-    runs-on: ubuntu-latest-24
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'push' || startsWith(github.head_ref, '@carlosegoulart/101/')
 
