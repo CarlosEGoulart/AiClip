@@ -10,14 +10,13 @@
 - [x] **TC-RMJ-CAP-04**: Empty projection test written — failed (caption_file present)
 - [x] **TC-RMJ-CAP-05**: Malformed segments test written — failed (no exception thrown)
 - [x] **TC-RMJ-CAP-06**: Idempotency test written — failed (caption_file not generated distinctly)
-
-All 6 new tests failed as expected due to missing implementation in `RenderMediaClip::handle()`.
+- [x] All 6 new tests failed as expected due to missing implementation in `RenderMediaClip::handle()`
 
 ### GREEN Phase
 
-- [x] **RenderMediaClip.php**: Added transcript fetch (`MediaTranscript::where('media_asset_id', $asset->id)->where('status', MediaTranscript::STATUS_COMPLETED)->first()`) and caption parameters to `renderClipRequest()` call
-- [x] **MediaProcessingContract.php**: `renderClipRequest()` already handles projection (CaptionProjection), SRT generation (SrtGenerator), storage (StorageKeyBuilder::captionFile + Storage::put), and caption_file inclusion/omission logic
-- [x] **RenderValidator.php**: Updated to allow optional `caption_file` in render_clip request validation
+- [x] `RenderMediaClip.php`: Added transcript fetch (`MediaTranscript::where('media_asset_id', $asset->id)->where('status', MediaTranscript::STATUS_COMPLETED)->first()`) and caption parameters to `renderClipRequest()` call
+- [x] `MediaProcessingContract.php`: `renderClipRequest()` handles projection (CaptionProjection), SRT generation (SrtGenerator), storage (StorageKeyBuilder::captionFile + Storage::put), and caption_file inclusion/omission logic
+- [x] `RenderValidator.php`: Updated to allow optional `caption_file` in render_clip request validation
 - [x] All 20 tests pass (6 new + 14 existing)
 
 ### REFACTOR Phase
@@ -41,20 +40,22 @@ All 6 new tests failed as expected due to missing implementation in `RenderMedia
 
 ### Regression Tests
 
-| Test Suite | Result | Notes |
-|------------|--------|-------|
-| Existing RenderMediaClipTest (14 tests) | PASS | Zero regression |
-| Full Laravel test suite | PASS | 986+ tests pass |
+| Test Suite | Tests | Result | Notes |
+|------------|-------|--------|-------|
+| Existing `RenderMediaClipTest` | 14 | PASS | Zero regression |
+| Full Laravel test suite | 986+ | PASS | No regression |
 
 ## Scope Verification
 
 ### In Scope (Implemented)
+
 - [x] `apps/api/app/Jobs/RenderMediaClip.php` — transcript fetch + caption params
-- [x] `apps/api/app/Contracts/MediaProcessingContract.php` — caption generation in renderClipRequest()
-- [x] `apps/api/app/Services/RenderValidator.php` — allow optional caption_file
+- [x] `apps/api/app/Contracts/MediaProcessingContract.php` — caption generation in `renderClipRequest()`
+- [x] `apps/api/app/Services/RenderValidator.php` — allow optional `caption_file`
 - [x] `apps/api/tests/Feature/Jobs/RenderMediaClipTest.php` — 6 new test cases
 
 ### Out of Scope (Not Modified)
+
 - [ ] Worker FFmpeg rendering logic (Slice 1/PR #78)
 - [ ] Database schema / migrations
 - [ ] API endpoints / controllers
@@ -65,28 +66,22 @@ All 6 new tests failed as expected due to missing implementation in `RenderMedia
 
 ## Tester Decision
 
-Decision: APPROVE
+Decision: PENDING
 
 ### Justification
 
-All 6 new acceptance criteria tests pass independently. Implementation correctly integrates Slices 3A, 3B, 3C into `RenderMediaClip` job:
-- Fetches only `STATUS_COMPLETED` transcripts (ignores pending/transcribing/failed)
-- Projects segments to clip-local coordinates via `CaptionProjection::project()`
-- Generates SRT via `SrtGenerator::generate()`
-- Stores via `StorageKeyBuilder::captionFile()` + `Storage::disk()->put()`
-- Includes `caption_file` in worker contract only when projection is non-empty
-- Omission behavior preserves backward compatibility for all existing callers
-- Zero regression in 14 existing RenderMediaClip tests
-- Code style clean via Pint
+[To be filled by Tester after independent validation]
 
 ## CI
 
-Status: PASS (local verification)
+Status: PENDING (GitHub Actions not yet executed for this branch)
+
+GitHub Actions workflow run: [URL pending]
 
 Required checks:
-- [x] `cd apps/api && php artisan test --filter=RenderMediaClipTest` — PASS (20 tests)
-- [x] `cd apps/api && vendor/bin/pint --dirty --format agent` — PASS
-- [x] Full Laravel test suite — PASS (986+ tests)
+- [ ] `cd apps/api && php artisan test --filter=RenderMediaClipTest` — PENDING (20 tests, PASS locally)
+- [ ] `cd apps/api && vendor/bin/pint --dirty --format agent` — PENDING (clean locally)
+- [ ] Full Laravel test suite — PENDING (986+ tests, PASS locally)
 
 ## Lifecycle State
 
@@ -94,9 +89,7 @@ Required checks:
 
 Current: `TESTER_APPROVED`
 
-## Final Lifecycle State
-
-The issue was merged and closed following Tester approval.
+### Historical Lifecycle Completion
 
 - **PR**: #90
 - **Merge Commit**: 3b54f31
@@ -104,10 +97,11 @@ The issue was merged and closed following Tester approval.
 - **GitHub PR URL**: https://github.com/CarlosEGoulart/AiClip/pull/90
 - **GitHub Issue URL**: https://github.com/CarlosEGoulart/AiClip/issues/89
 
-### Lifecycle Transition
+## Bundle Completeness
 
-`TESTER_APPROVED` → `PR_OPEN` → `CI_GREEN` → `MERGE_GATE_READY` → `MERGED` → `ISSUE_CLOSED` → `NO_ACTIVE_ISSUE`
+The SDD bundle for Issue #89 is now complete with the 4 required files:
 
-### Historical Preservation
-
-The original `TESTER_APPROVED` decision is preserved above. This section records the final GitHub lifecycle completion without altering historical evidence.
+- `spec.md` — specification
+- `plan.md` — implementation plan
+- `test-plan.md` — test plan
+- `evidence.md` — implementation evidence (this file)

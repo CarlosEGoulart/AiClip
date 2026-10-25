@@ -328,39 +328,42 @@ This plan breaks down the implementation into sequential, testable increments fo
 
 ---
 
-## Phase 9: CI Fix Verification
+## Phase 9: CI Fix Verification (Historical — PR #130)
 
-M9 implementation code is complete and committed. The remaining blocker is CI: Backend CI = failure, E2E CI = failure, Frontend CI = success, Governance = success (run `737a26a`). All four workflows must be green before merge.
+M9 implementation code is complete and committed via PR #130 (merged via `scripts/merge_gate.py`). The CI defects from run `737a26a` (MinIO image tags, PHP version, health check) were resolved and PR #130 is merged. This phase is kept as historical reference.
 
-### 9.1 Fix Invalid MinIO Image Tags
-- [ ] Replace invalid MinIO tag in `.github/workflows/backend.yml` (`minio/minio:RELEASE.2024-01-20T00-00-00Z`) with a valid public MinIO release tag.
-- [ ] Replace invalid MinIO tag in `.github/workflows/test-e2e-caption.yml` (`minio/minio:RELEASE.2025-10-02T04-12-34Z`) with a valid public MinIO release tag.
-- [ ] Verify both workflows pull the image and the MinIO service container becomes healthy.
+### Phase 10: PR #131 Closeout CI Fix & Issue #118 Closure
 
-### 9.2 Align PHP Version with `composer.lock` / `symfony/clock`
-- [ ] Confirm `symfony/clock v8.1.9` in `composer.lock` requires `PHP >= 8.4.1`.
-- [ ] Fix `.github/workflows/test-e2e-caption.yml` PHP version from 8.3 to >= 8.4.1 (matching `composer.lock` platform requirement).
-- [ ] Verify `.github/workflows/backend.yml` and `.github/workflows/e2e.yml` PHP 8.4.1 satisfies `composer.json` (`^8.3.14`) and `composer.lock` (`symfony/clock v8.1.9` needs >= 8.4.1) — `composer install` must pass with no platform mismatch.
-- [ ] Verify no secrets/tokens introduced in workflow files; encrypted token storage not weakened.
+PR #131 (branch `@carlosegoulart/118/docs/m9-complete`) documents M9 completion. Issue #118 remains OPEN on GitHub. CI is failing on `governance` and `pr-enforcement` because `specs/081A-m6-2-slice3a-caption-projection/` has an incomplete SDD bundle (only `spec.md`; missing `plan.md`, `test-plan.md`, `evidence.md`).
 
-### 9.3 Fix `test-e2e-caption.yml` MinIO + PHP + Health Check
-- [ ] Correct the invalid MinIO image tag (task 9.1).
-- [ ] Correct PHP version to >= 8.4.1 (task 9.2).
-- [ ] Verify/fix health check `curl -f http://localhost:9000/minio/health/live` so MinIO is deemed healthy before tests run.
-- [ ] Confirm caption E2E workflow provisions MinIO and runs green.
+**10.1 Complete specs/081A SDD Bundle (dependency, outside issue #118 scope)**
+- [ ] Create `specs/081A-m6-2-slice3a-caption-projection/plan.md`
+- [ ] Create `specs/081A-m6-2-slice3a-caption-projection/test-plan.md`
+- [ ] Create `specs/081A-m6-2-slice3a-caption-projection/evidence.md` with `Decision: APPROVE` and TDD sections (RED/GREEN/REFACTOR or `TDD: N/A — <reason>`)
+- [ ] Verify `validate_sdd_bundle(specs/)` returns zero errors
 
-### 9.4 Run Local Verification
-- [ ] Backend: `php artisan test --compact` → all pass.
-- [ ] Frontend: `npm run test` → all pass; `npm run lint` → no errors; `npm run build` → succeeds.
-- [ ] Governance: `php artisan test --filter=Governance` → all pass.
-- [ ] `composer audit` → 0 high/critical; `npm audit` → 0 high/critical.
+**10.2 Fix Commit Messages on PR #131 Branch**
+- [ ] Verify every commit on `@carlosegoulart/118/docs/m9-complete` follows Conventional Commits (`<type>(<scope>): <subject>`)
+- [ ] Reword any non-conforming commit (e.g., the `search-first` skill commit 2d95eb1) to conform
+- [ ] Allowed types: feat, fix, chore, refactor, docs, test, perf, ci
 
-### 9.5 Confirm All Four CI Workflows Green
-- [ ] Backend CI green on issue branch.
-- [ ] E2E CI green on issue branch.
-- [ ] Frontend CI green on issue branch.
-- [ ] Governance CI green on issue branch.
-- [ ] `scripts/merge_gate.py` can proceed (all gates green).
+**10.3 Fix PR #131 Body**
+- [ ] Ensure PR body contains `Closes #118` (exactly one)
+- [ ] Ensure PR body contains required sections: `## Summary`, `## Scope`, `## TDD Evidence`, `## Tests`
+- [ ] Ensure branch issue (#118) matches PR `Closes` issue (#118)
+
+**10.4 Re-run CI Until All Green**
+- [ ] Governance CI green (test_g10 SDD bundle passes)
+- [ ] pr-enforcement CI green (commit messages, branch name, PR body, evidence, SDD bundle)
+- [ ] E2E CI green (pending → pass)
+- [ ] Backend/Frontend CI green (pending → pass)
+
+**10.5 Merge Gate and Issue Closure**
+- [ ] Orchestrator runs `scripts/merge_gate.py 131 --check` → MERGE_READY
+- [ ] Orchestrator merges PR #131
+- [ ] Orchestrator closes issue #118
+- [ ] Orchestrator updates `docs/project-state.md` (issue #118 closed, M9 closeout complete)
+- [ ] Return to `NO_ACTIVE_ISSUE`; await explicit authorization before next issue
 
 ---
 

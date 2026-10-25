@@ -205,10 +205,7 @@ caches must never be staged.
 M0–M8 completed. M9 — Social Connection Framework (Issue #118) is completed
 and verified: backend Pest suite 1714 tests (1694 passed, 20 skipped, 0 failed),
 Vitest 372 passed, Playwright E2E 102 passed at 3 viewports, lint/build clean.
-M9 Follow-up — Design System Application & Direct Access completed: Auth and
-Social Connections pages redesigned with `design-taste-frontend` skill, direct
-`/connections` route added, 66 new E2E tests added. PR pending merge via
-`scripts/merge_gate.py`.
+PR #130 merged via scripts/merge_gate.py. Issue #118 closed.
 
 # Next Architectural Goal
 

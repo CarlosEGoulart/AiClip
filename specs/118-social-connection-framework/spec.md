@@ -934,4 +934,29 @@ Failure (any gate):
 - PHP 8.3 with `symfony/clock v8.1.9` locked → `composer install` platform mismatch → workflow aborts red.
 - Any lint/test/build/audit failure → workflow red → blocks merge and issue closure.
 
+### 14.3 Current PR #131 Closeout State
+
+Issue #118 implementation is complete and merged via `scripts/merge_gate.py` (PR #130). Issue #118 remains OPEN on GitHub awaiting closeout documentation.
+
+PR #131 (branch `@carlosegoulart/118/docs/m9-complete`) documents M9 completion. Its CI is currently failing:
+
+| Check | Status | Cause |
+|-------|--------|-------|
+| governance / governance | fail | `tests/governance/test_governance.py::test_g10_historical_issue_bundles_complete` fails because `specs/081A-m6-2-slice3a-caption-projection/` has an incomplete SDD bundle (only `spec.md`; missing `plan.md`, `test-plan.md`, `evidence.md`). `validate_sdd_bundle` requires every `\d{3}-` directory to contain all four non-empty files. |
+| governance / pr-enforcement | fail | `pr_enforcement.py` `validate_sdd_bundle` fails for the same incomplete bundle; additionally commit messages on the branch must follow Conventional Commits and the PR body must contain `Closes #118` plus `## Summary`, `## Scope`, `## TDD Evidence`, `## Tests` sections. |
+| E2E CI / e2e | pending | Not yet run; gated on governance/pr-enforcement passing. |
+| Backend/Frontend CI / tests | pending | Not yet run; gated on governance/pr-enforcement passing. |
+
+**Required dependency (outside issue #118 scope):** Complete the SDD bundle for issue #81A by creating `specs/081A-m6-2-slice3a-caption-projection/plan.md`, `test-plan.md`, and `evidence.md`. This is a Planner-owned action for issue #81A, not part of issue #118 implementation.
+
+**Required actions for issue #118 closeout:**
+1. Complete specs/081A SDD bundle (tracked as separate issue/dependency).
+2. Fix commit messages on PR #131 branch to Conventional Commits format.
+3. Ensure PR #131 body contains `Closes #118` and required sections (`## Summary`, `## Scope`, `## TDD Evidence`, `## Tests`).
+4. Re-run CI until governance and pr-enforcement are green; e2e and tests pending→pass.
+5. Orchestrator runs `scripts/merge_gate.py 131 --check` → MERGE_READY.
+6. Orchestrator merges PR #131.
+7. Orchestrator closes issue #118.
+8. Update `docs/project-state.md` to reflect issue #118 closed and M9 closeout complete.
+
 Secrets: none introduced. Workflow files contain no OAuth tokens, refresh tokens, API secrets, or credentials. Encrypted token storage in the implementation is not weakened.
