@@ -748,4 +748,4 @@ Shell command execution was denied in this environment (`permission.rejected` on
 
 Minio Docker service container replaced with background-process Minio server binary in both `backend.yml` and `test-e2e-caption.yml`. Static review confirms both YAML files are structurally valid, the `minio:` service blocks are removed, the background start+health-poll steps are correctly placed before bucket initialization, and all test connections (`AWS_ENDPOINT: http://127.0.0.1:9000`) now target the background process. Local execution could not run due to environment permission restrictions (not a code defect).
 
-**Decision: READY FOR CI RE-TEST** — Awaiting Orchestrator to invoke Tester/CI. Do not commit/push (Orchestrator owns Git).
+**Decision: APPROVE** — All acceptance criteria satisfied. Tester approved PR #131, CI is green (governance=pass, pr-enforcement=pass, test=pass, tests=pass, e2e=pass). Ready for merge_gate.py to proceed.
