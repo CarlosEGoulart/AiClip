@@ -657,3 +657,39 @@ M9 implementation is complete and committed. The open blocker is CI (Backend CI 
 **Failure**: any workflow red → merge gate blocked → issue remains OPEN.
 
 ---
+
+## 15. PR #131 Closeout CI Validation (Current Blockers)
+
+PR #131 (branch `@carlosegoulart/118/docs/m9-complete`) documents M9 completion. CI is failing on `governance` and `pr-enforcement`. The root cause is an incomplete SDD bundle in `specs/081A-m6-2-slice3a-caption-projection/` (only `spec.md`; missing `plan.md`, `test-plan.md`, `evidence.md`), which makes `validate_sdd_bundle()` return errors. Both `tests/governance/test_governance.py::test_g10` and `pr_enforcement.py` invoke `validate_sdd_bundle`.
+
+### 15.1 SDD Bundle Completeness (governance test_g10 + pr_enforcement)
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| SDD bundle complete for all issue dirs | Run `python -m unittest discover -s tests/governance -p 'test_governance.py'` | `test_g10_historical_issue_bundles_complete` passes; `validate_sdd_bundle(specs/)` returns zero errors |
+| specs/081A bundle completed | Create `plan.md`, `test-plan.md`, `evidence.md` under `specs/081A-m6-2-slice3a-caption-projection/` | `validate_sdd_bundle` no longer reports missing files for `081A-m6-2-slice3a-caption-projection` |
+| Evidence for issue #118 has Decision: APPROVE | Read `specs/118-social-connection-framework/evidence.md` | Contains `Decision: APPROVE`, no `Decision: REJECT`, exactly one decision |
+| Evidence for issue #118 has TDD sections | Read `specs/118-social-connection-framework/evidence.md` | Contains `### RED`, `### GREEN`, `### REFACTOR` or `TDD: N/A — <reason>` |
+
+### 15.2 PR Enforcement (commit messages, branch name, PR body)
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| Commit messages are Conventional Commits | Inspect `git log origin/master..HEAD` on PR #131 branch | Every message matches `<type>(<scope>): <subject>`; allowed types: feat, fix, chore, refactor, docs, test, perf, ci |
+| Branch name valid | Branch `@carlosegoulart/118/docs/m9-complete` | Matches `@carlosegoulart/\d+/(feat|fix|chore|refactor|docs|test)/[a-z0-9][a-z0-9-]*` |
+| PR body has Closes #118 | Read PR #131 body | Contains exactly one `Closes #118` |
+| PR body has required sections | Read PR #131 body | Contains `## Summary`, `## Scope`, `## TDD Evidence`, `## Tests` |
+| Branch issue matches Closes issue | Compare branch issue (118) with Closes issue (118) | Equal |
+
+### 15.3 CI Check States (merge gate required checks)
+
+| Check | Current | Target |
+|-------|---------|--------|
+| governance / governance | fail | pass / success |
+| governance / pr-enforcement | fail | pass / success |
+| E2E CI / e2e | pending | pass / success |
+| Backend/Frontend CI / tests | pending | pass / success |
+
+**Failure**: any required check fail/pending/cancel/skip/neutral → `scripts/merge_gate.py` blocked → issue #118 remains OPEN.
+
+**Success**: all required checks pass → `scripts/merge_gate.py 131 --check` → MERGE_READY → Orchestrator merges PR #131 → closes issue #118 → NO_ACTIVE_ISSUE.
