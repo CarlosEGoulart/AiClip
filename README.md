@@ -15,6 +15,7 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 | M6 — Vertical Clip Rendering | M6.1 Complete (Issue #69, PR #73); M6.2 Slices 3A–3E Complete (Issues #81, #81B, #87, #89, #101) |
 | M7 — Clip Review Experience | Slice 1 Complete (Issue #106, PR #107) |
 | M8 — AI Image Studio | Slice 1 Complete (Issue #113, PR #114); Slice 2 Complete (Issue #115, PR #116) |
+| M9 — Social Connection Framework | Completed (Issue #118, PR #130) |
 
 M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization, Sanctum SPA authentication, and authenticated project management. M2 delivered: project-scoped video upload with S3-compatible storage (MinIO for development, AWS S3 in production).
 
