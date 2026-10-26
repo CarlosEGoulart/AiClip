@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth, LoginForm, RegisterForm, AuthenticatedShell } from './features/auth';
 import { SocialConnections } from './features/social';
+import { PublishList } from './features/social-publish';
 import HealthCheck from './components/HealthCheck';
 
 /*
@@ -305,6 +306,7 @@ function AuthenticatedLayout() {
       <Routes>
         <Route element={<AuthenticatedLayoutWrapper />}>
           <Route path="/connections" element={<SocialConnections />} />
+          <Route path="/publishes" element={<PublishList />} />
           <Route path="/" element={<AuthenticatedShell />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

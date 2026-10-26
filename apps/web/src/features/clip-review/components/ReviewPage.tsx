@@ -4,6 +4,9 @@ import { useClipReviews, useUpdateClipReviewStatus, useSubmitClipReviewFeedback 
 import { VideoPlayer } from './VideoPlayer';
 import { ReviewActions } from './ReviewActions';
 import { FeedbackForm } from './FeedbackForm';
+import { PublishClipDialog } from '../../social-publish/components/PublishClipDialog';
+import { usePublishClip } from '../../social-publish/hooks';
+import { useSocialConnections } from '../../social/hooks';
 
 /*
  * Deep-linking uses the native History API because the production tree has no
@@ -56,11 +59,18 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   const [selectedClipReviewId, setSelectedClipReviewId] = useState<number | null>(null);
   const [hasUnsavedFeedback, setHasUnsavedFeedback] = useState(false);
   const [cachedVideoUrl, setCachedVideoUrl] = useState<string | null>(null);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
 
   const { data: clipReviewsResponse, isLoading, refetch } = useClipReviews(projectId);
   const clipReviews = clipReviewsResponse?.data || [];
   const updateStatusMutation = useUpdateClipReviewStatus();
   const submitFeedbackMutation = useSubmitClipReviewFeedback();
+  const { publish, isPending: publishPending, error: publishError } = usePublishClip();
+  const { connections } = useSocialConnections();
+
+  const youtubeConnected = connections.some(
+    (c) => c.platform === 'youtube' && c.status === 'connected',
+  );
 
   useEffect(() => {
     const clipReviewIdParam = readClipReviewIdParam();
@@ -114,6 +124,20 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       refetch();
     },
     [selectedClipReviewId, submitFeedbackMutation, refetch]
+  );
+
+  const handlePublish = useCallback(
+    async (body: { clip_review_id: number; platform: string; title: string; description?: string }) => {
+      if (!selectedClipReviewId) return;
+      await publish({
+        clip_review_id: selectedClipReviewId,
+        platform: body.platform,
+        title: body.title,
+        description: body.description,
+      });
+      setPublishDialogOpen(false);
+    },
+    [selectedClipReviewId, publish]
   );
 
   const handleNext = useCallback(() => {
@@ -212,13 +236,49 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                       disabled={submitFeedbackMutation.isPending}
                       onUnsavedChange={setHasUnsavedFeedback}
                     />
+                  ) : selectedClipReview.status === 'approved' ? (
+                    <>
+                      <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
+                          Feedback is optional for approved clips. You can add feedback after approving if needed.
+                        </p>
+                      </div>
+
+                      {youtubeConnected && (
+                        <button
+                          onClick={() => {
+                            setPublishDialogOpen(true);
+                          }}
+                          disabled={publishPending}
+                          className="btn btn-primary w-full"
+                          aria-label="Publish to YouTube"
+                        >
+                          {publishPending ? 'Publishing…' : 'Publish to YouTube'}
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                       <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-                        Feedback is optional for approved clips. You can add feedback after approving if needed.
+                        Publish to YouTube once this clip is approved.
                       </p>
                     </div>
                   )}
+
+                  {publishError && (
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg" role="alert">
+                      <p className="text-red-700 dark:text-red-400 text-sm">{publishError}</p>
+                    </div>
+                  )}
+
+                  <PublishClipDialog
+                    isOpen={publishDialogOpen}
+                    onClose={() => setPublishDialogOpen(false)}
+                    onPublish={handlePublish}
+                    clipReviewId={selectedClipReviewId ?? 0}
+                    loading={publishPending}
+                    error={publishError}
+                  />
 
                   <div className="grid grid-cols-2 gap-4 pt-6">
                     <div>
