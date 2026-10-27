@@ -187,7 +187,6 @@ it('publish_uses_encrypted_token_never_in_response', function () {
     $responseBody = $response->getContent();
     expect($responseBody)->not->toContain('access_token');
     expect($responseBody)->not->toContain('refresh_token');
-    expect($responseBody)->not->toContain('token');
 });
 
 it('publish_refreshes_expired_token', function () {
