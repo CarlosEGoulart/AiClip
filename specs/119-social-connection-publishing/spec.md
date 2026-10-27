@@ -547,6 +547,10 @@ The following infrastructure fixes resolve the reported `GET /sanctum/csrf-cooki
 | `GET /sanctum/csrf-cookie` returns 204 and sets XSRF-TOKEN cookie; never 500 | §10.1.5, test-plan.md §5.10 |
 | Auth session persistence: register → login → session survives reload | §10.1.5, test-plan.md §5.11 |
 | 500/404 error pages render gracefully, never blank or broken | §10.1.4, test-plan.md §5.6 |
+| Playwright Visual QA passes at 3 viewports for login/register | §10.1.1, §10.1.2, §10.1.3, test-plan.md §5.12 |
+| Auth flow functional: register → login → session persistence | §10.1.4, §10.1.5, test-plan.md §5.13 |
+| Design review passes per design-taste-frontend criteria at 3 viewports | §10.1.2, test-plan.md §5.14 |
+| Backend CI failure investigation scope defined for SocialPublishIntegrationTest | test-plan.md §5.15 |
 
 ---
 

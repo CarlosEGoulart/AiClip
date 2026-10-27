@@ -495,6 +495,94 @@ Applied to `/login` and `/register` at all 3 viewports (390x844, 768x1024, 1440x
 | Session Persistence - Console Cleanliness | No unexpected console errors during the full flow | All 3 |
 | Session Persistence - Network Cleanliness | No unexpected 4xx/5xx during the full flow | All 3 |
 
+## 5.12 Playwright Visual QA — Auth Screens (Login/Register) at 3 Viewports
+
+**Purpose**: Real-browser visual inspection of `/login` and `/register` at the required viewports (AGENTS.md §14). Verifies image removal (all picsum.photos archival images gone), centered layout (no unusual left alignment), square corners, mono-accent palette, Switzer typography, and coherence.
+
+**Files**: `apps/web/tests/e2e/auth-visual-qa.spec.ts` (new)
+
+**Required viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Auth Visual QA - Login Page | Screenshot + alignment check at all 3 viewports | All 3 |
+| Auth Visual QA - Register Page | Screenshot + alignment check at all 3 viewports | All 3 |
+| Auth Visual QA - No Meaningful Images on Auth Pages | No picsum.photos URLs, no `auth-atmosphere-image`, `auth-atmosphere-gallery`, `auth-image-credits`, `auth-image-caption`, `auth-atmosphere-item` elements on `/login` or `/register` | All 3 |
+| Auth Visual QA - No Archival Film Imagery | No film editing room, Steenbeck editor, film strip, videotape recorder imagery on auth pages | All 3 |
+| Auth Visual QA - Centered Layout | Auth column centered (`align-items: center`, `margin: 0`), consistent side margins, `max-width: 380px` column | All 3 |
+| Auth Visual QA - Square Corners | No rounded buttons, inputs, or containers on auth pages (`--radius: 0`) | All 3 |
+| Auth Visual QA - Typography & Palette | Switzer font applied, mono-accent palette (`#2456d6`), readable type scale, contrast ≥ 4.5:1 | All 3 |
+| Auth Visual QA - Mobile Overflow | No horizontal overflow at 390px width | Mobile |
+| Auth Visual QA - Console Cleanliness | No unexpected JS console errors on `/login` or `/register` | All 3 |
+| Auth Visual QA - Network Cleanliness | No failed resource loads; `/api/v1/auth/login` never returns 500 | All 3 |
+| Auth Visual QA - 500/404 Error Pages | Render gracefully with understandable messaging, never blank or broken | All 3 |
+
+## 5.13 Auth Flow Functional Tests — Register → Login → Session Persistence
+
+**Purpose**: End-to-end functional verification that real users can register, log in, and persist sessions across page reloads. Addresses the reported login 500 error. Covers `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /sanctum/csrf-cookie`, `GET /api/v1/auth/me`.
+
+**Files**: `apps/web/tests/e2e/auth-functional.spec.ts` (new)
+
+**Viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Auth Functional - Load Login Page | `/login` loads without console errors | All 3 |
+| Auth Functional - Load Register Page | `/register` loads without console errors | All 3 |
+| Auth Functional - Successful Registration | Valid name/email/password → authenticated session → dashboard redirect | All 3 |
+| Auth Functional - Successful Login | Valid credentials → 200 (never 500) → authenticated session → dashboard | All 3 |
+| Auth Functional - Invalid Credentials | Wrong password → unauthorized error, form stays, no credential leak | All 3 |
+| Auth Functional - Registration Validation | Missing/invalid fields → inline validation errors, form stays | All 3 |
+| Auth Functional - Registration Duplicate Email | Already-registered email → error message, no duplicate account | All 3 |
+| Auth Functional - Session Persists After Reload | After login, page reload → still authenticated (database sessions table working) | All 3 |
+| Auth Functional - Logout Invalidates Session | Logout clears session → redirected to login | All 3 |
+| Auth Functional - CSRF Cookie Returns 204 | `GET /sanctum/csrf-cookie` returns 204, sets XSRF-TOKEN, never 500 | All 3 |
+| Auth Functional - No 500 on Login Endpoint | `/api/v1/auth/login` never returns 500 for any input | All 3 |
+| Auth Functional - No 500 on Register Endpoint | `/api/v1/auth/register` never returns 500 | All 3 |
+| Auth Functional - Console Cleanliness | No unexpected console errors during full register → login → reload flow | All 3 |
+| Auth Functional - Network Cleanliness | No unexpected 4xx/5xx during full flow | All 3 |
+
+## 5.14 Design Review Checklist — design-taste-frontend Criteria
+
+**Purpose**: Apply design-taste-frontend art direction + web-design-guidelines compliance review to all auth screens. Gate on design sophistication per AGENTS.md §15.
+
+**Viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+| Checklist Item | Requirement | Pass/Fail |
+|----------------|-------------|-----------|
+| No meaningless images | All picsum.photos archival images removed from AuthEntry and BootstrapErrorView | |
+| Clean typography-based design | Wordmark, headline, supporting copy, form fields, primary button, link buttons only; no decorative figures/galleries/captions | |
+| Switzer font applied | Font loaded from fontshare; heading/body use consistent type scale | |
+| Mono-accent palette | `--bg`, `--surface`, `--ink`, `--muted`, `--accent` (`#2456d6`), `--accent-ink` (`#ffffff`) used consistently | |
+| Square corners | `--radius: 0` everywhere on auth UI; no rounded buttons, inputs, containers | |
+| Centered layout | Auth column centered; no flush-left content or forms | |
+| Consistent side margins | Column `max-width: 380px` on desktop, full-width minus margins on mobile | |
+| Visual hierarchy | Headline > supporting copy > form fields > primary button; primary action obvious | |
+| Focus indicators | 3px solid outline, 2px offset on all interactive elements | |
+| Touch targets | All buttons/inputs ≥ 44px min-height | |
+| Coherence | Interface looks intentionally designed, not automatically generated (AGENTS.md §15 Q11) | |
+| web-design-guidelines compliance | Accessibility fundamentals, keyboard navigation, focus indicators, responsive layouts | |
+| Console cleanliness | No unexpected JS console errors on auth pages | |
+| Network cleanliness | No failed resource loads; no 500 on `/api/v1/auth/login` | |
+| Login returns 200 | Valid credentials → 200, never 500 | |
+
+## 5.15 Backend CI Failure Investigation — SocialPublishIntegrationTest (3 Failures)
+
+**Purpose**: Investigate and fix the 3 pre-existing failures in `SocialPublishIntegrationTest` blocking Backend CI. Scope limited to root-cause analysis and minimal fixes; no behavior change.
+
+**File**: `tests/Feature/SocialPublish/SocialPublishIntegrationTest.php`
+
+| Investigation Item | Description |
+|--------------------|-------------|
+| Identify the 3 failing tests | Run backend CI to capture exact failing test names and assertion messages |
+| Root-cause analysis | Determine whether failures are due to test logic, fixture setup, or production code defects |
+| Verify FakeYouTubePublisher usage | Confirm tests use the deterministic fake, no real YouTube network calls |
+| Verify idempotency handling | Confirm non-pending publish handling matches job behavior |
+| Minimal fix applied | Only changes necessary to make tests pass; no unrelated modifications |
+| CI re-verification | Backend CI workflow green after fix |
+
+**Out of scope**: Feature logic changes beyond fixing the 3 failures; new test cases; scope expansion.
+
 ### 6.1 Backend Lint (Pint)
 ```bash
 vendor/bin/pint --dirty --format agent

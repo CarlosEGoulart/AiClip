@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Contracts\SocialPublisher;
 use App\Enums\SocialPublishStatus;
 use App\Models\SocialPublish;
+use App\Services\SocialConnectionManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -46,7 +47,7 @@ class PublishToYouTube implements ShouldQueue
         }
 
         // Idempotency: skip if not pending
-        if ($publish->status !== SocialPublishStatus::Pending->value) {
+        if ($publish->status !== SocialPublishStatus::Pending) {
             Log::info('PublishToYouTube: Publish already processed, skipping', [
                 'publish_id' => $this->publishId,
                 'status' => $publish->status,
@@ -85,7 +86,7 @@ class PublishToYouTube implements ShouldQueue
         });
 
         // Get valid access token (refreshes if needed)
-        $token = app(\App\Services\SocialConnectionManager::class)
+        $token = app(SocialConnectionManager::class)
             ->getValidAccessToken($publish->socialConnection);
 
         if (! $token) {
@@ -104,7 +105,7 @@ class PublishToYouTube implements ShouldQueue
 
         // Resolve publisher and upload
         try {
-            $publisher = app(\App\Contracts\SocialPublisher::class.':youtube');
+            $publisher = app(SocialPublisher::class.':youtube');
 
             $localPath = Storage::disk($derivedAsset->storage_disk)->path($derivedAsset->storage_key);
 

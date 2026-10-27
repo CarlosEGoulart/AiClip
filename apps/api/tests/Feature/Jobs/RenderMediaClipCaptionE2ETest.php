@@ -51,7 +51,7 @@ beforeEach(function () {
 /**
  * Create a test asset using the real test video fixture
  */
-function createTestAssetForE2E(): MediaAsset
+protected function createTestAssetForE2E(): MediaAsset
 {
     $asset = MediaAsset::factory()->create([
         'processing_status' => MediaAsset::PROCESSING_PROBED,
@@ -236,7 +236,7 @@ function createRecommendationForE2E(MediaAsset $asset, MediaClipAnalysis $clipAn
 */
 
 it('completes full caption flow with real MinIO, worker, and FFmpeg', function () {
-    $asset = createTestAssetForE2E();
+    $asset = $this->createTestAssetForE2E();
     $sceneAnalysis = createSceneAnalysisForE2E($asset);
     $clipAnalysis = createClipAnalysisForE2E($asset);
     $transcript = createTranscriptForE2E($asset);
@@ -302,7 +302,7 @@ it('completes full caption flow with real MinIO, worker, and FFmpeg', function (
 */
 
 it('renders without captions when no transcript exists', function () {
-    $asset = createTestAssetForE2E();
+    $asset = $this->createTestAssetForE2E();
     $sceneAnalysis = createSceneAnalysisForE2E($asset);
     $clipAnalysis = createClipAnalysisForE2E($asset);
     // No transcript created
@@ -335,7 +335,7 @@ it('renders without captions when no transcript exists', function () {
 */
 
 it('renders without captions when transcript status is not completed', function () {
-    $asset = createTestAssetForE2E();
+    $asset = $this->createTestAssetForE2E();
     $sceneAnalysis = createSceneAnalysisForE2E($asset);
     $clipAnalysis = createClipAnalysisForE2E($asset);
     $transcript = createTranscriptForE2E($asset);
@@ -364,7 +364,7 @@ it('renders without captions when transcript status is not completed', function 
 */
 
 it('renders without captions when all transcript segments are outside clip range', function () {
-    $asset = createTestAssetForE2E();
+    $asset = $this->createTestAssetForE2E();
     $sceneAnalysis = createSceneAnalysisForE2E($asset);
     $clipAnalysis = createClipAnalysisForE2E($asset);
 
@@ -419,7 +419,7 @@ it('renders without captions when all transcript segments are outside clip range
 */
 
 it('fails with invalid_input when transcript segments are malformed', function () {
-    $asset = createTestAssetForE2E();
+    $asset = $this->createTestAssetForE2E();
     $sceneAnalysis = createSceneAnalysisForE2E($asset);
     $clipAnalysis = createClipAnalysisForE2E($asset);
 
@@ -479,7 +479,7 @@ it('fails with invalid_input when transcript segments are malformed', function (
 */
 
 it('reuses existing render with same transcript (idempotent)', function () {
-    $asset = createTestAssetForE2E();
+    $asset = $this->createTestAssetForE2E();
     $sceneAnalysis = createSceneAnalysisForE2E($asset);
     $clipAnalysis = createClipAnalysisForE2E($asset);
     $transcript = createTranscriptForE2E($asset);
@@ -518,7 +518,7 @@ it('reuses existing render with same transcript (idempotent)', function () {
 */
 
 it('creates new render when transcript segments change', function () {
-    $asset = createTestAssetForE2E();
+    $asset = $this->createTestAssetForE2E();
     $sceneAnalysis = createSceneAnalysisForE2E($asset);
     $clipAnalysis = createClipAnalysisForE2E($asset);
     $transcript = createTranscriptForE2E($asset);

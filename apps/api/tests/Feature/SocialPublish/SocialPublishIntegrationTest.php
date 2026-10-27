@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\SocialPublishStatus;
+use App\Jobs\PublishToYouTube;
 use App\Models\ClipReview;
 use App\Models\DerivedAsset;
 use App\Models\SocialConnection;
@@ -53,13 +54,13 @@ it('full_publish_flow_approved_clip_to_youtube', function () {
     $response->assertStatus(202);
     $response->assertJsonPath('data.status', 'pending');
 
-    // Verify SocialPublish row exists
+    // Verify SocialPublish row exists (job runs synchronously in testing)
     $this->assertDatabaseHas('social_publishes', [
         'user_id' => $this->user->id,
         'social_connection_id' => $connection->id,
         'clip_review_id' => $clipReview->id,
         'platform' => 'youtube',
-        'status' => 'pending',
+        'status' => 'published',
         'title' => 'My Clip',
     ]);
 
@@ -68,11 +69,11 @@ it('full_publish_flow_approved_clip_to_youtube', function () {
     $listResponse->assertOk();
     $listResponse->assertJsonCount(1, 'data');
 
-    // Check status
+    // Check status (job ran synchronously during the API request)
     $publish = SocialPublish::first();
     $statusResponse = $this->spaRequest('GET', "/api/v1/social/publishes/{$publish->id}", $this->cookies);
     $statusResponse->assertOk();
-    $statusResponse->assertJsonPath('data.status', 'pending');
+    $statusResponse->assertJsonPath('data.status', 'published');
 });
 
 it('publish_status_reflects_published_after_job', function () {
@@ -89,17 +90,23 @@ it('publish_status_reflects_published_after_job', function () {
     $publish = SocialPublish::first();
 
     // Run job inline
-    $job = new \App\Jobs\PublishToYouTube($publish->id);
+    $job = new PublishToYouTube($publish->id);
     $job->handle();
 
     $publish->refresh();
-    expect($publish->status)->toBe('published'); // FakeYouTubePublisher succeeds
+    expect($publish->status)->toBe(SocialPublishStatus::Published);
     expect($publish->external_video_id)->toBe('fake_video_id_12345');
     expect($publish->video_url)->toBe('https://youtu.be/fake_video_id_12345');
 });
 
 it('failed_publish_stores_error_message', function () {
-    // Create connection but mock manager to return no token
+    // Mock manager to return null token BEFORE the API request.
+    // The job runs synchronously in testing, so the mock must be in place
+    // when the controller dispatches the job.
+    $manager = Mockery::mock(SocialConnectionManager::class);
+    $manager->shouldReceive('getValidAccessToken')->andReturnNull();
+    $this->app->instance(SocialConnectionManager::class, $manager);
+
     $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
     $clipReview = $this->createPublishableClipReview();
 
@@ -112,16 +119,9 @@ it('failed_publish_stores_error_message', function () {
 
     $publish = SocialPublish::first();
 
-    // Mock manager to return null token
-    $manager = \Mockery::mock(SocialConnectionManager::class);
-    $manager->shouldReceive('getValidAccessToken')->andReturnNull();
-    $this->app->instance(SocialConnectionManager::class, $manager);
-
-    $job = new \App\Jobs\PublishToYouTube($publish->id);
-    $job->handle();
-
+    // Job already ran synchronously during the API request and failed
     $publish->refresh();
-    expect($publish->status)->toBe('failed');
+    expect($publish->status)->toBe(SocialPublishStatus::Failed);
     expect($publish->error_message)->not->toBeEmpty();
     // Verify no sensitive token VALUE is leaked (the word "token" alone is fine)
     expect(strtolower($publish->error_message))->not->toContain('access_token');
@@ -169,8 +169,8 @@ it('publish_refreshes_expired_token', function () {
     $connection = SocialConnection::factory()->for($this->user)->create([
         'platform' => 'youtube',
         'status' => 'connected',
-        'access_token' => 'fake_youtube_access_token_expired',
-        'refresh_token' => 'fake_youtube_refresh_token_valid',
+        'access_token' => encrypt('fake_youtube_access_token_expired'),
+        'refresh_token' => encrypt('fake_youtube_refresh_token_valid'),
         'access_token_expires_at' => now()->subHours(1),
     ]);
 
@@ -186,11 +186,11 @@ it('publish_refreshes_expired_token', function () {
     $publish = SocialPublish::first();
 
     // Run job - should refresh token via FakeYouTubeProvider
-    $job = new \App\Jobs\PublishToYouTube($publish->id);
+    $job = new PublishToYouTube($publish->id);
     $job->handle();
 
     $publish->refresh();
-    expect($publish->status)->toBe('published');
+    expect($publish->status)->toBe(SocialPublishStatus::Published);
 });
 
 it('cross_user_publish_blocked', function () {

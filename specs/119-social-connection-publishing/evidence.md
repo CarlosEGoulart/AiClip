@@ -414,5 +414,72 @@ Backend CI failing on login/register flow (`GET /sanctum/csrf-cookie` 500) due t
 
 - Backend CI still cannot be verified locally (shell blocked, pdo_pgsql missing). The sessions migration + APP_KEY + SANCTUM_STATEFUL_DOMAINS fixes address the three reported root causes of the `/sanctum/csrf-cookie` 500 error and should be verified in CI.
 
+---
+
+## Tester Independent Validation — Auth Visual QA & Functional Testing (Issue #119)
+
+### Scope
+
+Per task: Perform Playwright visual QA and functional testing on auth (login/register) screens per spec.md §10.1 and test-plan.md §5.12-5.14 at viewports 390x844, 768x1024, 1440x900.
+
+### Static Code Review (App.tsx, design-tokens.css, index.css, LoginForm.tsx, RegisterForm.tsx)
+
+**Image removal (spec §10.1.1): PASS — static**
+- `apps/web/src/App.tsx` `AuthEntry` (lines 18-78): No `img` tags, no `picsum.photos` URLs, no `auth-atmosphere-image`, `auth-atmosphere-gallery`, `auth-image-credits`, `auth-image-caption`, `auth-atmosphere-item` classes/elements, no `authBgStyle`, no `authImages` array, no `auth-hint` timeline fragment.
+- `apps/web/src/App.tsx` `BootstrapErrorView` (lines 80-102): Same — no images, no atmospheric gallery, no credits.
+- Grep for `picsum.photos|auth-atmosphere|auth-image-credits|auth-image-caption|auth-atmosphere-item|authBgStyle|authImages` across `apps/web`: only 2 matches, both in `DESIGN_NOTES.md` documentation files (not UI components).
+- Auth screens are typography-only: wordmark ("AiClip"), headline, supporting copy, form fields, primary button, link buttons only.
+
+**Design tokens & aesthetic (spec §10.1.2): PASS — static**
+- Font: Switzer loaded from `https://api.fontshare.com/v2/css?f[]=switzer@400,500&display=swap` in `design-tokens.css` line 93 and `index.css` line 1.
+- Palette: `--accent: #2456d6`, `--accent-ink: #ffffff`, `--bg: #dfdedb`, `--surface: #d3d2ce`, `--ink: #26251e`, `--muted: #5f5d55`.
+- Corners: `--radius: 0`, `--radius-sm: 0`, `--radius-lg: 0` (square only).
+- Focus ring: `--focus-ring: 3px solid var(--accent)`, `--focus-offset: 2px`; applied to `button:focus-visible`, `input:focus-visible`, `select:focus-visible`, `textarea:focus-visible`, `[role="button"]:focus-visible`, `a:focus-visible`, `.auth-switch .link-button:focus-visible`.
+- Type scale: 5 clamp-based steps (`--step-small` through `--step-display`).
+- Spacing tokens: `--space-xs` through `--space-4xl`.
+
+**Layout alignment (spec §10.1.3): PASS — static**
+- `.auth-page`: `display: flex`, `flex-direction: column`, `align-items: center`, `justify-content: center`, `overflow-x: hidden`, `padding: var(--space-3xl) var(--page-margin)`.
+- `.auth-column`: `align-items: center`, `margin: 0`, `max-width: var(--column-width)` (380px), `width: 100%`.
+- Wordmark: `align-self: center` within centered column.
+- No flush-left content or forms on auth pages.
+
+**44px touch targets: PASS — static**
+- `.auth-form input`: `min-height: 44px`.
+- `.auth-form button[type="submit"]`: `min-height: 48px`.
+
+**Accessibility (spec §7.4): PASS — static**
+- LoginForm: `aria-invalid`, `aria-describedby` on email/password inputs; `field-error` spans with `role="alert"`; `aria-busy` on form during loading; `required` fields; `autoComplete` attributes.
+- RegisterForm: same patterns for name/email/password/password_confirmation fields.
+- Focus indicators: 3px solid outline, 2px offset on all interactive elements.
+
+### Playwright Visual QA & Functional Testing: NOT EXECUTABLE
+
+**Blocker:** Shell tooling is restricted — only basic file-system commands (`ls`, `pwd`) are available. Development tooling (`npx`, `npm`, `node`, `curl`, `ps`) is blocked. Therefore:
+
+- ❌ Dev servers cannot be started or checked (Vite on 5173, Laravel on 8000).
+- ❌ Playwright E2E tests cannot be executed (`npx playwright test` blocked).
+- ❌ Screenshots at 3 viewports cannot be captured.
+- ❌ Browser console error check cannot be performed.
+- ❌ Network 4xx/5xx error check cannot be performed.
+- ❌ Register → 200 (not 500) cannot be verified at runtime.
+- ❌ Login valid → 200 (not 500) cannot be verified at runtime.
+- ❌ Login invalid → 422 cannot be verified at runtime.
+- ❌ GET /sanctum/csrf-cookie → 204 + XSRF-TOKEN cookie cannot be verified at runtime.
+
+### Existing E2E Test Files
+
+Only `social-publish.spec.ts` and `social-connections.spec.ts` exist under `apps/web/tests/e2e/`. The auth E2E spec files referenced in test-plan.md §5.12-5.14 (auth-visual-qa.spec.ts, auth-login.spec.ts, auth-registration.spec.ts, auth-functional.spec.ts, auth-csrf.spec.ts, auth-session-persistence.spec.ts, design-review.spec.ts, visual-qa.spec.ts) do not exist.
+
+### Decision
+
+Per AGENTS.md §14 and task instructions: "When mandatory verification cannot execute: Decision: REJECT".
+
+The auth screen implementation appears correct based on static code review (all design-token, image-removal, layout, focus-ring, touch-target, and accessibility requirements are satisfied in code). However, the mandatory Playwright visual QA and functional testing at 3 viewports could not be executed due to shell tooling restrictions. Runtime verification (console cleanliness, network cleanliness, 200/422/204 status codes, XSRF-TOKEN cookie, session persistence) could not be performed.
+
+`Decision: REJECT`
+
+**Reason:** Mandatory Playwright visual QA and functional testing could not be executed. Static code review shows no defects, but runtime verification is required per spec §10.1 and test-plan.md §5.12-5.14 and was not possible in this environment.
+
 
 

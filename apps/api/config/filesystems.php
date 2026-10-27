@@ -62,6 +62,7 @@ return [
 
         'media' => [
             'driver' => env('FILESYSTEM_MEDIA_DRIVER', 's3'),
+            'root' => storage_path('app/media'),
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
