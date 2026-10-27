@@ -461,6 +461,40 @@ Applied to `/login` and `/register` at all 3 viewports (390x844, 768x1024, 1440x
 
 ---
 
+## 5.10 CSRF Cookie Endpoint Tests
+
+**Purpose**: Verify `GET /sanctum/csrf-cookie` returns 204 and sets the `XSRF-TOKEN` cookie. Directly addresses the reported 500 error on this endpoint.
+
+**File**: `apps/web/tests/e2e/auth-csrf.spec.ts` (new)
+
+**Viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| CSRF Cookie - Returns 204 | `GET /sanctum/csrf-cookie` returns HTTP 204 (never 500) | All 3 |
+| CSRF Cookie - Sets XSRF-TOKEN | Response sets `XSRF-TOKEN` cookie accessible by the frontend | All 3 |
+| CSRF Cookie - Console Cleanliness | No unexpected console errors during CSRF cookie request | All 3 |
+| CSRF Cookie - Network Cleanliness | No failed requests; endpoint reachable at all viewports | All 3 |
+
+## 5.11 Auth Session Persistence Flow Tests
+
+**Purpose**: Verify the full auth flow: register → login → session persistence across page reloads. Ensures sessions actually work (database sessions table + `APP_KEY` + `SANCTUM_STATEFUL_DOMAINS` all functioning).
+
+**File**: `apps/web/tests/e2e/auth-session-persistence.spec.ts` (new)
+
+**Viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+**Test User**: Fresh registration + pre-seeded login user.
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Session Persistence - Register Then Login | Register a new account → log in with the same credentials → authenticated session established | All 3 |
+| Session Persistence - Survives Page Reload | After login, reload the page → still authenticated (session cookie persisted in the database sessions table) | All 3 |
+| Session Persistence - Logout | Logout clears the session → redirected to login, session invalidated | All 3 |
+| Session Persistence - No 500 Errors | No 500 responses on register, login, csrf-cookie, or `/api/v1/auth/me` endpoints during the flow | All 3 |
+| Session Persistence - Console Cleanliness | No unexpected console errors during the full flow | All 3 |
+| Session Persistence - Network Cleanliness | No unexpected 4xx/5xx during the full flow | All 3 |
+
 ### 6.1 Backend Lint (Pint)
 ```bash
 vendor/bin/pint --dirty --format agent
@@ -725,8 +759,14 @@ jobs:
   - [ ] YouTube publishing E2E (social-publish.spec.ts)
   - [ ] Auth registration E2E (auth-registration.spec.ts)
   - [ ] Auth login E2E (auth-login.spec.ts)
+  - [ ] CSRF cookie endpoint E2E (auth-csrf.spec.ts) — returns 204, sets XSRF-TOKEN, never 500
+  - [ ] Auth session persistence E2E (auth-session-persistence.spec.ts) — register → login → session survives reload
   - [ ] Visual QA E2E (visual-qa.spec.ts)
 - [ ] Login 500 error investigated and resolved (no 500 on `/api/v1/auth/login`)
+- [ ] `GET /sanctum/csrf-cookie` returns 204 and sets XSRF-TOKEN cookie; never 500
+- [ ] Sessions table migration exists; `SESSION_DRIVER=database` works
+- [ ] `APP_KEY` set in `.env.example` (non-empty)
+- [ ] `SANCTUM_STATEFUL_DOMAINS` includes cloudshell.dev domain
 - [ ] Lint passes (backend + frontend)
 - [ ] TypeScript build passes
 - [ ] Governance tests pass

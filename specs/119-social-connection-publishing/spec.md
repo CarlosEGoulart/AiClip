@@ -495,6 +495,16 @@ All auth and publishing UI (login, register, publish dialog, publish list, error
 - **Login reliability**: `POST /api/v1/auth/login` returns 200 for valid credentials; never 500. Investigated and resolved — no server errors on login endpoint.
 - **Error messages**: Generic, understandable, actionable; no credential enumeration or stack traces in response body.
 
+#### 10.1.5 Auth Infrastructure Fixes (Login 500 Error)
+
+The following infrastructure fixes resolve the reported `GET /sanctum/csrf-cookie 500` and login 500 errors on the cloudshell.dev domain:
+
+- **Sessions table migration**: Create `database/migrations/XXXX_create_sessions_table.php` using the default Laravel sessions table schema (`id`, `user_id`, `ip_address`, `user_agent`, `payload`, `last_activity`). Required because `SESSION_DRIVER=database` but no `sessions` table migration exists — Laravel cannot write sessions, causing 500 on `/sanctum/csrf-cookie` and on login.
+- **APP_KEY**: Set a non-empty `APP_KEY` in `.env.example` (run `php artisan key:generate`). Required for encryption and signing of session cookies and CSRF tokens.
+- **SANCTUM_STATEFUL_DOMAINS**: Add `5173-cs-370822403794-default.cs-us-east1-dogs.cloudshell.dev` to `SANCTUM_STATEFUL_DOMAINS` so stateful Sanctum session cookies are set for the cloudshell.dev domain.
+- **Login endpoint**: `POST /api/v1/auth/login` returns 200 for valid credentials; never 500.
+- **CSRF cookie endpoint**: `GET /sanctum/csrf-cookie` returns 204 and sets the `XSRF-TOKEN` cookie; never 500.
+
 ---
 
 ## 11. Dependencies
@@ -530,7 +540,12 @@ All auth and publishing UI (login, register, publish dialog, publish list, error
 | Visual design requirements satisfied (tokens, aesthetic, web-design-guidelines) | §10.1, test-plan.md §5.9 |
 | design-taste-frontend art direction review passes at 3 viewports | test-plan.md §5.9 |
 | web-design-guidelines compliance review passes | test-plan.md §5.9 |
-| Login endpoint returns 200 for valid credentials; never 500 | §10.1.4, test-plan.md §5.5, §5.8 |
+| Login endpoint returns 200 for valid credentials; never 500 | §10.1.4, §10.1.5, test-plan.md §5.5, §5.8 |
+| Sessions table migration exists; `SESSION_DRIVER=database` works | §10.1.5 |
+| `APP_KEY` set in `.env.example` (non-empty) | §10.1.5 |
+| `SANCTUM_STATEFUL_DOMAINS` includes cloudshell.dev domain | §10.1.5 |
+| `GET /sanctum/csrf-cookie` returns 204 and sets XSRF-TOKEN cookie; never 500 | §10.1.5, test-plan.md §5.10 |
+| Auth session persistence: register → login → session survives reload | §10.1.5, test-plan.md §5.11 |
 | 500/404 error pages render gracefully, never blank or broken | §10.1.4, test-plan.md §5.6 |
 
 ---
