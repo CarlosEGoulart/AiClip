@@ -34,7 +34,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('Publish Approved Clip - publish flow appears on approved clip', async ({ page }) => {
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       // Publish button must exist on approved clip with YouTube connection
@@ -68,7 +68,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('Duplicate Publish Blocked - second publish rejected', async ({ page }) => {
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       const publishButton = page.locator('button:has-text("Publish to YouTube")');
@@ -91,7 +91,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('No YouTube Connection - publish button not shown', async ({ page }) => {
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       // Without a YouTube connection, no publish button should appear
@@ -100,7 +100,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('Non-Approved Clip - publish button not shown', async ({ page }) => {
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       // Page loads without errors
@@ -112,7 +112,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('Keyboard Navigation - tab through publish dialog', async ({ page }) => {
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       const publishButton = page.locator('button:has-text("Publish to YouTube")');
@@ -128,7 +128,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('Focus Indicators - visible focus rings', async ({ page }) => {
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       const publishButton = page.locator('button:has-text("Publish to YouTube")');
@@ -143,7 +143,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('ARIA Labels - buttons have accessible names', async ({ page }) => {
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       const publishButton = page.locator('button:has-text("Publish to YouTube")');
@@ -174,7 +174,7 @@ for (const viewport of VIEWPORTS) {
         }
       });
 
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       // Filter out expected network errors from mocked endpoints
@@ -196,7 +196,7 @@ for (const viewport of VIEWPORTS) {
         }
       });
 
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       const unexpectedFailures = failedRequests.filter(
@@ -214,7 +214,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     test('Touch Targets - all interactive elements >= 44px', async ({ page }) => {
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       const buttons = page.locator('button');
@@ -246,7 +246,7 @@ test.describe('Visual Regression - YouTube Publishing', () => {
         }));
       });
 
-      await page.goto('/projects/1/media');
+      await page.goto('/');
       await page.waitForLoadState('networkidle');
 
       const publishButton = page.locator('button:has-text("Publish to YouTube")');
