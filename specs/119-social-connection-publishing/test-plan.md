@@ -383,6 +383,8 @@ Since real YouTube API isn't available in CI:
 
 | Test Case | Description | Viewports |
 |-----------|-------------|-----------|
+| Image Absence - No Meaningful Images on Auth Pages | No picsum.photos URLs, no `auth-atmosphere-image`, `auth-atmosphere-gallery`, `auth-image-credits`, `auth-image-caption`, or `auth-atmosphere-item` elements on `/login` or `/register` | All 3 |
+| Image Absence - No Archival Film Imagery | No film editing room, Steenbeck editor, film strip, or videotape recorder imagery on auth pages | All 3 |
 | Image Consistency - Hero/Brand Images | Images match project design tokens, none stretched or distorted | All 3 |
 | Image Consistency - Clip Thumbnails | Rendered clip thumbnails display correctly, consistent aspect ratio | All 3 |
 | Layout Alignment - Container Centering | Page content centered per design tokens, not flush-left | All 3 |
@@ -422,7 +424,8 @@ Since real YouTube API isn't available in CI:
 
 | Test Case | Description | Viewports |
 |-----------|-------------|-----------|
-| Design Review - Art Direction Baseline | Verify Switzer font, mono-accent palette, square corners applied across login, register, publish dialog, and publish list UI | All 3 |
+| Design Review - Image Absence on Auth Pages | No picsum.photos URLs or archival film imagery on `/login` or `/register`; no `auth-atmosphere-image`, `auth-atmosphere-gallery`, `auth-image-credits`, `auth-image-caption`, `auth-atmosphere-item` elements | All 3 |
+| Design Review - Art Direction Baseline | Switzer font, mono-accent palette, square corners applied across login, register, publish dialog, and publish list UI | All 3 |
 | Design Review - Visual Hierarchy | Primary action obvious; status badges use color + text; content density appropriate; spacing consistent | All 3 |
 | Design Review - Intentional Centering | Page content and forms centered per design tokens; no unusual flush-left alignment; auth forms centered with consistent side margins; publish dialog centered horizontally | All 3 |
 | Design Review - Image Consistency | Hero/brand images and clip thumbnails match project design tokens; none stretched, distorted, or mismatched | All 3 |
@@ -433,6 +436,28 @@ Since real YouTube API isn't available in CI:
 | Design Review - web-design-guidelines Compliance | Accessibility fundamentals respected; keyboard navigation; focus indicators; responsive layouts | All 3 |
 | Design Review - Error States | 500/404 pages render gracefully with understandable messaging, never blank or broken | All 3 |
 | Design Review - Console/Network Cleanliness | No unexpected console errors; no failed resources; no 500 on auth endpoints | All 3 |
+
+#### 5.9.1 Design-Taste-Frontend Compliance Checklist
+
+Applied to `/login` and `/register` at all 3 viewports (390x844, 768x1024, 1440x900):
+
+| Checklist Item | Requirement | Pass/Fail |
+|----------------|-------------|-----------|
+| No meaningless images | All picsum.photos archival images removed from AuthEntry and BootstrapErrorView | |
+| Clean typography-based design | Wordmark, headline, supporting copy, form fields, primary button, link buttons only; no decorative figures/galleries/captions | |
+| Switzer font applied | Font loaded from fontshare; heading/body use `--font-sans` / `--font-heading` | |
+| Mono-accent palette | `--bg`, `--surface`, `--ink`, `--muted`, `--accent` (`#2456d6`), `--accent-ink` (`#ffffff`) used consistently | |
+| Square corners | `--radius: 0` everywhere on auth UI; no rounded buttons, inputs, or containers | |
+| Centered layout | Auth column centered (`align-items: center`, `margin: 0`); no flush-left content | |
+| Consistent side margins | `--page-margin: 24px`; column `max-width: 380px` on desktop, full-width minus margins on mobile | |
+| Visual hierarchy | Headline > supporting copy > form fields > primary button; primary action obvious | |
+| Focus indicators | 3px solid outline, 2px offset on all interactive elements | |
+| Touch targets | All buttons/inputs ≥ 44px min-height | |
+| Coherence | Interface looks intentionally designed, not automatically generated (AGENTS.md §15 Q11) | |
+| web-design-guidelines compliance | Accessibility fundamentals, keyboard navigation, focus indicators, responsive layouts | |
+| Console cleanliness | No unexpected JS console errors on auth pages | |
+| Network cleanliness | No failed resource loads; no 500 on `/api/v1/auth/login` | |
+| Login returns 200 | Valid credentials → 200, never 500; invalid credentials → 401 with generic message | |
 
 ---
 
@@ -471,7 +496,7 @@ npm run test
 # Frontend E2E (Playwright at 3 viewports)
 npm run test:e2e
 # Includes: social-publish.spec.ts, auth-registration.spec.ts,
-#           auth-login.spec.ts, visual-qa.spec.ts
+#           auth-login.spec.ts, visual-qa.spec.ts, design-review.spec.ts
 ```
 - All tests must pass
 - E2E must pass at all 3 viewports (390x844, 768x1024, 1440x900)

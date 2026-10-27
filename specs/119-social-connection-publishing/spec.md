@@ -457,14 +457,43 @@ PublishList (page/tab)
 
 All auth and publishing UI (login, register, publish dialog, publish list, error pages) must satisfy the following. These requirements drive the design-fix work for Issue #119; no frontend files have been changed for design fixes yet.
 
-- **Design tokens**: Switzer font, mono-accent palette, square corners (per design-taste-frontend art direction).
-- **Layout alignment**: Page content and forms centered per design tokens; no unusual flush-left alignment. Auth forms centered with consistent side margins; publish dialog centered horizontally.
-- **Image consistency**: Hero/brand images and clip thumbnails consistent with project design tokens; none stretched, distorted, or mismatched.
-- **Visual hierarchy**: Primary action obvious; spacing consistent; interactive states clear; content density appropriate.
-- **Modern/sophisticated aesthetic**: Interface looks intentionally designed and coherent, not automatically generated (AGENTS.md §15 Q11).
+#### 10.1.1 Remove Meaningless Images (Required)
+
+- **Remove all picsum.photos archival images** from login and register screens (`apps/web/src/App.tsx`, `AuthEntry` component, lines 29-178):
+  - Remove the `authImages` array (4 images: film editing room, Steenbeck flatbed editor, 16mm film strip, early videotape recorder).
+  - Remove the `authBgStyle` CSS variable that sets `--auth-bg-image` to a picsum.photos URL.
+  - Remove the `auth-image-credits` div (screen-reader image credits).
+  - Remove the `auth-atmosphere-image` figure with the picsum.photos `` (800x600).
+  - Remove the `auth-atmosphere-gallery` div with two picsum.photos `` elements (600x400 each).
+  - Remove the `auth-hint` timeline fragment div (simulated clip timeline — decorative, adds no value).
+  - Remove the same image blocks from `BootstrapErrorView` (lines 185-278): `authImages` array, `authBgStyle`, `auth-image-credits`, `auth-atmosphere-image`, `auth-atmosphere-gallery`.
+- **Image absence verification**: No `picsum.photos` URLs, no `auth-atmosphere-image`, `auth-atmosphere-gallery`, `auth-image-credits`, `auth-image-caption`, or `auth-atmosphere-item` classes/elements may appear on `/login` or `/register` pages at any viewport. Verified via Playwright at 390x844, 768x1024, 1440x900.
+- Replace imagery with clean typography-based design: wordmark, headline, supporting copy, form fields, primary button, and link buttons only. No decorative figures, captions, or galleries.
+
+#### 10.1.2 Design Tokens & Aesthetic (design-taste-frontend)
+
+- **Font**: Switzer (grotesk-light) loaded from `https://api.fontshare.com/v2/css?f[]=switzer@400,500&display=swap`; hierarchy by position and ink, single roman weight.
+- **Palette**: mono-accent (stone/blueprint); `--bg`, `--surface`, `--ink`, `--muted`, `--accent` (`#2456d6`), `--accent-ink` (`#ffffff`).
+- **Corners**: square only — `--radius: 0`, `--radius-sm: 0`, `--radius-lg: 0`.
+- **Spacing**: `--space-xs: 4px`, `--space-sm: 8px`, `--space-md: 16px`, `--space-lg: 24px`, `--space-xl: 32px`, `--space-2xl: 48px`, `--space-3xl: 96px`, `--space-4xl: 140px`.
+- **Type scale**: five clamp-based steps (`--step-small` through `--step-display`).
+- **Focus ring**: `--focus-ring: 3px solid var(--accent)`, `--focus-offset: 2px`.
+- **Modern/sophisticated aesthetic**: Interface looks intentionally designed and coherent, not automatically generated (AGENTS.md §15 Q11). No generic/templated/AI-made appearance.
 - **web-design-guidelines compliance**: Accessibility fundamentals respected; keyboard navigation; focus indicators (3px outline); responsive layouts at 390x844 / 768x1024 / 1440x900.
-- **Error states**: 500/404 pages render gracefully with understandable messaging, never blank or broken.
-- **Login reliability**: `POST /api/v1/auth/login` returns 200 for valid credentials; never 500.
+
+#### 10.1.3 Layout Alignment
+
+- **Centered layout**: Page content and forms centered per design tokens; no unusual flush-left alignment.
+- **Auth forms**: Centered with consistent side margins (`auth-column`: `max-width: 380px`, centered via `align-items: center`, `margin: 0`).
+- **Wordmark**: Top-left, modest size (`align-self: flex-start` within centered column).
+- **Publish dialog**: Centered horizontally.
+- **No left alignment**: No flush-left page content or forms on auth pages.
+
+#### 10.1.4 Error States & Login Reliability
+
+- **500/404 pages**: Render gracefully with understandable messaging, never blank or broken.
+- **Login reliability**: `POST /api/v1/auth/login` returns 200 for valid credentials; never 500. Investigated and resolved — no server errors on login endpoint.
+- **Error messages**: Generic, understandable, actionable; no credential enumeration or stack traces in response body.
 
 ---
 
@@ -495,10 +524,14 @@ All auth and publishing UI (login, register, publish dialog, publish list, error
 | Accessibility (keyboard, focus, ARIA, touch targets) | §7.4 |
 | Unit, feature, integration, E2E tests pass | test-plan.md |
 | Lint, build, governance, E2E green | test-plan.md §6 |
-| Visual design requirements satisfied (centered layout, image consistency, design tokens) | §10.1 |
+| All picsum.photos images removed from login/register screens | §10.1.1, test-plan.md §5.9 |
+| Image absence verification passes at 3 viewports (no auth-page images) | §10.1.1, test-plan.md §5.9 |
+| Centered layout; no unusual left alignment on auth pages | §10.1.3, test-plan.md §5.9 |
+| Visual design requirements satisfied (tokens, aesthetic, web-design-guidelines) | §10.1, test-plan.md §5.9 |
 | design-taste-frontend art direction review passes at 3 viewports | test-plan.md §5.9 |
 | web-design-guidelines compliance review passes | test-plan.md §5.9 |
-| Login endpoint returns 200, never 500 | test-plan.md §5.5, §5.8 |
+| Login endpoint returns 200 for valid credentials; never 500 | §10.1.4, test-plan.md §5.5, §5.8 |
+| 500/404 error pages render gracefully, never blank or broken | §10.1.4, test-plan.md §5.6 |
 
 ---
 
