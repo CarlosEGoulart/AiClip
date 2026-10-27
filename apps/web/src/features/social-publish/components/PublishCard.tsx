@@ -1,4 +1,5 @@
 import type { SocialPublish } from '../types';
+import '../design-tokens.css';
 
 interface PublishCardProps {
   publish: SocialPublish;

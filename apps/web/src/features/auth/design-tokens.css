@@ -177,33 +177,34 @@ textarea:focus-visible,
   min-height: 100svh;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: var(--space-3xl) var(--page-margin);
   position: relative;
   overflow-x: hidden;
 }
 
-/* The column alignment — starts at ~22% from left */
+/* The column is centered, never flush-left. Consistent side margins. */
 .auth-column {
   width: 100%;
   max-width: var(--column-width);
-  margin-left: var(--column-start);
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
+  align-items: center;
 }
 
 @media (max-width: 768px) {
   .auth-column {
-    margin-left: var(--page-margin);
+    margin: 0;
     max-width: calc(100% - 2 * var(--page-margin));
   }
 }
 
 @media (max-width: 390px) {
   .auth-column {
-    margin-left: var(--page-margin);
+    margin: 0;
     max-width: calc(100% - 2 * var(--page-margin));
   }
 }

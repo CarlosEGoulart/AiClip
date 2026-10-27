@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import type { PublishClipRequest } from '../types';
+import '../design-tokens.css';
 
 interface PublishClipDialogProps {
   isOpen: boolean;

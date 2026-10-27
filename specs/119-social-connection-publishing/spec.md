@@ -453,6 +453,19 @@ PublishList (page/tab)
 - Reduced-motion support respected.
 - Styling follows `design-taste-frontend` art direction and project design tokens (Switzer font, mono-accent palette, square corners).
 
+### 10.1 Visual Design Requirements (Design Fix Scope)
+
+All auth and publishing UI (login, register, publish dialog, publish list, error pages) must satisfy the following. These requirements drive the design-fix work for Issue #119; no frontend files have been changed for design fixes yet.
+
+- **Design tokens**: Switzer font, mono-accent palette, square corners (per design-taste-frontend art direction).
+- **Layout alignment**: Page content and forms centered per design tokens; no unusual flush-left alignment. Auth forms centered with consistent side margins; publish dialog centered horizontally.
+- **Image consistency**: Hero/brand images and clip thumbnails consistent with project design tokens; none stretched, distorted, or mismatched.
+- **Visual hierarchy**: Primary action obvious; spacing consistent; interactive states clear; content density appropriate.
+- **Modern/sophisticated aesthetic**: Interface looks intentionally designed and coherent, not automatically generated (AGENTS.md §15 Q11).
+- **web-design-guidelines compliance**: Accessibility fundamentals respected; keyboard navigation; focus indicators (3px outline); responsive layouts at 390x844 / 768x1024 / 1440x900.
+- **Error states**: 500/404 pages render gracefully with understandable messaging, never blank or broken.
+- **Login reliability**: `POST /api/v1/auth/login` returns 200 for valid credentials; never 500.
+
 ---
 
 ## 11. Dependencies
@@ -482,6 +495,10 @@ PublishList (page/tab)
 | Accessibility (keyboard, focus, ARIA, touch targets) | §7.4 |
 | Unit, feature, integration, E2E tests pass | test-plan.md |
 | Lint, build, governance, E2E green | test-plan.md §6 |
+| Visual design requirements satisfied (centered layout, image consistency, design tokens) | §10.1 |
+| design-taste-frontend art direction review passes at 3 viewports | test-plan.md §5.9 |
+| web-design-guidelines compliance review passes | test-plan.md §5.9 |
+| Login endpoint returns 200, never 500 | test-plan.md §5.5, §5.8 |
 
 ---
 

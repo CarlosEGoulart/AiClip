@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { SocialPublish } from '../types';
 import { PublishCard } from './PublishCard';
 import { usePublishes } from '../hooks';
+import '../design-tokens.css';
 
 interface PublishListProps {
   publishes?: SocialPublish[];

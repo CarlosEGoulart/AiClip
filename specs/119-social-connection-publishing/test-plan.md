@@ -410,6 +410,32 @@ Since real YouTube API isn't available in CI:
 
 ---
 
+## 5.9 Design Review — design-taste-frontend Art Direction & web-design-guidelines Compliance
+
+**Purpose**: Apply the design-taste-frontend skill art direction and the web-design-guidelines compliance review to all auth + publishing UI. Directly addresses user-reported defects: "imagens não condizentes com o projeto" (images inconsistent with project), "alinhamento incomum a esquerda" (unusual left alignment), "falhas grave de design" (serious design failures). Requires a modern/sophisticated design per design-taste-frontend criteria. No frontend files have been changed yet for design fixes — Builder must implement design fixes, then this section is re-validated.
+
+**File**: `apps/web/tests/e2e/design-review.spec.ts` (new)
+
+**Required viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+**Design baseline** (spec §10.1): Switzer font, mono-accent palette, square corners, intentional spacing, centered layouts, clear visual hierarchy, coherent (not auto-generated) appearance.
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Design Review - Art Direction Baseline | Verify Switzer font, mono-accent palette, square corners applied across login, register, publish dialog, and publish list UI | All 3 |
+| Design Review - Visual Hierarchy | Primary action obvious; status badges use color + text; content density appropriate; spacing consistent | All 3 |
+| Design Review - Intentional Centering | Page content and forms centered per design tokens; no unusual flush-left alignment; auth forms centered with consistent side margins; publish dialog centered horizontally | All 3 |
+| Design Review - Image Consistency | Hero/brand images and clip thumbnails match project design tokens; none stretched, distorted, or mismatched | All 3 |
+| Design Review - Layout Spacing | Consistent margins, gutters, and alignment across mobile/tablet/desktop | All 3 |
+| Design Review - Interactive States | Hover/active/focus/disabled states clear and visually recognizable | All 3 |
+| Design Review - Typography | Readable type scale; consistent heading/body hierarchy; contrast ≥ 4.5:1 text, ≥ 3:1 UI components | All 3 |
+| Design Review - Coherence | Interface looks intentionally designed, not automatically generated (AGENTS.md §15 Q11) | All 3 |
+| Design Review - web-design-guidelines Compliance | Accessibility fundamentals respected; keyboard navigation; focus indicators; responsive layouts | All 3 |
+| Design Review - Error States | 500/404 pages render gracefully with understandable messaging, never blank or broken | All 3 |
+| Design Review - Console/Network Cleanliness | No unexpected console errors; no failed resources; no 500 on auth endpoints | All 3 |
+
+---
+
 ### 6.1 Backend Lint (Pint)
 ```bash
 vendor/bin/pint --dirty --format agent
@@ -679,8 +705,13 @@ jobs:
 - [ ] Lint passes (backend + frontend)
 - [ ] TypeScript build passes
 - [ ] Governance tests pass
-- [ ] Manual verification checklist complete (incl. auth + visual QA)
+- [ ] Manual verification checklist complete (incl. auth + visual QA + design review)
 - [ ] Evidence.md updated with results (incl. screenshots at 3 viewports)
 - [ ] Independent Tester review approves
+- [ ] Design review (design-taste-frontend art direction) passes at 3 viewports — Switzer font, mono-accent palette, square corners, centered layout, image consistency, coherence (not auto-generated)
+- [ ] web-design-guidelines compliance review passes — accessibility fundamentals, keyboard navigation, focus indicators, responsive layouts
+- [ ] No unusual left alignment — all page content and forms centered per design tokens
+- [ ] Images consistent with project design tokens — none stretched, distorted, or mismatched
+- [ ] Login endpoint returns 200 for valid credentials; never 500 (login 500 error resolved)
 
 ---
