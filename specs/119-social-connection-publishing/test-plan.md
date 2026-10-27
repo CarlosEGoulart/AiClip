@@ -299,7 +299,116 @@ Since real YouTube API isn't available in CI:
 
 ---
 
-## 6. Governance & Quality Gates
+## 5.4 Auth Registration Flow — Functional E2E Tests
+
+**Purpose**: Verify real user registration works end-to-end in a browser, as requested by the user who wants to "create account, login, identify problems." Covers the `RegisterForm` component and `POST /api/v1/auth/register` endpoint.
+
+**File**: `apps/web/tests/e2e/auth-registration.spec.ts` (new)
+
+**Viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+**Test User**: Fresh test email not previously registered. No real email delivery required; registration success determined by authenticated redirect/session.
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Auth Registration - Load Register Page | Navigate to `/register`, form loads without console errors | All 3 |
+| Auth Registration - Successful Registration | Submit valid name/email/password → authenticated session, redirected to dashboard | All 3 |
+| Auth Registration - Validation Errors | Missing/invalid fields → inline validation errors shown, form stays | All 3 |
+| Auth Registration - Duplicate Email | Already-registered email → error message, no duplicate account | All 3 |
+| Auth Registration - Password Mismatch | Password ≠ confirmation → validation error on confirmation field | All 3 |
+| Auth Registration - Console Cleanliness | No unexpected JS console errors during registration flow | All 3 |
+| Auth Registration - Network Cleanliness | No unexpected 4xx/5xx; expected 422/429 only | All 3 |
+| Auth Registration - Visual Regression | Register form screenshot per viewport | All 3 |
+
+## 5.5 Auth Login Flow — Functional E2E Tests
+
+**Purpose**: Verify real user login works end-to-end in a browser. Directly addresses the user-reported login 500 error. Covers the `LoginForm` component and `POST /api/v1/auth/login` endpoint.
+
+**File**: `apps/web/tests/e2e/auth-login.spec.ts` (new)
+
+**Viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+**Test User**: Pre-seeded test user with known password (test fixture).
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Auth Login - Load Login Page | Navigate to `/login`, form loads without console errors | All 3 |
+| Auth Login - Successful Login | Valid credentials → authenticated session, redirected to dashboard | All 3 |
+| Auth Login - Invalid Credentials | Wrong password → unauthorized error, form stays, no leak | All 3 |
+| Auth Login - 500 Error Detection | Login endpoint returns 500 → test FAILS with diagnostic (reports the reported defect) | All 3 |
+| Auth Login - Empty Fields | Submit empty → inline validation errors | All 3 |
+| Auth Login - Throttle | Excessive failed attempts → 429 throttle message | All 3 |
+| Auth Login - CSRF Protection | Missing/invalid X-XSRF-TOKEN → 419 handled gracefully | All 3 |
+| Auth Login - Console Cleanliness | No unexpected JS console errors during login flow | All 3 |
+| Auth Login - Network Cleanliness | No unexpected 4xx/5xx; 500 specifically flagged and fails test | All 3 |
+| Auth Login - Visual Regression | Login form screenshot per viewport | All 3 |
+
+## 5.6 Visual QA & Layout Inspection — 3 Required Viewports
+
+**Purpose**: Real-browser visual inspection of all application pages at the required viewports (AGENTS.md §14). Addresses user reports of "unusual left alignment" and "images inconsistent with project."
+
+**File**: `apps/web/tests/e2e/visual-qa.spec.ts` (new)
+
+**Required viewports**: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+
+**Pages to inspect**:
+- Landing page (`/`)
+- Login page (`/login`)
+- Register page (`/register`)
+- Dashboard / projects page
+- Project media page (`/projects/1/media`)
+- Publish list page (`/publishes`)
+- Clip review page
+- Error states (500, 404)
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Visual QA - Landing Page | Screenshot + layout inspection at all 3 viewports | All 3 |
+| Visual QA - Login Page | Screenshot + alignment check at all 3 viewports | All 3 |
+| Visual QA - Register Page | Screenshot + alignment check at all 3 viewports | All 3 |
+| Visual QA - Dashboard | Screenshot at all 3 viewports | All 3 |
+| Visual QA - Project Media | Screenshot at all 3 viewports | All 3 |
+| Visual QA - Publish List | Screenshot at all 3 viewports | All 3 |
+| Visual QA - 500 Error Page | Error page renders gracefully, no blank/broken layout | All 3 |
+| Visual QA - 404 Page | Not-found page renders gracefully | All 3 |
+| Visual QA - Mobile Overflow | No horizontal overflow at 390px width | Mobile |
+| Visual QA - Tablet Layout | Intentional tablet layout at 768px width | Tablet |
+| Visual QA - Desktop Layout | Intentional desktop layout at 1440px width | Desktop |
+
+## 5.7 Image Consistency & Layout Alignment
+
+**Purpose**: Verify images are consistent with project design and layout alignment is intentional (not unusual left alignment). Addresses user reports of inconsistent images and unusual left alignment.
+
+**File**: `apps/web/tests/e2e/visual-qa.spec.ts` (same file as 5.6)
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Image Consistency - Hero/Brand Images | Images match project design tokens, none stretched or distorted | All 3 |
+| Image Consistency - Clip Thumbnails | Rendered clip thumbnails display correctly, consistent aspect ratio | All 3 |
+| Layout Alignment - Container Centering | Page content centered per design tokens, not flush-left | All 3 |
+| Layout Alignment - Form Alignment | Auth forms centered, consistent side margins | All 3 |
+| Layout Alignment - Publish Dialog | Dialog centered horizontally, not left-aligned | All 3 |
+| Layout Alignment - Publish List Cards | Cards aligned in grid, consistent spacing/gutters | All 3 |
+| Layout Alignment - Navigation | Nav items aligned per design system | All 3 |
+
+## 5.8 Console, Network & 500 Error Monitoring
+
+**Purpose**: Detect console errors, network failures, and 500 errors during real navigation. The user reported a login 500 error; this section gates on detecting and reporting it.
+
+**File**: Integrated into auth-registration.spec.ts, auth-login.spec.ts, visual-qa.spec.ts
+
+| Test Case | Description | Viewports |
+|-----------|-------------|-----------|
+| Console Errors - No Unexpected JS Errors | `page.on('console', error)` captures no unexpected errors | All 3 |
+| Network Failures - No Failed Requests | No `net::ERR_FAILED`, `ERR_CONNECTION_REFUSED` | All 3 |
+| 500 Error Detection - Login | Login endpoint never returns 500; if 500 occurs, test fails with URL/body diagnostic | All 3 |
+| 500 Error Detection - Registration | Register endpoint never returns 500 | All 3 |
+| 500 Error Detection - Page Navigation | No page load/navigation triggers a 500 response | All 3 |
+| API Response Shapes | Auth API responses match expected structure (`user`, `errors`, `message`) | All 3 |
+| Uncaught Exceptions | `page.on('pageerror')` captures no uncaught exceptions | All 3 |
+| Failed Resources | No failed image/script/CSS resource loads | All 3 |
+
+---
 
 ### 6.1 Backend Lint (Pint)
 ```bash
@@ -333,10 +442,13 @@ php artisan test --compact
 # Frontend Unit
 npm run test
 
-# Frontend E2E
+# Frontend E2E (Playwright at 3 viewports)
 npm run test:e2e
+# Includes: social-publish.spec.ts, auth-registration.spec.ts,
+#           auth-login.spec.ts, visual-qa.spec.ts
 ```
 - All tests must pass
+- E2E must pass at all 3 viewports (390x844, 768x1024, 1440x900)
 
 ---
 
@@ -359,6 +471,27 @@ Perform after automated tests pass:
 | Rate limiting enforced | Exceed limits, verify 429 responses |
 | CSRF protection works | Submit without token, verify 419 |
 
+### 7.1 Auth Registration & Login Manual Verification
+
+| Check | Verification Method |
+|-------|---------------------|
+| Create account works in real browser | Navigate `/register`, submit valid credentials, verify authenticated redirect |
+| Login works in real browser | Navigate `/login`, submit valid credentials, verify dashboard access |
+| Login 500 error investigated | Browser devtools Network tab: confirm `/api/v1/auth/login` never returns 500 |
+| Invalid login handled | Wrong password → error message, no credential leakage |
+| Registration validation | Missing fields → inline errors, form stays |
+| No tokens exposed in browser | DevTools: no access_token/refresh_token in responses or localStorage |
+
+### 7.2 Visual QA Manual Verification (3 Viewports)
+
+| Check | Verification Method |
+|-------|---------------------|
+| Layout alignment intentional | Inspect pages at 390x844, 768x1024, 1440x900; content centered, not unusual left alignment |
+| Image consistency | Hero/brand images and clip thumbnails consistent with project design tokens, none distorted |
+| Console cleanliness | DevTools Console: no unexpected errors on any page |
+| Network cleanliness | DevTools Network: no failed requests, no 500 responses |
+| Visual defects | Screenshots reviewed for spacing, alignment, typography, overflow at all viewports |
+
 ---
 
 ## 8. Test Data Requirements
@@ -376,6 +509,13 @@ Perform after automated tests pass:
 - `ClipReviewFactory` (M7) with `approved` status
 - `DerivedAssetFactory` with `clip_rendered` type and `completed` render status
 - Factories for User, Project (existing)
+
+### 8.3 Auth Test Data Requirements
+- Pre-seeded test user with known password (for login E2E)
+- Fresh, never-registered email (for registration E2E)
+- Duplicate email fixture (already registered, for registration validation E2E)
+- Rate-limit test: credentials to exceed login throttle (429)
+- No production credentials in test fixtures
 
 ---
 
@@ -395,10 +535,20 @@ Upon completion, update `specs/119-social-connection-publishing/evidence.md` wit
    - Failed state (3 viewports)
    - Empty state (3 viewports)
    - Focus indicators visible
+   - **Auth: Login form (3 viewports)**
+   - **Auth: Register form (3 viewports)**
+   - **Auth: Dashboard after login (3 viewports)**
+   - **Visual QA: Landing page (3 viewports)**
+   - **Visual QA: Project media page (3 viewports)**
+   - **Visual QA: Publish list page (3 viewports)**
+   - **Visual QA: 500/404 error pages (3 viewports)**
 
 3. **Console/Network Logs**
    - Clean console output
    - No token leakage in network requests
+   - **Auth login/register console logs (no unexpected errors)**
+   - **Auth network logs: confirm `/api/v1/auth/login` returns 200, never 500**
+   - **500 error diagnostics if any 500 occurs (URL, status, response body)**
 
 4. **Manual Verification Sign-off**
    - Each checklist item confirmed
@@ -454,17 +604,83 @@ jobs:
 
 ---
 
-## 12. Definition of Done (Testing)
+## 12. Security Implications (Auth & Visual QA)
+
+### 12.1 Login & Registration Security
+
+| Concern | Requirement | Test Coverage |
+|---------|-------------|---------------|
+| Credentials never leaked | Login/register responses never return access_token, refresh_token, or password | Auth login/register E2E; network cleanliness |
+| Password not exposed in error messages | Error messages generic; no "email exists / password wrong" specificity that enables enumeration | Auth login/register E2E |
+| CSRF protection | State-changing auth endpoints require valid X-XSRF-TOKEN | Auth login/register E2E (419 handling) |
+| Rate limiting | Login/register rate-limited to prevent brute force | Auth login/register E2E (throttle) |
+| Session handling | Successful auth sets secure, HttpOnly session cookie; not accessible via JS | Auth login/register E2E |
+| No tokens in console/logs | Auth errors and responses never logged to browser console or server logs | Console cleanliness E2E |
+| 500 error on login does not expose internals | If login 500 occurs, error response is generic; no stack traces in body | Auth login 500 detection E2E |
+
+### 12.2 Token Protection (carried from M9/M10)
+
+- OAuth `access_token`/`refresh_token` remain encrypted at rest (M9 `encrypted` cast), never exposed to frontend.
+- Publishing uses the valid access token obtained server-side via `SocialConnectionManager::getValidAccessToken()`; token is never returned to the frontend.
+- Tokens never logged (explicitly excluded from log context).
+- No tokens in API responses, browser dev tools, or network.
+- Frontend applications must not receive social provider refresh tokens (AGENTS.md §23).
+
+### 12.3 CI Safety
+
+- No real social platform credentials in CI; fakes used for OAuth/publish.
+- Auth E2E uses pre-seeded test users; no production credentials.
+- No network calls to YouTube/social APIs during visual QA.
+
+## 13. UX Considerations (Auth & Visual QA)
+
+### 13.1 Auth UX
+
+- Login and register forms have clear primary actions ("Sign In", "Create Account").
+- Validation errors are inline, understandable, and actionable (field-level messages).
+- Loading states during submit (spinner + disabled button) prevent double-submission.
+- Error states distinguish network errors from validation errors from unauthorized errors.
+- Focus indicators visible (3px outline) for keyboard-only users.
+- Forms are keyboard-navigable (Tab order logical, Enter submits).
+- ARIA labels on inputs and buttons; `aria-invalid` and `aria-describedby` on fields.
+- Reduced-motion respected.
+
+### 13.2 Visual QA UX (addressing user-reported defects)
+
+- **Left alignment**: Page content and forms centered per design tokens; no unusual flush-left alignment. Verified at 390x844, 768x1024, 1440x900.
+- **Image consistency**: Hero/brand images and clip thumbnails consistent with project design tokens; none stretched, distorted, or mismatched.
+- **Layout spacing**: Consistent margins, gutters, and alignment across mobile/tablet/desktop.
+- **Error states**: 500/404 pages render gracefully with understandable messaging, never blank/broken.
+- **Touch targets**: All interactive elements ≥ 44px.
+- **Visual hierarchy**: Primary actions obvious; status badges use color + text.
+- Interface looks coherent and intentionally designed, not automatically generated (AGENTS.md §15).
+
+## 14. Dependencies (Auth & Visual QA)
+
+- Laravel Sanctum authentication (existing).
+- Auth API endpoints: `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me` (existing).
+- CSRF cookie endpoint `/sanctum/csrf-cookie` (existing).
+- Auth UI components: `LoginForm`, `RegisterForm`, `AuthProvider` (existing).
+- Playwright test infrastructure (existing, used by social-publish.spec.ts).
+- Test fixture users pre-seeded in the test database.
+- Design tokens / `design-taste-frontend` art direction for visual baseline.
+
+## 15. Definition of Done (Testing)
 
 - [ ] All unit tests pass (backend + frontend)
 - [ ] All feature tests pass
 - [ ] All integration tests pass
-- [ ] All E2E tests pass at 3 viewports
+- [ ] All E2E tests pass at 3 viewports (390x844, 768x1024, 1440x900)
+  - [ ] YouTube publishing E2E (social-publish.spec.ts)
+  - [ ] Auth registration E2E (auth-registration.spec.ts)
+  - [ ] Auth login E2E (auth-login.spec.ts)
+  - [ ] Visual QA E2E (visual-qa.spec.ts)
+- [ ] Login 500 error investigated and resolved (no 500 on `/api/v1/auth/login`)
 - [ ] Lint passes (backend + frontend)
 - [ ] TypeScript build passes
 - [ ] Governance tests pass
-- [ ] Manual verification checklist complete
-- [ ] Evidence.md updated with results
+- [ ] Manual verification checklist complete (incl. auth + visual QA)
+- [ ] Evidence.md updated with results (incl. screenshots at 3 viewports)
 - [ ] Independent Tester review approves
 
 ---
