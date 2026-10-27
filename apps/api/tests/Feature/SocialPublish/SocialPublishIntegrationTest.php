@@ -39,13 +39,8 @@ it('full_publish_flow_approved_clip_to_youtube', function () {
     // Create connected YouTube connection
     $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
 
-    // Create approved clip review with completed render
-    $clipReview = ClipReview::factory()->for(
-        DerivedAsset::factory()->renderedClip()
-    )->create([
-        'reviewer_id' => $this->user->id,
-        'status' => 'approved',
-    ]);
+    // Create approved clip review with completed render owned by test user
+    $clipReview = $this->createPublishableClipReview();
 
     // Initiate publish
     $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
@@ -82,12 +77,7 @@ it('full_publish_flow_approved_clip_to_youtube', function () {
 
 it('publish_status_reflects_published_after_job', function () {
     $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
-    $clipReview = ClipReview::factory()->for(
-        DerivedAsset::factory()->renderedClip()
-    )->create([
-        'reviewer_id' => $this->user->id,
-        'status' => 'approved',
-    ]);
+    $clipReview = $this->createPublishableClipReview();
 
     $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
         'clip_review_id' => $clipReview->id,
@@ -111,12 +101,7 @@ it('publish_status_reflects_published_after_job', function () {
 it('failed_publish_stores_error_message', function () {
     // Create connection but mock manager to return no token
     $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
-    $clipReview = ClipReview::factory()->for(
-        DerivedAsset::factory()->renderedClip()
-    )->create([
-        'reviewer_id' => $this->user->id,
-        'status' => 'approved',
-    ]);
+    $clipReview = $this->createPublishableClipReview();
 
     $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
         'clip_review_id' => $clipReview->id,
@@ -146,12 +131,7 @@ it('failed_publish_stores_error_message', function () {
 
 it('duplicate_publish_blocked', function () {
     $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
-    $clipReview = ClipReview::factory()->for(
-        DerivedAsset::factory()->renderedClip()
-    )->create([
-        'reviewer_id' => $this->user->id,
-        'status' => 'approved',
-    ]);
+    $clipReview = $this->createPublishableClipReview();
 
     // First publish
     $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
@@ -170,12 +150,7 @@ it('duplicate_publish_blocked', function () {
 
 it('publish_uses_encrypted_token_never_in_response', function () {
     $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
-    $clipReview = ClipReview::factory()->for(
-        DerivedAsset::factory()->renderedClip()
-    )->create([
-        'reviewer_id' => $this->user->id,
-        'status' => 'approved',
-    ]);
+    $clipReview = $this->createPublishableClipReview();
 
     $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
         'clip_review_id' => $clipReview->id,
@@ -199,12 +174,7 @@ it('publish_refreshes_expired_token', function () {
         'access_token_expires_at' => now()->subHours(1),
     ]);
 
-    $clipReview = ClipReview::factory()->for(
-        DerivedAsset::factory()->renderedClip()
-    )->create([
-        'reviewer_id' => $this->user->id,
-        'status' => 'approved',
-    ]);
+    $clipReview = $this->createPublishableClipReview();
 
     $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
         'clip_review_id' => $clipReview->id,

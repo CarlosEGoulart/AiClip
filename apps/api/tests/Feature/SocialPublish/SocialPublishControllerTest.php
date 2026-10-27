@@ -62,10 +62,7 @@ describe('Authentication & Authorization', function () {
 describe('POST /api/v1/social/publish (Initiate)', function () {
     it('publish_returns_202_on_success', function () {
         $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
-        $clipReview = \App\Models\ClipReview::factory()->for(\App\Models\DerivedAsset::factory()->renderedClip())->create([
-            'reviewer_id' => $this->user->id,
-            'status' => 'approved',
-        ]);
+        $clipReview = $this->createPublishableClipReview();
 
         $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
             'clip_review_id' => $clipReview->id,
@@ -110,10 +107,7 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
 
     it('publish_blocks_duplicate', function () {
         $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
-        $clipReview = \App\Models\ClipReview::factory()->for(\App\Models\DerivedAsset::factory()->renderedClip())->create([
-            'reviewer_id' => $this->user->id,
-            'status' => 'approved',
-        ]);
+        $clipReview = $this->createPublishableClipReview();
 
         SocialPublish::factory()->for($this->user)->create([
             'social_connection_id' => $connection->id,
