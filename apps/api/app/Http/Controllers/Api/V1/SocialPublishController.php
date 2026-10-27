@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\PublishClipRequest;
 use App\Http\Resources\SocialPublishCollection;
 use App\Http\Resources\SocialPublishResource;
+use App\Enums\ClipReviewStatus;
 use App\Enums\SocialPublishStatus;
 use App\Jobs\PublishToYouTube;
 use App\Models\ClipReview;
@@ -41,7 +42,7 @@ class SocialPublishController extends Controller
         }
 
         // Verify review is approved
-        if ($clipReview->status !== 'approved') {
+        if ($clipReview->status !== ClipReviewStatus::APPROVED) {
             return response()->json([
                 'message' => 'Clip review is not approved',
             ], Response::HTTP_NOT_FOUND);

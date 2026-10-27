@@ -102,11 +102,11 @@ class PublishToYouTube implements ShouldQueue
             return;
         }
 
-        $localPath = Storage::disk($derivedAsset->storage_disk)->path($derivedAsset->storage_key);
-
         // Resolve publisher and upload
         try {
             $publisher = app(\App\Contracts\SocialPublisher::class.':youtube');
+
+            $localPath = Storage::disk($derivedAsset->storage_disk)->path($derivedAsset->storage_key);
 
             $result = $publisher->publishVideo([
                 'connection' => $publish->socialConnection,
