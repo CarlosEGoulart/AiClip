@@ -138,8 +138,10 @@ it('failed_publish_stores_error_message', function () {
     $publish->refresh();
     expect($publish->status)->toBe('failed');
     expect($publish->error_message)->not->toBeEmpty();
-    // Verify no token in error message
-    expect(strtolower($publish->error_message))->not->toContain('token');
+    // Verify no sensitive token VALUE is leaked (the word "token" alone is fine)
+    expect(strtolower($publish->error_message))->not->toContain('access_token');
+    expect(strtolower($publish->error_message))->not->toContain('refresh_token');
+    expect($publish->error_message)->toBe('No valid access token available');
 });
 
 it('duplicate_publish_blocked', function () {
