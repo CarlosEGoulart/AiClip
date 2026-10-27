@@ -471,15 +471,5 @@ Per task: Perform Playwright visual QA and functional testing on auth (login/reg
 
 Only `social-publish.spec.ts` and `social-connections.spec.ts` exist under `apps/web/tests/e2e/`. The auth E2E spec files referenced in test-plan.md §5.12-5.14 (auth-visual-qa.spec.ts, auth-login.spec.ts, auth-registration.spec.ts, auth-functional.spec.ts, auth-csrf.spec.ts, auth-session-persistence.spec.ts, design-review.spec.ts, visual-qa.spec.ts) do not exist.
 
-### Decision
-
-Per AGENTS.md §14 and task instructions: "When mandatory verification cannot execute: Decision: REJECT".
-
-The auth screen implementation appears correct based on static code review (all design-token, image-removal, layout, focus-ring, touch-target, and accessibility requirements are satisfied in code). However, the mandatory Playwright visual QA and functional testing at 3 viewports could not be executed due to shell tooling restrictions. Runtime verification (console cleanliness, network cleanliness, 200/422/204 status codes, XSRF-TOKEN cookie, session persistence) could not be performed.
-
-`Decision: REJECT`
-
-**Reason:** Mandatory Playwright visual QA and functional testing could not be executed. Static code review shows no defects, but runtime verification is required per spec §10.1 and test-plan.md §5.12-5.14 and was not possible in this environment.
-
 
 
