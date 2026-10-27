@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReviewPage } from './ReviewPage';
@@ -481,7 +481,10 @@ describe('ReviewPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Publish to YouTube' }));
 
     await userEvent.type(screen.getByLabelText('Title'), 'My Published Clip');
-    await userEvent.click(screen.getByRole('button', { name: 'Publish to YouTube' }));
+    const dialog = screen.getByRole('dialog', { ariaModal: true });
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Publish to YouTube' }),
+    );
 
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({

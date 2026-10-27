@@ -172,9 +172,13 @@ class SocialConnectionManager
             return null;
         }
 
-        if ($connection->needs_refresh) {
-            $this->refreshConnection($connection);
-            $connection->refresh();
+        // Refresh if the token needs refreshing (expiring soon) or is already
+        // expired but a refresh token is available.
+        if ($connection->needs_refresh || $connection->is_token_expired) {
+            if ($connection->refresh_token) {
+                $this->refreshConnection($connection);
+                $connection->refresh();
+            }
         }
 
         if ($connection->is_token_expired) {

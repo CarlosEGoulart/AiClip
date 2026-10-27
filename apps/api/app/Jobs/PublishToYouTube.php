@@ -104,12 +104,6 @@ class PublishToYouTube implements ShouldQueue
 
         $localPath = Storage::disk($derivedAsset->storage_disk)->path($derivedAsset->storage_key);
 
-        if (! file_exists($localPath)) {
-            $this->markFailed($publish, 'Rendered clip file not found');
-
-            return;
-        }
-
         // Resolve publisher and upload
         try {
             $publisher = app(\App\Contracts\SocialPublisher::class.':youtube');

@@ -38,13 +38,6 @@ export function PublishClipDialog({
     return elements;
   }, []);
 
-  const focusElement = useCallback((index: number) => {
-    const elements = focusableElements();
-    if (elements[index]) {
-      elements[index].focus();
-    }
-  }, [focusableElements]);
-
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -91,12 +84,6 @@ export function PublishClipDialog({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, focusableElements]);
-
-  const announce = useCallback((message: string) => {
-    if (liveRegionRef.current) {
-      liveRegionRef.current.textContent = message;
-    }
-  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

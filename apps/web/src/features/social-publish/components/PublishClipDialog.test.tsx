@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PublishClipDialog } from './PublishClipDialog';
-import type { PublishClipRequest } from '../types';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn());
@@ -30,7 +29,6 @@ describe('PublishClipDialog', () => {
   });
 
   it('publish button disabled during upload', async () => {
-    const user = userEvent.setup();
     const onPublish = vi.fn();
     render(
       <PublishClipDialog

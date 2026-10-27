@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { ClipReviewStatus } from '../types';
+import type { PublishClipRequest } from '../../social-publish/types';
 import { useClipReviews, useUpdateClipReviewStatus, useSubmitClipReviewFeedback } from '../hooks';
 import { VideoPlayer } from './VideoPlayer';
 import { ReviewActions } from './ReviewActions';
@@ -127,7 +128,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   );
 
   const handlePublish = useCallback(
-    async (body: { clip_review_id: number; platform: string; title: string; description?: string }) => {
+    async (body: PublishClipRequest) => {
       if (!selectedClipReviewId) return;
       await publish({
         clip_review_id: selectedClipReviewId,

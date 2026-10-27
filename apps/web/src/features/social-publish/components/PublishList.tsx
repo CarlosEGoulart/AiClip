@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import type { SocialPublish } from '../types';
 import { PublishCard } from './PublishCard';
+import { usePublishes } from '../hooks';
 
 interface PublishListProps {
-  publishes: SocialPublish[];
+  publishes?: SocialPublish[];
   loading?: boolean;
 }
 
@@ -27,8 +29,25 @@ function EmptyState() {
   );
 }
 
-export function PublishList({ publishes, loading = false }: PublishListProps) {
-  if (loading) {
+export function PublishList({
+  publishes: publishesProp,
+  loading = false,
+}: PublishListProps) {
+  const { publishes: hookPublishes, loading: hookLoading, fetchPublishes } =
+    usePublishes();
+
+  // When used as a standalone route (no publishes prop), fetch publishes.
+  // When publishes is provided (e.g. from tests or a parent), use it directly.
+  useEffect(() => {
+    if (publishesProp === undefined) {
+      fetchPublishes();
+    }
+  }, [publishesProp, fetchPublishes]);
+
+  const publishes = publishesProp ?? hookPublishes;
+  const isLoading = loading || (publishesProp === undefined ? hookLoading : false);
+
+  if (isLoading) {
     return (
       <div className="publish-list" aria-label="Loading publishes">
         {[1, 2, 3].map((i) => (

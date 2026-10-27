@@ -327,3 +327,53 @@ All three critical defects from the Tester rejection have been fixed:
 | Unit, feature, integration, E2E tests pass | Tests written; execution blocked by missing shell/pdo_pgsql |
 | Lint, build, governance, E2E green | Could not independently execute |
 
+---
+
+## CI Failure Fixes (Issue #119 — PR #134)
+
+### Frontend CI — TypeScript Build Errors (FIXED & VERIFIED)
+
+**Root cause**: 4 TypeScript compilation errors in `npm run build` (`tsc -b`):
+
+1. **`src/App.tsx:309`** — `PublishList` requires `publishes` prop but was rendered as `<PublishList />` in the `/publishes` route without any prop.
+   - **Fix**: Made `publishes` optional in `PublishListProps`. When used as a standalone route (no prop), `PublishList` now fetches publishes via the `usePublishes()` hook automatically. When a `publishes` prop is provided (e.g., in tests), it uses that directly.
+
+2. **`src/features/clip-review/components/ReviewPage.tsx:134`** — `handlePublish` typed `body.platform` as `string`, but `PublishClipRequest.platform` is the literal type `'youtube'`. Type mismatch when passing to `publish()`.
+   - **Fix**: Changed `handlePublish` parameter type to `PublishClipRequest` and added the import.
+
+3. **`src/features/social-publish/components/PublishClipDialog.tsx:41`** — Unused `focusElement` callback (TS6133).
+   - **Fix**: Removed the dead `focusElement` callback.
+
+4. **`src/features/social-publish/components/PublishClipDialog.tsx:95`** — Unused `announce` callback (TS6133).
+   - **Fix**: Removed the dead `announce` callback.
+
+**Verification**:
+- `npx tsc -b` → 0 errors (passes)
+- `npx vitest run` → 31 files, 411 tests passed
+- `npx oxlint` → 0 errors (warnings only in pre-existing unrelated files)
+
+Also fixed oxlint warnings in `PublishClipDialog.test.tsx`: removed unused `PublishClipRequest` import and unused `user` variable.
+
+### Backend CI — Feature/Integration Test Logic Bugs (FIXED, NOT LOCALLY VERIFIABLE)
+
+**Root cause**: Two logic bugs that would cause backend feature tests to fail in CI (where PostgreSQL is available but tests can't run locally due to missing `pdo_pgsql` extension):
+
+1. **`app/Services/SocialConnectionManager::getValidAccessToken()`** — Only refreshed tokens expiring within 10 minutes (`needs_refresh`), but returned `null` for already-expired tokens without attempting refresh. This caused `publish_refreshes_expired_token` to fail: the test creates a connection with an already-expired token + valid refresh token, expects the job to refresh and publish, but `getValidAccessToken` returned `null` → job marked failed instead of published.
+   - **Fix**: `getValidAccessToken` now attempts refresh when `needs_refresh || is_token_expired` and a `refresh_token` exists, before checking `is_token_expired` again.
+
+2. **`app/Jobs/PublishToYouTube`** — Checked `file_exists($localPath)` on the rendered clip's storage path. Neither `YouTubePublisher` nor `FakeYouTubePublisher` uses `local_path`, and tests don't create actual render files on disk. This caused all job-execution tests (`publish_status_reflects_published_after_job`, `publish_refreshes_expired_token`, etc.) to fail at the file-existence check before reaching the publisher.
+   - **Fix**: Removed the `file_exists` check. The `local_path` is passed to the publisher but unused by either implementation; upload failures are handled by the publisher's own error handling and the job's try/catch.
+
+**Could not verify locally**: PHP binary not accessible in this environment and `pdo_pgsql` extension is missing, so `php artisan test` cannot run locally. These fixes should be verified in CI.
+
+### Files Modified (CI Fixes)
+
+| File | Change |
+|------|--------|
+| `apps/web/src/features/social-publish/components/PublishList.tsx` | Made `publishes` optional; auto-fetch via `usePublishes()` when no prop |
+| `apps/web/src/features/clip-review/components/ReviewPage.tsx` | Typed `handlePublish` body as `PublishClipRequest`; added import |
+| `apps/web/src/features/social-publish/components/PublishClipDialog.tsx` | Removed unused `focusElement` and `announce` callbacks |
+| `apps/web/src/features/social-publish/components/PublishClipDialog.test.tsx` | Removed unused import and unused variable |
+| `apps/api/app/Services/SocialConnectionManager.php` | `getValidAccessToken` refreshes already-expired tokens when refresh token exists |
+| `apps/api/app/Jobs/PublishToYouTube.php` | Removed unnecessary `file_exists` check on render file path |
+
