@@ -583,6 +583,30 @@ Applied to `/login` and `/register` at all 3 viewports (390x844, 768x1024, 1440x
 
 **Out of scope**: Feature logic changes beyond fixing the 3 failures; new test cases; scope expansion.
 
+## 5.16 Auth E2E Test File Status
+
+**Purpose**: Document which auth E2E test files exist and which must be created before visual QA and functional testing can be executed at the 3 required viewports.
+
+**Current state** (per Tester static review of `apps/web/tests/e2e/`):
+
+| Test File | test-plan Section | Status |
+|-----------|-------------------|--------|
+| `social-publish.spec.ts` | §5.2 | EXISTS — executed in CI |
+| `social-connections.spec.ts` | (M9) | EXISTS — executed in CI |
+| `auth-registration.spec.ts` | §5.4 | DOES NOT EXIST — must be created |
+| `auth-login.spec.ts` | §5.5 | DOES NOT EXIST — must be created |
+| `visual-qa.spec.ts` | §5.6 | DOES NOT EXIST — must be created |
+| `auth-csrf.spec.ts` | §5.10 | DOES NOT EXIST — must be created |
+| `auth-session-persistence.spec.ts` | §5.11 | DOES NOT EXIST — must be created |
+| `auth-visual-qa.spec.ts` | §5.12 | DOES NOT EXIST — must be created |
+| `auth-functional.spec.ts` | §5.13 | DOES NOT EXIST — must be created |
+| `design-review.spec.ts` | §5.9 | DOES NOT EXIST — must be created |
+
+**Required before SPEC_READY**:
+- Builder must create the missing auth E2E spec files per test-plan §5.4–5.14
+- Tester must execute all auth E2E tests at 3 viewports (390x844, 768x1024, 1440x900)
+- Tester must verify: login/register 200 (never 500), CSRF cookie 204 + XSRF-TOKEN, image absence on auth pages, centered layout, session persistence (register → login → reload)
+
 ### 6.1 Backend Lint (Pint)
 ```bash
 vendor/bin/pint --dirty --format agent

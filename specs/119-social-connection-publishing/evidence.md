@@ -471,5 +471,121 @@ Per task: Perform Playwright visual QA and functional testing on auth (login/reg
 
 Only `social-publish.spec.ts` and `social-connections.spec.ts` exist under `apps/web/tests/e2e/`. The auth E2E spec files referenced in test-plan.md §5.12-5.14 (auth-visual-qa.spec.ts, auth-login.spec.ts, auth-registration.spec.ts, auth-functional.spec.ts, auth-csrf.spec.ts, auth-session-persistence.spec.ts, design-review.spec.ts, visual-qa.spec.ts) do not exist.
 
+---
+
+## Tester Session Confirmation — Auth Visual QA & Functional (Current Session)
+
+### Static Code Review (re-confirmed, spec §10.1)
+
+| Check | Result | Basis |
+|-------|--------|-------|
+| No `picsum.photos` / archival film imagery on auth pages | PASS | Grep across `apps/web/src`: only `DESIGN_NOTES.md` docs remain; no UI components reference picsum.photos |
+| No `auth-atmosphere-image`, `auth-atmosphere-gallery`, `auth-image-credits`, `auth-image-caption`, `auth-atmosphere-item` on `/login` or `/register` | PASS | `AuthEntry` (App.tsx lines 18-78) and `BootstrapErrorView` (lines 80-102) are typography-only |
+| Switzer font from fontshare; mono-accent palette `--accent: #2456d6`; square corners `--radius: 0` | PASS | `design-tokens.css` :root tokens |
+| Focus ring `--focus-ring: 3px solid var(--accent)`, `--focus-offset: 2px` | PASS | `design-tokens.css` lines 45-46, 154-163 |
+| Centered layout (`auth-page` align-items:center, `auth-column` margin:0 max-width:380px) | PASS | `design-tokens.css` lines 176-196 |
+| 44px touch targets (input min-height 44px, submit 48px) | PASS | `design-tokens.css` lines 274, 325 |
+| Accessibility (aria-invalid, aria-describedby, focus indicators) | PASS | `LoginForm.tsx`, `RegisterForm.tsx` |
+
+### Playwright Visual QA & Functional Testing — NOT EXECUTABLE
+
+**Blocker:** Shell tooling is blocked (`Permission denied: shell`). Development tooling (`npx`, `npm`, `node`, `curl`) is unavailable. Therefore:
+
+- ❌ Dev servers cannot be started (Vite on 5173, Laravel on 8000)
+- ❌ Playwright E2E tests cannot be executed (`npx playwright test` blocked)
+- ❌ Screenshots at 3 viewports (390x844, 768x1024, 1440x900) cannot be captured
+- ❌ Browser console error check cannot be performed
+- ❌ Network 4xx/5xx error check cannot be performed
+- ❌ Register → 200 (not 500) cannot be verified at runtime
+- ❌ Login valid → 200 (not 500) cannot be verified at runtime
+- ❌ Login invalid → 422 cannot be verified at runtime
+- ❌ GET /sanctum/csrf-cookie → 204 + XSRF-TOKEN cookie cannot be verified at runtime
+
+### Decision
+
+`Decision: REJECT`
+
+Reason: mandatory verification cannot execute per AGENTS.md §14. Shell/command execution is blocked; Playwright visual QA and functional testing at the 3 required viewports could not be performed. Static code review of the auth screens passes, but the mandatory real-browser verification required by AGENTS.md §14 and test-plan.md §5.12-5.15 cannot be completed.
+
+---
+
+## Builder: Missing Auth E2E Spec Files Created (Issue #119)
+
+Per task from Orchestrator, Builder created the 7 missing auth E2E spec files required by test-plan.md §5.16 at `apps/web/tests/e2e/`. All files follow the existing `social-publish.spec.ts` / `social-connections.spec.ts` patterns:
+
+- VIEWPORTS loop: 390x844 (mobile), 768x1024 (tablet), 1440x900 (desktop)
+- `test.describe.configure({ retries: 1 })`
+- `test.use({ viewport: { width, height } })` per viewport
+- Console / network / 500 error diagnostics captured via page listeners
+- Screenshots captured for visual regression at each viewport
+
+### Files Created
+
+| File | test-plan Section | Coverage |
+|------|-------------------|----------|
+| `auth-visual-qa.spec.ts` | §5.12 | Login/register visual QA: no picsum.photos, centered layout, Switzer font, square corners, focus rings, 44px touch targets, console/network cleanliness, error pages, visual regression screenshots |
+| `auth-login.spec.ts` | §5.5 | Login flow: load page, successful login (200 never 500), invalid credentials, 500 error detection, empty fields, throttle, CSRF protection, console/network cleanliness, visual regression |
+| `auth-registration.spec.ts` | §5.4 | Registration flow: load page, successful registration, validation errors, duplicate email, password mismatch, console/network cleanliness, visual regression |
+| `auth-functional.spec.ts` | §5.13 | Full register→login→reload→logout flow: load pages, successful registration/login, invalid credentials, validation, duplicate email, session persists after reload, logout invalidates, CSRF cookie 204+XSRF-TOKEN, no 500 on login/register, console/network cleanliness |
+| `auth-csrf.spec.ts` | §5.10 | CSRF cookie endpoint: GET /sanctum/csrf-cookie returns 204 (never 500), sets XSRF-TOKEN cookie, console/network cleanliness |
+| `auth-session-persistence.spec.ts` | §5.11 | Session persistence: register then login, survives page reload, logout clears session, no 500 on register/login/csrf-cookie/auth/me, console/network cleanliness |
+| `design-review.spec.ts` | §5.9, §5.14 | Design-taste-frontend checklist: no meaningless images, clean typography design, Switzer font, mono-accent palette, square corners, centered layout, side margins, visual hierarchy, focus indicators, touch targets, coherence, web-design-guidelines compliance, error states, console/network cleanliness, login returns 200 |
+
+### Constraints Observed
+- No commit or push performed (Git lifecycle handled by Orchestrator).
+- No Planner-owned files modified (spec.md, plan.md, test-plan.md, evidence.md structure only appended for implementation record).
+- No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or governance workflow files touched.
+- Only `apps/web/tests/e2e/*.spec.ts` created + `evidence.md` appended.
+
+### Notes
+- Shell execution is blocked in this environment, so Playwright E2E tests could not be executed locally. The Tester must execute these at the 3 required viewports and verify: login/register return 200 (never 500), CSRF cookie returns 204 + XSRF-TOKEN, image absence on auth pages, centered layout, session persistence (register → login → reload).
+- `auth-visual-qa.spec.ts` captures visual regression screenshots: `auth-login-{viewport}.png` and `auth-register-{viewport}.png`.
+- Auth routes: the app has no explicit `/login`/`/register` routes; `/` renders `AuthEntry` (login by default) with "Create one" switching to register view. Tests navigate to `/` and switch views via the "Create one" / "Sign in" link buttons, matching existing `auth.spec.ts` patterns.
+
+---
+
+## Tester Session — Auth Visual QA & Functional Testing (Issue #119) — Current Session
+
+### Task
+Perform Playwright visual QA and functional testing on auth (login/register) screens and social-publish flow at 3 required viewports (390x844, 768x1024, 1440x900). Verify:
+1. Visual QA at 3 viewports: no picsum.photos images, centered auth form, Switzer font / #2456d6 mono-accent palette / square corners, visible focus rings (3px outline, 2px offset), 44px touch targets, color+text status badges.
+2. Login/Register functional: register → 200 (never 500), login valid → 200 (never 500), login invalid → 422, GET /sanctum/csrf-cookie → 204 + XSRF-TOKEN cookie.
+3. Console/Network cleanliness: no console errors, no 4xx/5xx network errors.
+
+### Spec File Inventory (all 7 auth E2E files exist, created by Builder)
+| File | test-plan Section | Viewports | Status |
+|------|-------------------|-----------|--------|
+| `auth-visual-qa.spec.ts` | §5.12 | 390x844 / 768x1024 / 1440x900 | EXISTS |
+| `auth-login.spec.ts` | §5.5 | 390x844 / 768x1024 / 1440x900 | EXISTS |
+| `auth-registration.spec.ts` | §5.4 | 390x844 / 768x1024 / 1440x900 | EXISTS |
+| `auth-functional.spec.ts` | §5.13 | 390x844 / 768x1024 / 1440x900 | EXISTS |
+| `auth-csrf.spec.ts` | §5.10 | 390x844 / 768x1024 / 1440x900 | EXISTS |
+| `auth-session-persistence.spec.ts` | §5.11 | 390x844 / 768x1024 / 1440x900 | EXISTS |
+| `design-review.spec.ts` | §5.9, §5.14 | 390x844 / 768x1024 / 1440x900 | EXISTS |
+
+All spec files use `VIEWPORTS = [390x844, 768x1024, 1440x900]`, `test.describe.configure({ retries: 1 })`, `test.use({ viewport })` per viewport, and install console/network/500 diagnostics. Each covers the test-plan §5.4–5.14 scenarios for its section.
+
+### Static Code Review (spec.md §10.1)
+Previously confirmed PASS (no `picsum.photos` / archival film imagery on auth pages; Switzer font from fontshare; `--accent: #2456d6`; `--radius: 0` square corners; focus ring `3px solid var(--accent)` offset `2px`; centered `.auth-column` `align-items: center margin: 0 max-width: 380px`; 44px touch targets; `aria-invalid`/`aria-describedby` accessibility). Grep across `apps/web/src` confirms no UI component references picsum.photos (only `DESIGN_NOTES.md` docs remain).
+
+### Playwright Execution — BLOCKED
+Shell command execution was attempted 4 times (`echo ok`, `pwd && whoami && ls -la`, etc.). All returned `Permission denied: shell`. Development tooling (`npx`, `npm`, `node`, `curl`) is unavailable. Therefore:
+
+- ❌ Dev servers cannot be started or checked (Vite on 5173, Laravel on 8000).
+- ❌ Playwright E2E tests cannot be executed (`npx playwright test` blocked).
+- ❌ Screenshots at 3 viewports cannot be captured.
+- ❌ Browser console error check cannot be performed.
+- ❌ Network 4xx/5xx error check cannot be performed.
+- ❌ Register → 200 (not 500) cannot be verified at runtime.
+- ❌ Login valid → 200 (not 500) cannot be verified at runtime.
+- ❌ Login invalid → 422 cannot be verified at runtime.
+- ❌ GET /sanctum/csrf-cookie → 204 + XSRF-TOKEN cookie cannot be verified at runtime.
+
+### Decision
+
+`Decision: REJECT`
+
+Reason: mandatory verification cannot execute per AGENTS.md §14. Shell/command execution is blocked; Playwright visual QA and functional testing at the 3 required viewports (390x844, 768x1024, 1440x900) could not be performed. Static code review of the auth screens and all 7 E2E spec files passes, but the mandatory real-browser verification required by AGENTS.md §14 and test-plan.md §5.12–5.15 cannot be completed.
+
 
 

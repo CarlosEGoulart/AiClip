@@ -307,6 +307,32 @@ This plan breaks down the implementation into sequential, testable increments fo
 
 ---
 
+## Phase 10: Auth Infrastructure Fix & Visual QA (Completion of Issue #119)
+
+### 10.1 Login/Register 500 Error Fix (Backend)
+- [ ] Verify sessions table migration exists (`database/migrations/XXXX_create_sessions_table.php`) — per spec §10.1.5
+- [ ] Verify `APP_KEY` is non-empty in `.env.example` — per spec §10.1.5
+- [ ] Verify `SANCTUM_STATEFUL_DOMAINS` includes `5173-cs-370822403794-default.cs-us-east1-dogs.cloudshell.dev` — per spec §10.1.5
+- [ ] Verify `POST /api/v1/auth/login` returns 200 for valid credentials; never 500 — per spec §10.1.6
+- [ ] Verify `GET /sanctum/csrf-cookie` returns 204 and sets `XSRF-TOKEN` cookie; never 500 — per spec §10.1.6
+
+### 10.2 Visual QA & Auth Functional Testing (Playwright, 3 viewports)
+- [ ] Create missing auth E2E spec files per test-plan §5.16 (auth-login, auth-registration, visual-qa, auth-csrf, auth-session-persistence, auth-visual-qa, auth-functional, design-review)
+- [ ] Execute Playwright visual QA at 390x844, 768x1024, 1440x900 — per test-plan §5.6, §5.12
+- [ ] Verify no meaningless images on auth pages (no `picsum.photos`, no archival film imagery) — per test-plan §5.7, §5.12
+- [ ] Verify centered layout (no unusual left alignment) on `/login` and `/register` — per test-plan §5.7, §5.12
+- [ ] Verify design-taste-frontend art direction compliance (Switzer font, mono-accent palette, square corners, centered layout) — per test-plan §5.9, §5.14
+- [ ] Verify web-design-guidelines compliance (accessibility, keyboard navigation, focus indicators) — per test-plan §5.9
+- [ ] Verify login/register flow works (register → login → session survives reload) — per test-plan §5.11, §5.13
+- [ ] Verify console/network cleanliness; no 500 on auth endpoints — per test-plan §5.8
+
+### 10.3 Documentation & Commit
+- [ ] Update `evidence.md` with Tester decisions and test results (Orchestrator commits — Planner cannot edit evidence.md)
+- [ ] Update `docs/project-state.md` with M10 YouTube Publishing completion (Phase 9.1)
+- [ ] Commit all changes via Orchestrator (Git lifecycle)
+
+---
+
 ## File Creation Summary
 
 ### Backend (Laravel)

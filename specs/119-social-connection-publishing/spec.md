@@ -455,7 +455,7 @@ PublishList (page/tab)
 
 ### 10.1 Visual Design Requirements (Design Fix Scope)
 
-All auth and publishing UI (login, register, publish dialog, publish list, error pages) must satisfy the following. These requirements drive the design-fix work for Issue #119; no frontend files have been changed for design fixes yet.
+All auth and publishing UI (login, register, publish dialog, publish list, error pages) must satisfy the following. Builder has already removed all picsum.photos archival images from `AuthEntry` and `BootstrapErrorView` in `apps/web/src/App.tsx`; auth screens are now typography-only (wordmark, headline, supporting copy, form fields, primary button, link buttons only). Remaining work: real-browser verification at 3 viewports, centered-layout confirmation, and the login/register 500 infrastructure fix verification.
 
 #### 10.1.1 Remove Meaningless Images (Required)
 
@@ -504,6 +504,20 @@ The following infrastructure fixes resolve the reported `GET /sanctum/csrf-cooki
 - **SANCTUM_STATEFUL_DOMAINS**: Add `5173-cs-370822403794-default.cs-us-east1-dogs.cloudshell.dev` to `SANCTUM_STATEFUL_DOMAINS` so stateful Sanctum session cookies are set for the cloudshell.dev domain.
 - **Login endpoint**: `POST /api/v1/auth/login` returns 200 for valid credentials; never 500.
 - **CSRF cookie endpoint**: `GET /sanctum/csrf-cookie` returns 204 and sets the `XSRF-TOKEN` cookie; never 500.
+
+#### 10.1.6 Verification Criteria (Login & Visual Fixes)
+
+The following must be verified at runtime (real-browser + backend) before issue closure:
+
+- **Image absence**: No `picsum.photos` URLs or archival film imagery on `/login` or `/register` at 390x844, 768x1024, 1440x900 (Playwright).
+- **Centered layout**: `.auth-column` centered with `align-items: center`, `margin: 0`, `max-width: 380px`; no flush-left content on auth pages at all 3 viewports.
+- **Login 200**: `POST /api/v1/auth/login` returns 200 for valid credentials; never 500.
+- **Register 200/201**: `POST /api/v1/auth/register` returns 200/201 for valid input; never 500.
+- **CSRF cookie 204**: `GET /sanctum/csrf-cookie` returns 204 and sets `XSRF-TOKEN` cookie; never 500.
+- **Session persistence**: Register → Login → page reload → still authenticated (database sessions table working).
+- **Error pages**: 500/404 pages render gracefully, never blank or broken.
+- **Console cleanliness**: No unexpected JS console errors on auth pages at all 3 viewports.
+- **Network cleanliness**: No failed resource loads; no unexpected 4xx/5xx on auth endpoints.
 
 ---
 
