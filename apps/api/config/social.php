@@ -71,6 +71,7 @@ return [
         'connect' => 20,      // per minute
         'list' => 60,         // per minute
         'disconnect' => 30,   // per minute
+        'publish' => 20,      // per minute
     ],
 
 ];

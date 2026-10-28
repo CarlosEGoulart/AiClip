@@ -1,22 +1,27 @@
+@import url('https://api.fontshare.com/v2/css?f[]=switzer@400,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&display=swap');
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
+  /* --- Design tokens: Switzer, mono-accent palette, square corners --- */
+  --text: #5c5860;
+  --text-h: #0b0a0c;
+  --bg: #ffffff;
+  --surface: #f7f6f4;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
-  --accent: #2563eb;
-  --accent-bg: rgba(37, 99, 235, 0.08);
-  --accent-border: rgba(37, 99, 235, 0.35);
+  --accent: #2456d6;
+  --accent-ink: #ffffff;
+  --accent-bg: rgba(36, 86, 214, 0.08);
+  --accent-border: rgba(36, 86, 214, 0.25);
   --error: #dc2626;
   --error-bg: rgba(220, 38, 38, 0.08);
   --success: #15803d;
   --success-bg: rgba(21, 128, 61, 0.1);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.08) 0 10px 15px -3px, rgba(0, 0, 0, 0.04) 0 4px 6px -2px;
+  --shadow: none;
 
-  --sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --heading: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Type: Switzer (grotesk) — single family, hierarchy by size and ink */
+  --sans: 'Switzer', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --heading: 'Switzer', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'Geist Mono', ui-monospace, Consolas, monospace;
 
   font: 16px/1.55 var(--sans);
@@ -32,21 +37,21 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
+    --text: #b0adb4;
     --text-h: #f3f4f6;
     --bg: #0a0a0f;
+    --surface: #121114;
     --border: #1e2028;
     --code-bg: #1a1b23;
-    --accent: #60a5fa;
-    --accent-bg: rgba(96, 165, 250, 0.12);
-    --accent-border: rgba(96, 165, 250, 0.3);
+    --accent: #2456d6;
+    --accent-ink: #ffffff;
+    --accent-bg: rgba(36, 86, 214, 0.12);
+    --accent-border: rgba(36, 86, 214, 0.25);
     --error: #f87171;
     --error-bg: rgba(248, 113, 113, 0.12);
     --success: #4ade80;
     --success-bg: rgba(74, 222, 128, 0.12);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.35) 0 10px 15px -3px, rgba(0, 0, 0, 0.2) 0 4px 6px -2px;
+    --shadow: none;
   }
 }
 
@@ -93,7 +98,7 @@ code,
 .counter {
   font-family: var(--mono);
   display: inline-flex;
-  border-radius: 4px;
+  border-radius: 0;
   color: var(--text-h);
 }
 
@@ -150,7 +155,7 @@ code {
   min-height: 44px;
   box-sizing: border-box;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--bg);
   color: var(--text-h);
   font: inherit;
@@ -206,7 +211,7 @@ code {
   gap: 12px;
   padding: 20px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--bg);
 }
 
@@ -222,7 +227,7 @@ code {
   width: 100%;
   padding: 10px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--accent);
   color: #fff;
   font: inherit;
@@ -273,7 +278,7 @@ code {
   align-items: center;
   padding: 16px 20px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   background: var(--bg);
   transition: border-color 0.15s ease;
 }
@@ -320,7 +325,7 @@ code {
 .delete-button {
   padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -337,7 +342,7 @@ code {
 .delete-confirm-button {
   padding: 6px 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--error);
   color: #fff;
   font: inherit;
@@ -359,7 +364,7 @@ code {
 .delete-cancel-button {
   padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -400,7 +405,7 @@ code {
   box-sizing: border-box;
   padding: 8px 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--bg);
   color: var(--text-h);
   font: inherit;
@@ -483,7 +488,7 @@ code {
   overflow: visible;
   clip-path: none;
   padding: 10px 16px;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--accent);
   color: #fff;
   font-size: 14px;
@@ -557,7 +562,7 @@ code {
   box-sizing: border-box;
   padding: 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: 0;
   background: transparent;
   color: var(--text);
   cursor: pointer;
@@ -609,7 +614,7 @@ code {
 .review-empty {
   padding: 48px 24px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--bg);
   text-align: center;
 }
@@ -622,7 +627,7 @@ code {
 
 .review-sidebar {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--bg);
   padding: 20px;
 }
@@ -679,7 +684,7 @@ code {
   gap: 16px;
   padding: 20px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--bg);
 }
 
@@ -704,7 +709,7 @@ code {
   box-sizing: border-box;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--bg);
   color: var(--text-h);
   font: inherit;
@@ -758,7 +763,7 @@ textarea.image-studio-field-control {
   box-sizing: border-box;
   padding: 11px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--accent);
   color: #fff;
   font: inherit;
@@ -822,7 +827,7 @@ textarea.image-studio-field-control {
 .image-gallery-card {
   padding: 20px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--bg);
 }
 
@@ -870,7 +875,7 @@ textarea.image-studio-field-control {
   align-items: center;
   flex-shrink: 0;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: 0;
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
@@ -906,13 +911,13 @@ textarea.image-studio-field-control {
   gap: 12px;
   padding: 20px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--bg);
   animation: image-studio-pulse 1.6s ease-in-out infinite;
 }
 
 .image-gallery-skeleton-line {
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--code-bg);
 }
 
@@ -940,7 +945,7 @@ textarea.image-studio-field-control {
 .image-gallery-state {
   padding: 48px 24px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--bg);
   text-align: center;
 }
@@ -967,7 +972,7 @@ textarea.image-studio-field-control {
   margin-top: 16px;
   padding: 11px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--accent);
   color: #fff;
   font: inherit;
@@ -1013,7 +1018,7 @@ textarea.image-studio-field-control {
   box-sizing: border-box;
   margin-top: 12px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--code-bg);
   object-fit: contain;
 }
@@ -1024,7 +1029,7 @@ textarea.image-studio-field-control {
   margin-top: 12px;
   padding: 16px;
   border: 1px dashed var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   font-size: 14px;
   color: var(--text);
   text-align: center;

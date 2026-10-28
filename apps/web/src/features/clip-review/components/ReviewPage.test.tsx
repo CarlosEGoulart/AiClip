@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReviewPage } from './ReviewPage';
@@ -28,7 +28,17 @@ vi.mock('../hooks', () => ({
   useSubmitClipReviewFeedback: vi.fn(),
 }));
 
+vi.mock('../../social/hooks', () => ({
+  useSocialConnections: vi.fn(),
+}));
+
+vi.mock('../../social-publish/hooks', () => ({
+  usePublishClip: vi.fn(),
+}));
+
 import { useClipReviews, useUpdateClipReviewStatus, useSubmitClipReviewFeedback } from '../hooks';
+import { useSocialConnections } from '../../social/hooks';
+import { usePublishClip } from '../../social-publish/hooks';
 
 const makeClip = (overrides: Partial<ClipReview> = {}): ClipReview => ({
   id: 1,
@@ -126,6 +136,19 @@ describe('ReviewPage', () => {
     (useSubmitClipReviewFeedback as Mock).mockReturnValue({
       mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
+    });
+    (useSocialConnections as Mock).mockReturnValue({
+      connections: [],
+      loading: false,
+      error: null,
+      fetchConnections: vi.fn(),
+      clearErrors: vi.fn(),
+    });
+    (usePublishClip as Mock).mockReturnValue({
+      publish: vi.fn().mockResolvedValue({ publish_id: 7, status: 'pending', platform: 'youtube' }),
+      isPending: false,
+      error: null,
+      clearErrors: vi.fn(),
     });
   });
 
@@ -373,5 +396,102 @@ describe('ReviewPage', () => {
     renderPage();
 
     expect(screen.getByRole('group', { name: 'Feedback form' })).toBeInTheDocument();
+  });
+
+  it('does not show Publish to YouTube button for non-approved clips', () => {
+    mockLoaded([clipTwo, clipThree]); // both pending
+    window.history.replaceState(null, '', `/?clipReviewId=${clipTwo.id}`);
+    renderPage();
+
+    expect(screen.queryByRole('button', { name: 'Publish to YouTube' })).not.toBeInTheDocument();
+  });
+
+  it('shows Publish to YouTube button for approved clip when YouTube connected', () => {
+    (useSocialConnections as Mock).mockReturnValue({
+      connections: [{ id: 1, platform: 'youtube', platform_label: 'YouTube', display_name: 'Test Channel', avatar_url: null, channel_url: null, status: 'connected', last_error: null, created_at: '', updated_at: '' }],
+      loading: false,
+      error: null,
+      fetchConnections: vi.fn(),
+      clearErrors: vi.fn(),
+    });
+
+    window.history.replaceState(null, '', `/?clipReviewId=${clipOne.id}`);
+    mockLoaded([clipOne]);
+    renderPage();
+
+    expect(screen.getByRole('button', { name: 'Publish to YouTube' })).toBeInTheDocument();
+  });
+
+  it('does not show Publish to YouTube button for approved clip when no YouTube connection', () => {
+    (useSocialConnections as Mock).mockReturnValue({
+      connections: [],
+      loading: false,
+      error: null,
+      fetchConnections: vi.fn(),
+      clearErrors: vi.fn(),
+    });
+
+    window.history.replaceState(null, '', `/?clipReviewId=${clipOne.id}`);
+    mockLoaded([clipOne]);
+    renderPage();
+
+    expect(screen.queryByRole('button', { name: 'Publish to YouTube' })).not.toBeInTheDocument();
+  });
+
+  it('opens PublishClipDialog with clipReviewId when Publish to YouTube is clicked', async () => {
+    (useSocialConnections as Mock).mockReturnValue({
+      connections: [{ id: 1, platform: 'youtube', platform_label: 'YouTube', display_name: 'Test Channel', avatar_url: null, channel_url: null, status: 'connected', last_error: null, created_at: '', updated_at: '' }],
+      loading: false,
+      error: null,
+      fetchConnections: vi.fn(),
+      clearErrors: vi.fn(),
+    });
+
+    window.history.replaceState(null, '', `/?clipReviewId=${clipOne.id}`);
+    mockLoaded([clipOne]);
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Publish to YouTube' }));
+
+    expect(screen.getByRole('dialog', { ariaModal: true })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Publish to YouTube' })).toBeInTheDocument();
+  });
+
+  it('calls usePublishClip with clipReviewId on dialog submit', async () => {
+    const publish = vi.fn().mockResolvedValue({ publish_id: 7, status: 'pending', platform: 'youtube' });
+    (usePublishClip as Mock).mockReturnValue({
+      publish,
+      isPending: false,
+      error: null,
+      clearErrors: vi.fn(),
+    });
+
+    (useSocialConnections as Mock).mockReturnValue({
+      connections: [{ id: 1, platform: 'youtube', platform_label: 'YouTube', display_name: 'Test Channel', avatar_url: null, channel_url: null, status: 'connected', last_error: null, created_at: '', updated_at: '' }],
+      loading: false,
+      error: null,
+      fetchConnections: vi.fn(),
+      clearErrors: vi.fn(),
+    });
+
+    window.history.replaceState(null, '', `/?clipReviewId=${clipOne.id}`);
+    mockLoaded([clipOne]);
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Publish to YouTube' }));
+
+    await userEvent.type(screen.getByLabelText('Title'), 'My Published Clip');
+    const dialog = screen.getByRole('dialog', { ariaModal: true });
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Publish to YouTube' }),
+    );
+
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clip_review_id: clipOne.id,
+        platform: 'youtube',
+        title: 'My Published Clip',
+      }),
+    );
   });
 });

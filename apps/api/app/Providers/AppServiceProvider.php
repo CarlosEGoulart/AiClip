@@ -4,11 +4,14 @@ namespace App\Providers;
 
 use App\Contracts\ImageGenerationProvider;
 use App\Contracts\SocialConnectionProvider;
+use App\Contracts\SocialPublisher;
 use App\Services\FakeImageGenerationProvider;
 use App\Services\FakeInstagramProvider;
 use App\Services\FakeTikTokProvider;
+use App\Services\FakeYouTubePublisher;
 use App\Services\FakeYouTubeProvider;
 use App\Services\SocialConnectionManager;
+use App\Services\YouTubePublisher;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -37,6 +40,14 @@ class AppServiceProvider extends ServiceProvider
             $this->app->bind(SocialConnectionProvider::class.':youtube', FakeYouTubeProvider::class);
             $this->app->bind(SocialConnectionProvider::class.':instagram', FakeInstagramProvider::class);
             $this->app->bind(SocialConnectionProvider::class.':tiktok', FakeTikTokProvider::class);
+        }
+
+        // Social publisher - YouTube publisher bound by platform key
+        $this->app->bind(SocialPublisher::class.':youtube', YouTubePublisher::class);
+
+        // Override with fake publisher in testing environment
+        if ($this->app->environment('testing')) {
+            $this->app->bind(SocialPublisher::class.':youtube', FakeYouTubePublisher::class);
         }
 
         $this->app->singleton(SocialConnectionManager::class);
@@ -90,6 +101,10 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('social-disconnect', function (Request $request) {
             return Limit::perMinute(config('social.rate_limits.disconnect', 30))->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('social-publish', function (Request $request) {
+            return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
         });
     }
 }

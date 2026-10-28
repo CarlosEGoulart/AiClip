@@ -46,4 +46,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(SocialConnection::class);
     }
+
+    /**
+     * Get the social publishes for the user.
+     */
+    public function socialPublishes(): HasMany
+    {
+        return $this->hasMany(SocialPublish::class);
+    }
 }

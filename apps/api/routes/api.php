@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\ImageController;
 use App\Http\Controllers\Api\V1\MediaAssetController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\SocialConnectionController;
+use App\Http\Controllers\Api\V1\SocialPublishController;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -83,6 +84,14 @@ Route::prefix('v1')->group(function () {
         Route::delete('/social/connections/{connection}', [SocialConnectionController::class, 'disconnect'])
             ->middleware(['throttle:social-disconnect', VerifyCsrfToken::class]);
         Route::get('/social/connections/{connection}/status', [SocialConnectionController::class, 'status'])
+            ->middleware('throttle:social-list');
+
+        // Social Publish routes (authenticated + CSRF for state-changing ops)
+        Route::post('/social/publish', [SocialPublishController::class, 'store'])
+            ->middleware(['throttle:social-publish', VerifyCsrfToken::class]);
+        Route::get('/social/publishes', [SocialPublishController::class, 'index'])
+            ->middleware('throttle:social-list');
+        Route::get('/social/publishes/{publish}', [SocialPublishController::class, 'show'])
             ->middleware('throttle:social-list');
     });
 
