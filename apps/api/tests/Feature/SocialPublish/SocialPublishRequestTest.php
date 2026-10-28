@@ -22,7 +22,21 @@ it('publish_request_validates_platform', function () {
 
     expect($rules['platform'])->toBeArray();
     expect($rules['platform'])->toContain('required');
-    expect($rules['platform'])->toContain('in:youtube');
+    expect($rules['platform'])->toContain('in:youtube,instagram');
+});
+
+it('publish_request_accepts_youtube_platform', function () {
+    $request = new PublishClipRequest();
+    $rules = $request->rules();
+
+    expect($rules['platform'])->toContain('in:youtube,instagram');
+});
+
+it('publish_request_accepts_instagram_platform', function () {
+    $request = new PublishClipRequest();
+    $rules = $request->rules();
+
+    expect($rules['platform'])->toContain('in:youtube,instagram');
 });
 
 it('publish_request_validates_title', function () {

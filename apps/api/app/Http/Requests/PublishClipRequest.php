@@ -27,7 +27,7 @@ class PublishClipRequest extends FormRequest
     {
         return [
             'clip_review_id' => ['required', 'integer', 'exists:clip_reviews,id'],
-            'platform' => ['required', 'string', 'in:youtube'],
+            'platform' => ['required', 'string', 'in:youtube,instagram'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
         ];

@@ -105,6 +105,57 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
         ])->assertNotFound();
     });
 
+    it('publish_requires_connected_instagram', function () {
+        $clipReview = \App\Models\ClipReview::factory()->for(\App\Models\DerivedAsset::factory()->renderedClip())->create([
+            'reviewer_id' => $this->user->id,
+            'status' => 'approved',
+        ]);
+
+        $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+            'clip_review_id' => $clipReview->id,
+            'platform' => 'instagram',
+            'title' => 'My Clip',
+        ])->assertNotFound();
+    });
+
+    it('publish_instagram_returns_202_on_success', function () {
+        $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+        $clipReview = $this->createPublishableClipReview();
+
+        $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+            'clip_review_id' => $clipReview->id,
+            'platform' => 'instagram',
+            'title' => 'My Instagram Clip',
+        ]);
+
+        $response->assertStatus(202);
+        $response->assertJsonStructure([
+            'data' => ['publish_id', 'status', 'platform'],
+        ]);
+        $response->assertJsonPath('data.status', 'pending');
+        $response->assertJsonPath('data.platform', 'instagram');
+    });
+
+    it('publish_instagram_creates_social_publish_row', function () {
+        $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+        $clipReview = $this->createPublishableClipReview();
+
+        $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+            'clip_review_id' => $clipReview->id,
+            'platform' => 'instagram',
+            'title' => 'My Instagram Clip',
+        ])->assertStatus(202);
+
+        $this->assertDatabaseHas('social_publishes', [
+            'user_id' => $this->user->id,
+            'social_connection_id' => $connection->id,
+            'clip_review_id' => $clipReview->id,
+            'platform' => 'instagram',
+            'status' => 'published',
+            'title' => 'My Instagram Clip',
+        ]);
+    });
+
     it('publish_blocks_duplicate', function () {
         $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
         $clipReview = $this->createPublishableClipReview();

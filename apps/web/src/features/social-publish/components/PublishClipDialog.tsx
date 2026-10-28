@@ -2,11 +2,19 @@ import { useRef, useEffect, useCallback, useState } from 'react';
 import type { PublishClipRequest } from '../types';
 import '../design-tokens.css';
 
+type Platform = 'youtube' | 'instagram';
+
+const PLATFORM_CONFIG: Record<Platform, { label: string; ariaLabel: string }> = {
+  youtube: { label: 'YouTube', ariaLabel: 'Publish to YouTube' },
+  instagram: { label: 'Instagram', ariaLabel: 'Publish to Instagram' },
+};
+
 interface PublishClipDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onPublish: (body: PublishClipRequest) => void;
   clipReviewId?: number;
+  availablePlatforms?: Platform[];
   loading?: boolean;
   error?: string | null;
   success?: boolean;
@@ -17,12 +25,16 @@ export function PublishClipDialog({
   onClose,
   onPublish,
   clipReviewId = 0,
+  availablePlatforms = ['youtube', 'instagram'],
   loading = false,
   error = null,
   success = false,
 }: PublishClipDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [platform, setPlatform] = useState<Platform>(
+    availablePlatforms.includes('youtube') ? 'youtube' : availablePlatforms[0],
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +108,7 @@ export function PublishClipDialog({
 
     const body: PublishClipRequest = {
       clip_review_id: clipReviewId,
-      platform: 'youtube',
+      platform,
       title: title.trim(),
       description: description.trim() || undefined,
     };
@@ -113,6 +125,31 @@ export function PublishClipDialog({
 
   if (!isOpen) return null;
 
+  const platformOptions = availablePlatforms.map((p) => {
+    const config = PLATFORM_CONFIG[p];
+    return (
+      <label
+        key={p}
+        className="platform-option"
+        role="radio"
+        aria-checked={platform === p}
+        aria-label={config.ariaLabel}
+      >
+        <input
+          type="radio"
+          name="publish-platform"
+          value={p}
+          checked={platform === p}
+          onChange={() => setPlatform(p)}
+          disabled={!availablePlatforms.includes(p)}
+          aria-label={config.ariaLabel}
+        />
+        {config.label}
+        {!availablePlatforms.includes(p) && <span className="platform-disabled">(not connected)</span>}
+      </label>
+    );
+  });
+
   return (
     <div
       className="publish-dialog-overlay"
@@ -127,7 +164,7 @@ export function PublishClipDialog({
       >
         <div className="publish-dialog-header">
           <h2 id="publish-dialog-title" className="publish-dialog-title">
-            Publish to YouTube
+            Publish to {PLATFORM_CONFIG[platform].label}
           </h2>
           <button
             ref={closeButtonRef}
@@ -151,6 +188,20 @@ export function PublishClipDialog({
         {!success && (
           <>
             <form onSubmit={handleSubmit} className="publish-dialog-form">
+              <div className="form-group">
+                <label htmlFor="publish-platform" className="form-label">
+                  Platform
+                </label>
+                <div
+                  id="publish-platform"
+                  className="platform-selector"
+                  role="radiogroup"
+                  aria-label="Publish platform"
+                >
+                  {platformOptions}
+                </div>
+              </div>
+
               <div className="form-group">
                 <label htmlFor="publish-title" className="form-label">
                   Title
@@ -204,7 +255,7 @@ export function PublishClipDialog({
                   type="submit"
                   className="btn btn-primary"
                   disabled={loading || !title.trim()}
-                  aria-label="Publish to YouTube"
+                  aria-label={PLATFORM_CONFIG[platform].ariaLabel}
                 >
                   {loading ? 'Publishing…' : 'Publish'}
                 </button>

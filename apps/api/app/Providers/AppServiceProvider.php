@@ -6,10 +6,12 @@ use App\Contracts\ImageGenerationProvider;
 use App\Contracts\SocialConnectionProvider;
 use App\Contracts\SocialPublisher;
 use App\Services\FakeImageGenerationProvider;
+use App\Services\FakeInstagramPublisher;
 use App\Services\FakeInstagramProvider;
 use App\Services\FakeTikTokProvider;
 use App\Services\FakeYouTubePublisher;
 use App\Services\FakeYouTubeProvider;
+use App\Services\InstagramPublisher;
 use App\Services\SocialConnectionManager;
 use App\Services\YouTubePublisher;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -44,10 +46,12 @@ class AppServiceProvider extends ServiceProvider
 
         // Social publisher - YouTube publisher bound by platform key
         $this->app->bind(SocialPublisher::class.':youtube', YouTubePublisher::class);
+        $this->app->bind(SocialPublisher::class.':instagram', InstagramPublisher::class);
 
         // Override with fake publisher in testing environment
         if ($this->app->environment('testing')) {
             $this->app->bind(SocialPublisher::class.':youtube', FakeYouTubePublisher::class);
+            $this->app->bind(SocialPublisher::class.':instagram', FakeInstagramPublisher::class);
         }
 
         $this->app->singleton(SocialConnectionManager::class);

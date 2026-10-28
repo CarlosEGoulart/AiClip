@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\SocialPublishStatus;
+use App\Jobs\PublishToInstagram;
 use App\Jobs\PublishToYouTube;
 use App\Models\ClipReview;
 use App\Models\DerivedAsset;
@@ -223,4 +224,137 @@ it('publish_without_youtube_connection_blocked', function () {
         'platform' => 'youtube',
         'title' => 'My Clip',
     ])->assertNotFound();
+});
+
+it('full_publish_flow_approved_clip_to_instagram', function () {
+    // Create connected Instagram connection
+    $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+
+    // Create approved clip review with completed render owned by test user
+    $clipReview = $this->createPublishableClipReview();
+
+    // Initiate publish
+    $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+        'clip_review_id' => $clipReview->id,
+        'platform' => 'instagram',
+        'title' => 'My Instagram Clip',
+        'description' => 'Test description',
+    ]);
+
+    $response->assertStatus(202);
+    $response->assertJsonPath('data.status', 'pending');
+
+    // Verify SocialPublish row exists (job runs synchronously in testing)
+    $this->assertDatabaseHas('social_publishes', [
+        'user_id' => $this->user->id,
+        'social_connection_id' => $connection->id,
+        'clip_review_id' => $clipReview->id,
+        'platform' => 'instagram',
+        'status' => 'published',
+        'title' => 'My Instagram Clip',
+    ]);
+
+    // List publishes
+    $listResponse = $this->spaRequest('GET', '/api/v1/social/publishes', $this->cookies);
+    $listResponse->assertOk();
+    $listResponse->assertJsonCount(1, 'data');
+});
+
+it('youtube_and_instagram_both_publishable', function () {
+    // Create connected connections for both platforms
+    $ytConnection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
+    $igConnection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+
+    // Create two approved clip reviews
+    $clipReview1 = $this->createPublishableClipReview();
+    $clipReview2 = $this->createPublishableClipReview();
+
+    // Publish to YouTube
+    $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+        'clip_review_id' => $clipReview1->id,
+        'platform' => 'youtube',
+        'title' => 'YouTube Clip',
+    ])->assertStatus(202);
+
+    // Publish to Instagram
+    $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+        'clip_review_id' => $clipReview2->id,
+        'platform' => 'instagram',
+        'title' => 'Instagram Clip',
+    ])->assertStatus(202);
+
+    // Verify both publishes exist
+    $this->assertDatabaseHas('social_publishes', [
+        'platform' => 'youtube',
+        'title' => 'YouTube Clip',
+    ]);
+    $this->assertDatabaseHas('social_publishes', [
+        'platform' => 'instagram',
+        'title' => 'Instagram Clip',
+    ]);
+});
+
+it('publish_without_instagram_connection_blocked', function () {
+    $clipReview = ClipReview::factory()->for(
+        DerivedAsset::factory()->renderedClip()
+    )->create([
+        'reviewer_id' => $this->user->id,
+        'status' => 'approved',
+    ]);
+
+    $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+        'clip_review_id' => $clipReview->id,
+        'platform' => 'instagram',
+        'title' => 'My Clip',
+    ])->assertNotFound();
+});
+
+it('instagram_publish_status_reflects_published_after_job', function () {
+    $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+    $clipReview = $this->createPublishableClipReview();
+
+    $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+        'clip_review_id' => $clipReview->id,
+        'platform' => 'instagram',
+        'title' => 'My Clip',
+    ]);
+    $response->assertStatus(202);
+
+    $publish = SocialPublish::first();
+
+    // Run job inline
+    $job = new PublishToInstagram($publish->id);
+    $job->handle();
+
+    $publish->refresh();
+    expect($publish->status)->toBe(SocialPublishStatus::Published);
+    expect($publish->external_video_id)->toBe('instagram_post_12345');
+    expect($publish->video_url)->toBe('https://instagram.com/p/instagram_post_12345');
+});
+
+it('instagram_failed_publish_stores_error_message', function () {
+    // Mock manager to return null token BEFORE the API request.
+    $manager = Mockery::mock(SocialConnectionManager::class);
+    $manager->shouldReceive('getValidAccessToken')->andReturnNull();
+    $this->app->instance(SocialConnectionManager::class, $manager);
+
+    $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+    $clipReview = $this->createPublishableClipReview();
+
+    $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
+        'clip_review_id' => $clipReview->id,
+        'platform' => 'instagram',
+        'title' => 'My Clip',
+    ]);
+    $response->assertStatus(202);
+
+    $publish = SocialPublish::first();
+
+    // Job already ran synchronously during the API request and failed
+    $publish->refresh();
+    expect($publish->status)->toBe(SocialPublishStatus::Failed);
+    expect($publish->error_message)->not->toBeEmpty();
+    expect(strtolower($publish->error_message))->not->toContain('access_token');
+    expect(strtolower($publish->error_message))->not->toContain('refresh_token');
+    expect($publish->error_message)->toBe('No valid access token available');
 });

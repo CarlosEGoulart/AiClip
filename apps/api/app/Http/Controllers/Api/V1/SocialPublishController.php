@@ -8,6 +8,7 @@ use App\Http\Resources\SocialPublishCollection;
 use App\Http\Resources\SocialPublishResource;
 use App\Enums\ClipReviewStatus;
 use App\Enums\SocialPublishStatus;
+use App\Jobs\PublishToInstagram;
 use App\Jobs\PublishToYouTube;
 use App\Models\ClipReview;
 use App\Models\SocialConnection;
@@ -56,20 +57,23 @@ class SocialPublishController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
-        // Find connected YouTube connection for this user
+        // Find connected platform connection for this user
+        $platform = $validated['platform'];
+
         $connection = SocialConnection::where('user_id', $user->id)
-            ->where('platform', 'youtube')
+            ->where('platform', $platform)
             ->where('status', 'connected')
             ->first();
 
         if (! $connection) {
             return response()->json([
-                'message' => 'No connected YouTube account found',
+                'message' => sprintf('No connected %s account found', ucfirst($platform)),
             ], Response::HTTP_NOT_FOUND);
         }
 
         // Check for duplicate publish
         $existingPublish = SocialPublish::where('clip_review_id', $clipReview->id)
+            ->where('platform', $platform)
             ->first();
 
         if ($existingPublish) {
@@ -83,14 +87,18 @@ class SocialPublishController extends Controller
             'user_id' => $user->id,
             'social_connection_id' => $connection->id,
             'clip_review_id' => $clipReview->id,
-            'platform' => $validated['platform'],
+            'platform' => $platform,
             'status' => SocialPublishStatus::Pending->value,
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
         ]);
 
-        // Dispatch publish job
-        PublishToYouTube::dispatch($publish->id);
+        // Dispatch publish job based on platform
+        if ($platform === 'instagram') {
+            PublishToInstagram::dispatch($publish->id);
+        } else {
+            PublishToYouTube::dispatch($publish->id);
+        }
 
         // Audit log (no tokens)
         Log::info('Publish initiated', [

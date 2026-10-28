@@ -13,6 +13,12 @@ const mockPublishResponse: PublishResponse = {
   platform: 'youtube',
 };
 
+const mockInstagramPublishResponse: PublishResponse = {
+  publish_id: 8,
+  status: 'pending',
+  platform: 'instagram',
+};
+
 const mockPublishes: SocialPublish[] = [
   {
     id: 7,
@@ -98,6 +104,26 @@ describe('usePublishClip', () => {
     expect(data).toBeNull();
     expect(result.current.isPending).toBe(false);
     expect(result.current.error).toBe('A publish already exists for this clip.');
+  });
+
+  it('publishes to instagram platform', async () => {
+    vi.mocked(socialPublishApi.publishClip).mockResolvedValue(mockInstagramPublishResponse);
+
+    const { result } = renderHook(() => usePublishClip());
+
+    let data: PublishResponse | null = null;
+    await act(async () => {
+      data = await result.current.publish({
+        clip_review_id: 1,
+        platform: 'instagram',
+        title: 'Instagram Clip',
+      });
+    });
+
+    expect(data).toEqual(mockInstagramPublishResponse);
+    expect(data?.platform).toBe('instagram');
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 });
 

@@ -145,6 +145,32 @@ describe('social-publish API boundary', () => {
     })).rejects.toMatchObject({ type: 'network' });
   });
 
+  it('publishClip sends instagram platform field', async () => {
+    const instagramResponse: PublishResponse = {
+      publish_id: 8,
+      status: 'pending',
+      platform: 'instagram',
+    };
+    fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(202, { data: instagramResponse }));
+
+    const result = await publishClip({
+      clip_review_id: 1,
+      platform: 'instagram',
+      title: 'My Instagram Clip',
+    });
+
+    expect(result).toEqual(instagramResponse);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/social/publish', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        clip_review_id: 1,
+        platform: 'instagram',
+        title: 'My Instagram Clip',
+      }),
+    }));
+  });
+
   it('getPublishes sends credentialed GET', async () => {
     fetchMock.mockResolvedValueOnce(response(200, publishListResponse));
     const result = await getPublishes();
