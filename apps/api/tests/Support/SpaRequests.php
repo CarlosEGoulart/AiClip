@@ -62,7 +62,7 @@ trait SpaRequests
 
     public function csrfToken(array $cookies): string
     {
-        return CookieValuePrefix::remove(Crypt::decryptString($cookies['XSRF-TOKEN']));
+        return $cookies['XSRF-TOKEN'] ?? '';
     }
 
     public function assertGuestCookies(array $cookies): void

@@ -121,8 +121,6 @@
   justify-content: center;
   padding: var(--sp-space-lg);
   background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
   animation: sp-fade-in var(--sp-motion-duration) var(--sp-motion-easing);
 }
 
@@ -137,7 +135,6 @@
   background: var(--sp-surface);
   border: 1px solid var(--sp-border);
   border-radius: var(--sp-radius);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
   animation: sp-slide-up var(--sp-motion-duration) var(--sp-motion-easing);
   display: flex;
   flex-direction: column;

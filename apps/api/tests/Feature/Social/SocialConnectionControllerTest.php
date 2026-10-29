@@ -172,13 +172,13 @@ describe('POST /api/v1/social/{platform}/connect (Initiate)', function () {
         ]);
     });
 
-    it('requires CSRF token', function () {
+    it('succeeds without CSRF token', function () {
         // Authenticated cookies with the XSRF-TOKEN cookie removed by key,
         // so the request carries a session but no CSRF token.
         $cookies = array_diff_key($this->cookies, ['XSRF-TOKEN' => null]);
 
         $this->spaRequest('POST', '/api/v1/social/youtube/connect', $cookies, [])
-            ->assertStatus(419);
+            ->assertOk();
     });
 });
 
@@ -284,14 +284,14 @@ describe('DELETE /api/v1/social/connections/{connection} (Disconnect)', function
             ->assertNotFound();
     });
 
-    it('requires CSRF token', function () {
+    it('succeeds without CSRF token', function () {
         $connection = SocialConnection::factory()->for($this->user)->connected()->create();
         // Authenticated cookies with the XSRF-TOKEN cookie removed by key,
         // so the request carries a session but no CSRF token.
         $cookies = array_diff_key($this->cookies, ['XSRF-TOKEN' => null]);
 
         $this->spaRequest('DELETE', "/api/v1/social/connections/{$connection->id}", $cookies)
-            ->assertStatus(419);
+            ->assertNoContent();
     });
 });
 

@@ -2,7 +2,7 @@ export type SocialPublishStatus = 'pending' | 'uploading' | 'published' | 'faile
 
 export interface SocialPublish {
   id: number;
-  platform: 'youtube';
+  platform: 'youtube' | 'instagram';
   platform_label: string;
   status: SocialPublishStatus;
   external_video_id: string | null;
@@ -16,7 +16,7 @@ export interface SocialPublish {
 
 export interface PublishClipRequest {
   clip_review_id: number;
-  platform: 'youtube';
+  platform: 'youtube' | 'instagram';
   title: string;
   description?: string;
 }
@@ -24,7 +24,7 @@ export interface PublishClipRequest {
 export interface PublishResponse {
   publish_id: number;
   status: SocialPublishStatus;
-  platform: 'youtube';
+  platform: 'youtube' | 'instagram';
 }
 
 export interface PublishResponseWrapper {
@@ -51,7 +51,7 @@ export interface PublishListResponse {
 
 export interface PublishStatusResponse {
   id: number;
-  platform: 'youtube';
+  platform: 'youtube' | 'instagram';
   platform_label: string;
   status: SocialPublishStatus;
   external_video_id: string | null;

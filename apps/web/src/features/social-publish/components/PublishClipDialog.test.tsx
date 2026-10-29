@@ -20,12 +20,27 @@ describe('PublishClipDialog', () => {
         isOpen={true}
         onClose={vi.fn()}
         onPublish={onPublish}
+        availablePlatforms={['youtube']}
       />,
     );
     expect(screen.getByLabelText('Title')).toBeInTheDocument();
     expect(screen.getByLabelText('Description')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publish to YouTube' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  });
+
+  it('renders platform selector with YouTube and Instagram', () => {
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        availablePlatforms={['youtube', 'instagram']}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Publish to YouTube' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Publish to Instagram' })).toBeInTheDocument();
   });
 
   it('publish button disabled during upload', async () => {
@@ -36,6 +51,7 @@ describe('PublishClipDialog', () => {
         onClose={vi.fn()}
         onPublish={onPublish}
         loading={true}
+        availablePlatforms={['youtube']}
       />,
     );
     const publishButton = screen.getByRole('button', { name: 'Publish to YouTube' });
@@ -51,6 +67,7 @@ describe('PublishClipDialog', () => {
         onClose={vi.fn()}
         onPublish={onPublish}
         clipReviewId={42}
+        availablePlatforms={['youtube']}
       />,
     );
 
@@ -69,6 +86,33 @@ describe('PublishClipDialog', () => {
     );
   });
 
+  it('publish button calls onPublish with platform instagram when selected', async () => {
+    const user = userEvent.setup();
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        clipReviewId={42}
+        availablePlatforms={['youtube', 'instagram']}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('Title'), 'My Video Title');
+    await user.click(screen.getByRole('radio', { name: 'Publish to Instagram' }));
+    await user.click(screen.getByRole('button', { name: 'Publish to Instagram' }));
+
+    expect(onPublish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clip_review_id: 42,
+        platform: 'instagram',
+        title: 'My Video Title',
+        description: undefined,
+      }),
+    );
+  });
+
   it('publish button omits clip_review_id when prop is not provided', async () => {
     const user = userEvent.setup();
     const onPublish = vi.fn();
@@ -77,6 +121,7 @@ describe('PublishClipDialog', () => {
         isOpen={true}
         onClose={vi.fn()}
         onPublish={onPublish}
+        availablePlatforms={['youtube']}
       />,
     );
 
@@ -94,6 +139,32 @@ describe('PublishClipDialog', () => {
     );
   });
 
+  it('defaults to youtube when both platforms available', () => {
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        availablePlatforms={['youtube', 'instagram']}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Publish to YouTube', checked: true })).toBeInTheDocument();
+  });
+
+  it('defaults to first available platform when youtube not available', () => {
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        availablePlatforms={['instagram']}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Publish to Instagram', checked: true })).toBeInTheDocument();
+  });
+
   it('shows error state on publish failure', () => {
     const onPublish = vi.fn();
     render(
@@ -102,6 +173,7 @@ describe('PublishClipDialog', () => {
         onClose={vi.fn()}
         onPublish={onPublish}
         error="Upload failed"
+        availablePlatforms={['youtube']}
       />,
     );
     expect(screen.getByRole('alert')).toHaveTextContent('Upload failed');
@@ -115,6 +187,7 @@ describe('PublishClipDialog', () => {
         onClose={vi.fn()}
         onPublish={onPublish}
         success={true}
+        availablePlatforms={['youtube']}
       />,
     );
     expect(screen.getByText('Clip published successfully!')).toBeInTheDocument();
@@ -128,6 +201,7 @@ describe('PublishClipDialog', () => {
         isOpen={true}
         onClose={vi.fn()}
         onPublish={onPublish}
+        availablePlatforms={['youtube']}
       />,
     );
 
@@ -143,6 +217,7 @@ describe('PublishClipDialog', () => {
         isOpen={true}
         onClose={vi.fn()}
         onPublish={vi.fn()}
+        availablePlatforms={['youtube']}
       />,
     );
 
@@ -161,6 +236,7 @@ describe('PublishClipDialog', () => {
         isOpen={true}
         onClose={vi.fn()}
         onPublish={onPublish}
+        availablePlatforms={['youtube', 'instagram']}
       />,
     );
     expect(screen.getByRole('button', { name: 'Close dialog' })).toBeInTheDocument();
@@ -176,10 +252,31 @@ describe('PublishClipDialog', () => {
         isOpen={true}
         onClose={onClose}
         onPublish={vi.fn()}
+        availablePlatforms={['youtube']}
       />,
     );
 
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('dialog title updates when platform changes', async () => {
+    const user = userEvent.setup();
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        availablePlatforms={['youtube', 'instagram']}
+      />,
+    );
+
+    expect(screen.getByText('Publish to YouTube')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Publish to Instagram' }));
+
+    expect(screen.getByText('Publish to Instagram')).toBeInTheDocument();
+    expect(screen.queryByText('Publish to YouTube')).not.toBeInTheDocument();
   });
 });

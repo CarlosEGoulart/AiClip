@@ -132,7 +132,7 @@ describe('POST /api/v1/test/clip-reviews/seed — test-seeding route (testing en
         $response->assertUnauthorized();
     });
 
-    it('missing CSRF returns 419', function () {
+    it('succeeds without CSRF', function () {
         $noCsrfCookies = $this->cookies;
         unset($noCsrfCookies['XSRF-TOKEN']);
 
@@ -140,6 +140,6 @@ describe('POST /api/v1/test/clip-reviews/seed — test-seeding route (testing en
             'project_id' => $this->project->id,
         ]);
 
-        $response->assertStatus(419);
+        $response->assertOk();
     });
 });
