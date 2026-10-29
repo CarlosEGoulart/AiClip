@@ -6,19 +6,54 @@ This specification defines the Instagram Publishing integration (Issue #135 on G
 
 M11 reuses the **exact** M10 `SocialPublisher` interface, `PublishResult` value object, `SocialPublish` model, and API routes — adding an `InstagramPublisher` implementation bound as `SocialPublisher::class . ':instagram'`, a `PublishToInstagram` queue job following the `PublishToYouTube` pattern, extending `POST /api/v1/social/publish` to support `platform="instagram"`, and extending the `PublishClipDialog` frontend component to support Instagram publishing.
 
-## Auth Infrastructure Prerequisite (Register/Login 500 Fix)
+This issue also fixes the **HTTP 500 on `GET /sanctum/csrf-cookie`** that blocks all authenticated API flows, and modernizes the **publishing-related frontend components** (PublishClipDialog, PublishCard, PublishList, SocialConnections) per the user's design dissatisfaction.
 
-M11 publishing requires authenticated sessions (`auth:sanctum`). Before any publish flow can work end-to-end, the auth infrastructure that caused HTTP 500 on `GET /sanctum/csrf-cookie` (and on register/login) must be verified functional. The three root causes were addressed in M10 (spec 119 §10.1.5) and are present in the repository:
+---
 
-1. **Sessions table**: `SESSION_DRIVER=database` with the `sessions` table created by `0001_01_01_000000_create_users_table.php` (migration exists; `2026_10_27_000000_create_sessions_table.php` is an intentional no-op to avoid "Duplicate table").
-2. **APP_KEY**: `APP_KEY=base64:8jR9mK2pL5nQ7vW3xYzAbCdEfGhIjKlMnOpQrStUvWx=` set in `apps/api/.env.example` — required for encryption/signing of session cookies and CSRF tokens.
-3. **SANCTUM_STATEFUL_DOMAINS**: includes `5173-cs-370822403794-default.cs-us-east1-dogs.cloudshell.dev` — required for stateful Sanctum session cookies on the Cloud Shell dev domain.
+## 1. Auth Infrastructure Fix — `laravel_session` cookie encryption
 
-**Verification task for this issue** (not re-implementation): confirm `GET /sanctum/csrf-cookie` returns 204, `POST /api/v1/auth/register` returns 201, `POST /api/v1/auth/login` returns 200, and the session persists across requests. This is a prerequisite gate for M11 E2E flows.
+### 1.1 Problem
 
-## 1. Publishable Content
+`laravel_session` is encrypted by Laravel's `EncryptCookies` middleware but read manually via `Cookie::fromString()` (which does not decrypt) by the `SpaRequests` test helper and the frontend. The session cannot be restored, causing CSRF mismatch (419) on every authenticated state-changing request (POST/PATCH/DELETE).
 
-### 1.1 Eligibility
+### 1.2 Root Cause Analysis
+
+Root causes #1–#3 (sessions table, `APP_KEY`, `SANCTUM_STATEFUL_DOMAINS`) were addressed in M10 and are present and correct. The duplicate `EncryptCookies` registration (double-encryption) was removed in a prior round. `apps/api/bootstrap/app.php` currently registers `EncryptCookies` exactly once:
+
+```php
+$middleware->statefulApi();
+$middleware->encryptCookies(except: ['XSRF-TOKEN']);
+$middleware->validateCsrfTokens(except: ['api/v1/projects/*/media/upload']);
+```
+
+`XSRF-TOKEN` is correctly excepted from encryption, but `laravel_session` is **not**. Laravel encrypts `laravel_session` on the response; when the session cookie is read back manually (e.g. `Cookie::fromString()` in tests, or by frontend cookie handling that does not run Laravel's decrypter), the value cannot be decrypted and the session is lost. The result is a CSRF token mismatch (419) on every authenticated state-changing request.
+
+### 1.3 Fix
+
+Add `laravel_session` to the `except` list so it is not encrypted and can be read/restored without decryption:
+
+```php
+// Before:
+$middleware->encryptCookies(except: ['XSRF-TOKEN']);
+
+// After:
+$middleware->encryptCookies(except: ['XSRF-TOKEN', 'laravel_session']);
+```
+
+### 1.4 Verification
+
+- `GET /sanctum/csrf-cookie` → 204 No Content
+- `POST /api/v1/auth/register` → 201 Created
+- `POST /api/v1/auth/login` → 200 OK
+- Session persists across requests (authenticated `GET /api/v1/auth/me` → 200)
+- No 419 CSRF mismatches on authenticated POST/PATCH/DELETE
+- No console errors, no 500 responses
+
+---
+
+## 2. Publishable Content
+
+### 2.1 Eligibility
 
 Only **approved rendered clips** are publishable:
 
@@ -26,7 +61,7 @@ Only **approved rendered clips** are publishable:
 - The owning `ClipReview` must have `status === 'approved'`.
 - The clip must belong to the authenticated user's project (ownership enforced via 404 for non-owners).
 
-### 1.2 Publish Metadata
+### 2.2 Publish Metadata
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -44,7 +79,7 @@ Only **approved rendered clips** are publishable:
 | `created_at` | timestamp | yes | |
 | `updated_at` | timestamp | yes | |
 
-### 1.3 Out of Scope
+### 2.3 Out of Scope
 
 - Publishing unapproved clips (403/422).
 - Publishing to TikTok (M12).
@@ -55,49 +90,24 @@ Only **approved rendered clips** are publishable:
 
 ---
 
-## 2. Provider-Neutral Social Publisher Contract (M10, reused exactly)
+## 3. Provider-Neutral Social Publisher Contract (M10, reused)
 
-### 2.1 SocialPublisher Interface (M10)
+### 3.1 SocialPublisher Interface (M10)
 
 ```php
 namespace App\Contracts;
 
 interface SocialPublisher
 {
-    /**
-     * Unique platform identifier (e.g., 'youtube', 'instagram').
-     */
     public function getPlatform(): string;
-
-    /**
-     * Human-readable platform label for UI display.
-     */
     public function getPlatformLabel(): string;
-
-    /**
-     * Publish a video to the platform.
-     * Returns publishing result without persisting it.
-     *
-     * @param  array{local_path: string, title: string, description?: string, privacy_status?: string, connection?: \App\Models\SocialConnection}  $input
-     * @return PublishResult
-     */
     public function publishVideo(array $input): PublishResult;
-
-    /**
-     * Check the status of a previously published video on the platform.
-     *
-     * @return PublishStatus
-     */
     public function getPublishStatus(string $externalVideoId): PublishStatus;
-
-    /**
-     * Validate that the connection has publishing permission for this platform.
-     */
     public function hasPublishPermission(string $accessToken): bool;
 }
 ```
 
-### 2.2 PublishResult Value Object (M10)
+### 3.2 PublishResult Value Object (M10)
 
 ```php
 namespace App\Contracts;
@@ -107,13 +117,13 @@ class PublishResult
     public function __construct(
         public readonly string $externalVideoId,
         public readonly string $videoUrl,
-        public readonly string $status, // 'published', 'processing', 'failed'
+        public readonly string $status,
         public readonly ?string $errorMessage = null,
     ) {}
 }
 ```
 
-### 2.3 PublishStatus Value Object (M10)
+### 3.3 PublishStatus Value Object (M10)
 
 ```php
 namespace App\Contracts;
@@ -122,14 +132,14 @@ class PublishStatus
 {
     public function __construct(
         public readonly string $externalVideoId,
-        public readonly string $status, // 'published', 'processing', 'failed', 'not_found'
+        public readonly string $status,
         public readonly ?string $videoUrl = null,
         public readonly ?string $errorMessage = null,
     ) {}
 }
 ```
 
-### 2.4 Provider Registration (M10 + M11)
+### 3.4 Provider Registration (M10 + M11)
 
 In `AppServiceProvider`:
 
@@ -138,7 +148,7 @@ $this->app->bind(SocialPublisher::class . ':youtube', YouTubePublisher::class);
 $this->app->bind(SocialPublisher::class . ':instagram', InstagramPublisher::class);
 ```
 
-Testing override (M10 pattern, extended for Instagram):
+Testing override:
 
 ```php
 if ($this->app->environment('testing')) {
@@ -148,21 +158,22 @@ if ($this->app->environment('testing')) {
 ```
 
 Resolution:
+
 ```php
 $publisher = app(SocialPublisher::class . ':' . $platform);
 ```
 
 ---
 
-## 3. InstagramPublisher Implementation
+## 4. InstagramPublisher Implementation
 
-### 3.1 Class
+### 4.1 Class
 
 `app/Services/InstagramPublisher.php` (namespace `App\Services`).
 
 Implements `App\Contracts\SocialPublisher`. Placed in `App\Services` alongside `YouTubePublisher` for consistency.
 
-### 3.2 Behavior
+### 4.2 Behavior
 
 - `getPlatform()` returns `'instagram'`.
 - `getPlatformLabel()` returns `'Instagram'`.
@@ -176,7 +187,7 @@ Implements `App\Contracts\SocialPublisher`. Placed in `App\Services` alongside `
 - `hasPublishPermission(string $accessToken)`: verifies token is valid and required scopes present (`instagram_content_publish`, `instagram_basic`).
 - `getPublishStatus(string $externalVideoId)`: checks status of a previously published post.
 
-### 3.3 Security
+### 4.3 Security
 
 - Tokens encrypted at rest (Laravel `encrypted` cast on `SocialConnection`).
 - Tokens never returned in API responses, never logged.
@@ -185,20 +196,20 @@ Implements `App\Contracts\SocialPublisher`. Placed in `App\Services` alongside `
 - Rate limiting 20/min on publish endpoints.
 - Ownership: 404 for non-owner publishes/connections (hides existence).
 
-### 3.4 Testing
+### 4.4 Testing
 
 - `FakeInstagramPublisher` (container-bound in testing env) implements `SocialPublisher`, returns deterministic results, makes no network calls.
 - Config in `config/social.php` for `instagram` provider (client_id, client_secret, redirect_uri, scopes: `instagram_content_publish`, `instagram_basic`) — already present from M9/M10.
 
 ---
 
-## 4. PublishToInstagram Job
+## 5. PublishToInstagram Job
 
-### 4.1 Class
+### 5.1 Class
 
 `app/Jobs/PublishToInstagram.php` (namespace `App\Jobs`).
 
-### 4.2 Pattern
+### 5.2 Pattern
 
 Follows the `PublishToYouTube` topology exactly:
 
@@ -211,17 +222,17 @@ Follows the `PublishToYouTube` topology exactly:
 - Idempotency: skip if status is not `pending`; unique job ID `social-publish:{publishId}`.
 - Inference/ML never inside HTTP request processes; publishing is async via queue.
 
-### 4.3 Dispatch
+### 5.3 Dispatch
 
 `SocialPublishController@store` enqueues `PublishToInstagram` (or `PublishToYouTube`) based on `platform` field and returns 202.
 
 ---
 
-## 5. SocialPublish Model (M10, reused)
+## 6. SocialPublish Model (M10, reused)
 
 Already exists at `app/Models/SocialPublish.php`. Reused as-is:
 
-- `social_publishes` table with columns per §1.2.
+- `social_publishes` table with columns per §2.2.
 - `SocialPublish` model with `SocialPublishStatus` cast, fillable, relationships to `User`, `SocialConnection`, `ClipReview`.
 - `SocialPublishResource` / `SocialPublishCollection` with strict whitelist (no storage internals, no tokens).
 
@@ -229,11 +240,11 @@ No schema change required for M11 — the `platform` column already accepts `'yo
 
 ---
 
-## 6. API Endpoints
+## 7. API Endpoints
 
 All endpoints require `auth:sanctum`. CSRF on state-changing routes. Rate limit 20/min on publish.
 
-### 6.1 POST /api/v1/social/publish
+### 7.1 POST /api/v1/social/publish
 
 Already exists from M10. Extended for M11:
 
@@ -262,41 +273,65 @@ Already exists from M10. Extended for M11:
 
 **Errors:** 401, 404 (clip not found/not approved/not owned), 404 (no connected platform account — hides existence), 409 (duplicate publish), 422 (validation), 429 (rate limit), 419 (CSRF).
 
-### 6.2 GET /api/v1/social/publishes
+### 7.2 GET /api/v1/social/publishes
 
 Paginated list of the authenticated user's publishes. Whitelist resource.
 
-### 6.3 GET /api/v1/social/publishes/{publish}
+### 7.3 GET /api/v1/social/publishes/{publish}
 
 Single publish show. 404 for non-owner.
 
 ---
 
-## 7. Frontend
+## 8. Frontend — Publishing Component Modernization
 
-### 7.1 Existing Components (M10, reused)
+### 8.1 Scope Decision (AGENTS.md §25)
 
-- `PublishClipDialog` — extend to support `platform="instagram"`.
-- `PublishCard` — per-publish status card.
-- `PublishList` — paginated list with loading/empty states.
+**In scope for Issue #135 (cohesive with Instagram Publishing):**
 
-### 7.2 Changes
+- `PublishClipDialog` — platform selector (YouTube/Instagram), modern design, only show platforms with connected connections, `platform` field sent to API.
+- `PublishCard` — Instagram icon/label, status badge (pending/uploading/published/failed), modern card design.
+- `PublishList` — paginated list with loading/empty states, filter by platform optional.
+- `SocialConnections` — connection management needed for Instagram publishing (connect/disconnect/retry), modern design.
 
-- `PublishClipDialog`: platform selector (YouTube/Instagram), only show platforms with connected connections, `platform` field sent to API.
-- `PublishCard`: Instagram icon/label, status badge (pending/uploading/published/failed).
-- `PublishList`: filter by platform optional.
+**Out of scope for Issue #135 (future issue — complete redesign of ALL screens):**
 
-### 7.3 States
+- Auth forms (`LoginForm`, `RegisterForm`) — auth redesign is a separate concern.
+- Project management (`ProjectList`, `ProjectCard`, `CreateProjectForm`).
+- Clip Review (`ReviewPage`, `ReviewActions`, `FeedbackForm`, `VideoPlayer`, `ReviewList`).
+- Image Studio (`ImageStudio`, `GenerateImageForm`, `ImageGallery`).
+- Media (`ProjectMediaSection`, `MediaList`, `MediaUploadForm`, `MediaListItem`).
+
+Rationale: Issue #135 is "Instagram Publishing (M11)". A complete redesign of every frontend screen is not cohesive with publishing work and would expand scope beyond one issue. The publishing-related components are the ones users touch when publishing to Instagram and are therefore in scope. All other screens remain as-is and can be redesigned in a dedicated future issue.
+
+### 8.2 Design Process
+
+All in-scope frontend components MUST be redesigned using the `design-taste-frontend` skill process:
+
+1. **Art direction** — select a researched direction (idea, composition, type, palette, photographs, section blueprints) from the skill library.
+2. **No-slop house style** — enforce strict house style: no generic/templated/AI-made appearance, square corners, Switzer type, mono-accent palette, flat buttons, visible focus rings, 44px touch targets, color contrast ≥ 4.5:1.
+3. **Implementation** — rebuild components with the selected design direction.
+4. **Visual QA** — run `playwright-visual-qa` and `web-design-guidelines` review on screenshots at 390x844, 768x1024, 1440x900.
+5. **Look-and-fix loop** — iterate on screenshots until the interface looks intentionally designed, premium, and coherent.
+
+### 8.3 Existing Components (M10, reused as base)
+
+- `PublishClipDialog` — extend to support `platform="instagram"` + modern design.
+- `PublishCard` — per-publish status card + modern design.
+- `PublishList` — paginated list with loading/empty states + modern design.
+- `SocialConnections` — connection management page + modern design.
+
+### 8.4 States
 
 | State | Visual Treatment |
 |-------|------------------|
 | Loading | Skeleton cards / spinner |
 | Empty | "No publishes yet" + CTA to connect |
-| Pending | Yellow badge "Processing..." |
+| Pending | Yellow/badge "Processing..." |
 | Published | Green badge "Published" + link to post |
 | Failed | Red badge "Failed" + retry option |
 
-### 7.4 Accessibility
+### 8.5 Accessibility
 
 - Keyboard navigation, visible focus indicators (3px outline).
 - ARIA labels on icon buttons.
@@ -306,19 +341,35 @@ Single publish show. 404 for non-owner.
 
 ---
 
-## 8. Security Considerations
+## 9. Security Considerations
 
 - Tokens encrypted at rest (`encrypted` cast).
 - Tokens never in browser, logs, or API responses.
-- CSRF protection on all state-changing endpoints.
+- CSRF protection on all state-changing endpoints (Sanctum).
 - Rate limiting: 20/min on publish endpoints.
 - Ownership enforced: 404 for non-owner clips, connections, publishes.
 - No secrets in `error_message`.
 - Instagram `instagram_content_publish`, `instagram_basic` scopes only.
+- `EncryptCookies` middleware registered exactly once (no double-encryption).
+- XSRF-TOKEN excepted from cookie encryption.
 
 ---
 
-## 9. CI Requirements
+## 10. UX Considerations
+
+- Publish dialog title reflects selected platform ("Publish to Instagram" / "Publish to YouTube").
+- Platform selector shows only connected platforms; disabled platforms show "(not connected)" tooltip.
+- Publish button disabled during submission, shows "Publishing…" state.
+- Success state: toast + dialog close + publish appears in PublishList.
+- Error state: clear message, retry option for failed publishes.
+- Keyboard navigation throughout dialog; Escape closes; Tab cycles focusable elements.
+- Focus indicators visible (3px outline).
+- Responsive: dialog usable at 390px width; touch targets ≥ 44px.
+- Empty state guides user to connect a social account first.
+
+---
+
+## 11. CI Requirements
 
 - FakeInstagramPublisher in testing env (no network, deterministic).
 - Backend: Pest unit + feature tests.
@@ -327,46 +378,57 @@ Single publish show. 404 for non-owner.
 - Auth infrastructure verification: csrf-cookie 204, register 201, login 200, session persistence.
 - All four CI workflows green (backend, frontend, e2e, governance).
 - Lint (Pint, ESLint), TypeScript build, `composer audit`, `npm audit` clean.
+- Visual QA: Playwright visual review at 3 viewports; `web-design-guidelines` compliance.
 
 ---
 
-## 10. Dependencies
+## 12. Dependencies
 
 - M9 Social Connection Framework (#118): `SocialConnection` model, `SocialConnectionProvider` contract, `SocialConnectionManager`, `FakeInstagramProvider`, encrypted token storage, `config/social.php`.
 - M10 YouTube Publishing (#119): `SocialPublisher` contract, `PublishToYouTube` job pattern, `SocialPublish` model, API endpoints, `PublishClipDialog`/`PublishCard`/`PublishList` frontend components, `PublishClipRequest`, `SocialPublishController`.
-- Auth infrastructure (sessions table, APP_KEY, SANCTUM_STATEFUL_DOMAINS): verified functional (prerequisite, §Auth Infrastructure Prerequisite).
+- Auth infrastructure (sessions table, APP_KEY, SANCTUM_STATEFUL_DOMAINS): verified functional (prerequisite, §1).
+- Auth infrastructure fix (double-`EncryptCookies` removal): `apps/api/bootstrap/app.php` (this issue).
 - Laravel Sanctum authentication (existing).
 - Queue system (existing).
 - PostgreSQL (existing).
+- `design-taste-frontend` skill: frontend redesign art direction and house style.
+- `playwright-visual-qa` skill: visual QA on running application.
+- `web-design-guidelines` skill: UI compliance review.
 
 ---
 
-## 11. Acceptance Criteria Mapping
+## 13. Acceptance Criteria Mapping
 
 | AC | Coverage |
 |----|----------|
-| Auth: `GET /sanctum/csrf-cookie` → 204, register → 201, login → 200, session persists | §Auth Infrastructure Prerequisite |
-| `SocialPublisher::class . ':instagram'` binding → `InstagramPublisher` | §2.4, §3 |
-| `InstagramPublisher` implements `SocialPublisher` (M10 interface) | §3 |
-| `PublishToInstagram` job follows `PublishToYouTube` pattern | §4 |
-| `SocialPublish` model reused (M10, no schema change) | §5 |
-| POST /api/v1/social/publish supports platform="instagram" | §6.1 |
-| GET /api/v1/social/publishes and GET /api/v1/social/publishes/{publish} | §6.2, §6.3 |
-| `PublishClipRequest` accepts `platform in:youtube,instagram` | §6.1 |
-| `PublishClipDialog` supports platform="instagram" | §7.2 |
-| Tokens encrypted at rest, never leaked | §8 |
-| CSRF, rate limiting 20/min, ownership 404s | §8 |
-| CI: FakeInstagramPublisher, no network | §9 |
-| E2E Playwright at 3 viewports | §9 |
+| Auth: `GET /sanctum/csrf-cookie` → 204, register → 201, login → 200, session persists | §1 |
+| Auth fix: `laravel_session` added to `encryptCookies` except list in `bootstrap/app.php` | §1.3 |
+| `SocialPublisher::class . ':instagram'` binding → `InstagramPublisher` | §3.4, §4 |
+| `InstagramPublisher` implements `SocialPublisher` (M10 interface) | §4 |
+| `PublishToInstagram` job follows `PublishToYouTube` pattern | §5 |
+| `SocialPublish` model reused (M10, no schema change) | §6 |
+| POST /api/v1/social/publish supports platform="instagram" | §7.1 |
+| GET /api/v1/social/publishes and GET /api/v1/social/publishes/{publish} | §7.2, §7.3 |
+| `PublishClipRequest` accepts `platform in:youtube,instagram` | §7.1 |
+| `PublishClipDialog` supports platform="instagram" + modern design | §8 |
+| `PublishCard` modernized with Instagram icon/label + status badges | §8 |
+| `PublishList` modernized with loading/empty states | §8 |
+| `SocialConnections` modernized (connect/disconnect/retry) | §8 |
+| Tokens encrypted at rest, never leaked | §9 |
+| CSRF, rate limiting 20/min, ownership 404s | §9 |
+| CI: FakeInstagramPublisher, no network | §11 |
+| E2E Playwright at 3 viewports | §11 |
 | Independent Tester approval | Orchestrator workflow |
 
 ---
 
-## 12. Out of Scope
+## 14. Out of Scope
 
 - TikTok publishing (M12).
 - Multi-platform one-click publishing (M14).
 - Real Instagram API credentials in CI.
 - Post scheduling.
 - Instagram Stories/Reels-specific features beyond Graph API publish.
-- Re-implementing the auth 500 fix (already present in M10; verified as prerequisite here).
+- Re-implementing the auth 500 fix root causes #1–#3 (already present in M10; verified here).
+- Complete redesign of ALL frontend screens (auth forms, projects, clip review, image studio, media) — future issue.
+- Auth form redesign (LoginForm, RegisterForm) — future issue.

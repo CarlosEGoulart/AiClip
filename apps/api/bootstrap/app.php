@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        $middleware->encryptCookies(except: ['XSRF-TOKEN', 'laravel_session']);
         $middleware->validateCsrfTokens(except: ['api/v1/projects/*/media/upload']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

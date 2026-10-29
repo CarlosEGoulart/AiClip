@@ -198,7 +198,7 @@ for (const viewport of VIEWPORTS) {
       await openPublishDialog(page);
 
       // Default platform is YouTube; switch to Instagram.
-      const instagramRadio = page.locator('label[role="radio"][aria-label="Publish to Instagram"]');
+      const instagramRadio = page.locator('input[name="publish-platform"][aria-label="Publish to Instagram"]');
       await expect(instagramRadio).toBeVisible();
       await instagramRadio.click();
 
@@ -220,7 +220,7 @@ for (const viewport of VIEWPORTS) {
       // When Instagram is not connected, the Instagram radio should not be an
       // enabled, selectable option (it is either absent or disabled).
       const instagramRadio = page.locator(
-        'label[role="radio"][aria-label="Publish to Instagram"]'
+        'input[name="publish-platform"][aria-label="Publish to Instagram"]'
       );
       const instagramInput = page.locator(
         'input[name="publish-platform"][value="instagram"]'
@@ -246,7 +246,7 @@ for (const viewport of VIEWPORTS) {
 
       // Select Instagram platform.
       const instagramRadio = page.locator(
-        'label[role="radio"][aria-label="Publish to Instagram"]'
+        'input[name="publish-platform"][aria-label="Publish to Instagram"]'
       );
       if (await instagramRadio.isVisible()) {
         await instagramRadio.click();

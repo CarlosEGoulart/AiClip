@@ -4,27 +4,34 @@
 
 This test plan defines all test scenarios required to verify the Instagram Publishing implementation. Tests are organized by layer (unit, feature, integration, E2E) and mapped to acceptance criteria. M11 reuses M9/M10 infrastructure **exactly** (the `SocialPublisher` interface, `PublishResult`, `SocialPublish` model, routes); tests focus on the Instagram-specific additions plus regression of existing YouTube publishing.
 
-An **Auth Infrastructure Verification** section is included to gate the M10 auth 500 fix (sessions table, APP_KEY, SANCTUM_STATEFUL_DOMAINS) — confirming `GET /sanctum/csrf-cookie` → 204, register → 201, login → 200, session persistence — since M11 publishing requires authenticated sessions.
+An **Auth Infrastructure Verification** section is included to verify the HTTP 500 fix on `GET /sanctum/csrf-cookie` (double-`EncryptCookies` removal) — confirming `GET /sanctum/csrf-cookie` → 204, register → 201, login → 200, session persistence — since M11 publishing requires authenticated sessions.
+
+A **Frontend Design Verification** section is included for the modernized publishing components (PublishClipDialog, PublishCard, PublishList, SocialConnections), covering Vitest component tests, Playwright E2E at 3 viewports, and visual QA requirements.
 
 ---
 
 ## Test Coverage Matrix
 
-| Acceptance Criterion | Unit Tests | Feature Tests | Integration Tests | E2E Tests |
-|---------------------|------------|---------------|-------------------|-----------|
-| Auth: csrf-cookie → 204, register → 201, login → 200, session persists | | ✓ | | ✓ |
-| SocialPublisher::class . ':instagram' binding → InstagramPublisher | ✓ | | | |
-| InstagramPublisher implements SocialPublisher (M10 interface) | ✓ | | | |
-| PublishToInstagram job follows PublishToYouTube pattern | ✓ | ✓ | ✓ | |
-| SocialPublish model reused (M10, no schema change) | ✓ | ✓ | | |
-| POST /api/v1/social/publish supports platform="instagram" | | ✓ | ✓ | ✓ |
-| GET /api/v1/social/publishes and GET /api/v1/social/publishes/{publish} | | ✓ | | ✓ |
-| PublishClipRequest accepts platform in:youtube,instagram | | ✓ | | |
-| PublishClipDialog supports platform="instagram" | ✓ | | | ✓ |
-| Tokens encrypted at rest, never leaked | ✓ | ✓ | ✓ | ✓ |
-| CSRF, rate limiting 20/min, ownership 404s | | ✓ | ✓ | |
-| CI: FakeInstagramPublisher, no network | ✓ | | | |
-| E2E Playwright at 3 viewports | | | | ✓ |
+| Acceptance Criterion | Unit Tests | Feature Tests | Integration Tests | E2E Tests | Visual QA |
+|---------------------|------------|---------------|-------------------|-----------|-----------|
+| Auth: csrf-cookie → 204, register → 201, login → 200, session persists | | ✓ | | ✓ | |
+| Auth fix: double-EncryptCookies removed from bootstrap/app.php | | ✓ | | | |
+| SocialPublisher::class . ':instagram' binding → InstagramPublisher | ✓ | | | | |
+| InstagramPublisher implements SocialPublisher (M10 interface) | ✓ | | | | |
+| PublishToInstagram job follows PublishToYouTube pattern | ✓ | ✓ | ✓ | | |
+| SocialPublish model reused (M10, no schema change) | ✓ | ✓ | | | |
+| POST /api/v1/social/publish supports platform="instagram" | | ✓ | ✓ | ✓ | |
+| GET /api/v1/social/publishes and GET /api/v1/social/publishes/{publish} | | ✓ | | ✓ | |
+| PublishClipRequest accepts platform in:youtube,instagram | | ✓ | | | |
+| PublishClipDialog supports platform="instagram" + modern design | ✓ | | | ✓ | ✓ |
+| PublishCard modernized (Instagram icon/label, status badges) | ✓ | | | ✓ | ✓ |
+| PublishList modernized (loading/empty states) | ✓ | | | ✓ | ✓ |
+| SocialConnections modernized (connect/disconnect/retry) | ✓ | | | ✓ | ✓ |
+| Tokens encrypted at rest, never leaked | ✓ | ✓ | ✓ | ✓ | |
+| CSRF, rate limiting 20/min, ownership 404s | | ✓ | ✓ | | |
+| CI: FakeInstagramPublisher, no network | ✓ | | | | |
+| E2E Playwright at 3 viewports | | | | ✓ | |
+| Visual QA: design-taste-frontend + web-design-guidelines | | | | | ✓ |
 
 ---
 
@@ -34,13 +41,14 @@ An **Auth Infrastructure Verification** section is included to gate the M10 auth
 
 | Test Case | Description |
 |-----------|-------------|
-| `csrf_cookie_returns_204` | `GET /sanctum/csrf-cookie` → 204 No Content |
+| `csrf_cookie_returns_204` | `GET /sanctum/csrf-cookie` → 204 No Content (verifies `laravel_session` except-list fix) |
 | `register_returns_201` | `POST /api/v1/auth/register` → 201 Created |
 | `login_returns_200` | `POST /api/v1/auth/login` → 200 OK |
-| `session_persists_across_requests` | After login, authenticated request (e.g. `/api/v1/auth/me`) → 200 |
-| `login_regenerates_session` | Login triggers session regenerate (no 500) |
+| `session_persists_across_requests` | After login, authenticated request (`GET /api/v1/auth/me`) → 200 |
+| `login_regenerates_session` | Login triggers session regenerate (no 419) |
+| `no_csrf_mismatch_on_state_changing_requests` | No 419 CSRF mismatch on authenticated POST/PATCH/DELETE (verifies `laravel_session` is readable without decryption) |
 
-These tests gate the M10 auth 500 fix (sessions table + APP_KEY + SANCTUM_STATEFUL_DOMAINS). They must pass before M11 E2E publish flows are meaningful.
+These tests gate the auth fix (`laravel_session` added to `encryptCookies` except list). They must pass before M11 E2E publish flows are meaningful.
 
 ---
 
@@ -188,8 +196,8 @@ These tests gate the M10 auth 500 fix (sessions table + APP_KEY + SANCTUM_STATEF
 
 ## 4. Frontend Unit Tests (Vitest + React Testing Library)
 
-### 4.1 API Client Tests
-**File**: `apps/web/src/features/social/api/index.test.ts`
+### 4.1 API Client Tests (social-publish)
+**File**: `apps/web/src/features/social-publish/api/index.test.ts`
 
 | Test Case | Description |
 |-----------|-------------|
@@ -202,11 +210,11 @@ These tests gate the M10 auth 500 fix (sessions table + APP_KEY + SANCTUM_STATEF
 | `getPublishes_handles_network_error` | Classified network error |
 
 ### 4.2 PublishClipDialog Component Tests
-**File**: `apps/web/src/features/social/components/PublishClipDialog.test.tsx`
+**File**: `apps/web/src/features/social-publish/components/PublishClipDialog.test.tsx`
 
 | Test Case | Description |
 |-----------|-------------|
-| `renders_platform_selector` | YouTube and Instagram options |
+| `renders_platform_selector_modern` | YouTube and Instagram options with modern styling |
 | `instagram_disabled_when_no_connection` | Instagram option disabled, tooltip explains |
 | `youtube_enabled_when_connection_exists` | YouTube option enabled |
 | `submits_with_platform_instagram` | API called with platform='instagram' |
@@ -217,27 +225,53 @@ These tests gate the M10 auth 500 fix (sessions table + APP_KEY + SANCTUM_STATEF
 | `keyboard_navigation_works` | Tab to platform selector, Enter/Space activates |
 | `focus_indicators_visible` | 3px outline on focused elements |
 | `aria_labels_on_platform_buttons` | Platform buttons have aria-label |
+| `dialog_title_updates_with_platform` | Title changes "Publish to YouTube"/"Publish to Instagram" |
+| `touch_targets_min_44px` | All interactive elements ≥ 44px |
 
 ### 4.3 PublishCard Component Tests
-**File**: `apps/web/src/features/social/components/PublishCard.test.tsx`
+**File**: `apps/web/src/features/social-publish/components/PublishCard.test.tsx`
 
 | Test Case | Description |
 |-----------|-------------|
-| `renders_instagram_icon_and_label` | Instagram branding |
-| `renders_youtube_icon_and_label` | YouTube branding (regression) |
+| `renders_instagram_icon_and_label_modern` | Instagram branding with modern design |
+| `renders_youtube_icon_and_label_modern` | YouTube branding (regression) |
 | `renders_pending_status` | Yellow badge "Processing..." |
 | `renders_published_status` | Green badge + link to post |
 | `renders_failed_status` | Red badge + retry option |
+| `status_badge_color_and_text` | Color + text (not color only) |
 
 ### 4.4 PublishList Component Tests
-**File**: `apps/web/src/features/social/components/PublishList.test.tsx`
+**File**: `apps/web/src/features/social-publish/components/PublishList.test.tsx`
 
 | Test Case | Description |
 |-----------|-------------|
 | `renders_loading_skeletons` | Skeletons when loading |
-| `renders_empty_state` | "No publishes yet" + CTA |
+| `renders_empty_state` | "No publishes yet" + CTA to connect |
 | `renders_list_of_cards` | Maps publishes to PublishCard |
 | `filters_by_platform_optional` | Platform filter works |
+
+### 4.5 SocialConnections Component Tests
+**File**: `apps/web/src/features/social/components/SocialConnections.test.tsx`
+
+| Test Case | Description |
+|-----------|-------------|
+| `renders_hero_section_modern` | Hero with headline + description |
+| `renders_connection_list` | List of connection cards |
+| `renders_connect_button` | Connect Account button |
+| `connect_opens_modal` | Clicking connect opens platform modal |
+| `keyboard_navigation` | Tab through connections, all actions reachable |
+| `focus_indicators_visible` | 3px outline on focused elements |
+| `touch_targets_min_44px` | All interactive elements ≥ 44px |
+
+### 4.6 SocialConnectionCard Component Tests
+**File**: `apps/web/src/features/social/components/SocialConnectionCard.test.tsx`
+
+| Test Case | Description |
+|-----------|-------------|
+| `renders_platform_icon_and_name` | Platform avatar + name |
+| `renders_status_badge` | Connected/expired/revoked/error badge |
+| `disconnect_button_works` | Disconnect action |
+| `reconnect_button_works` | Reconnect action |
 
 ---
 
@@ -267,6 +301,8 @@ These tests gate the M10 auth 500 fix (sessions table + APP_KEY + SANCTUM_STATEF
 | `Publish - Focus Indicators` | 3px outline on focused elements | All 3 |
 | `Publish - Responsive Layout` | Dialog usable at 390px width | All 3 |
 | `Publish - Touch Targets` | All interactive ≥ 44px | All 3 |
+| `SocialConnections - Connect Flow` | Open connect modal, select platform | All 3 |
+| `SocialConnections - Disconnect` | Disconnect a connection | All 3 |
 
 ### 5.3 Fake Publisher Strategy for E2E
 
@@ -277,33 +313,101 @@ Since real Instagram isn't available in CI:
 
 ---
 
-## 6. Governance & Quality Gates
+## 6. Visual QA Requirements
 
-### 6.1 Backend Lint (Pint)
+### 6.1 Playwright Visual QA (playwright-visual-qa skill)
+
+Run `playwright-visual-qa` on the following pages/components at all 3 viewports (390x844, 768x1024, 1440x900):
+
+| Component/Page | Viewports | Checks |
+|----------------|-----------|--------|
+| PublishClipDialog (YouTube) | 390x844, 768x1024, 1440x900 | layout, overflow, spacing, alignment, typography, dialog, focus, keyboard |
+| PublishClipDialog (Instagram) | 390x844, 768x1024, 1440x900 | layout, overflow, spacing, alignment, typography, dialog, focus, keyboard |
+| PublishClipDialog (loading state) | 390x844, 768x1024, 1440x900 | loading state, spinner, disabled button |
+| PublishClipDialog (error state) | 390x844, 768x1024, 1440x900 | error state, alert message |
+| PublishClipDialog (success state) | 390x844, 768x1024, 1440x900 | success state, toast |
+| PublishCard (pending/uploading/published/failed) | 390x844, 768x1024, 1440x900 | status badges, icons, links |
+| PublishList (loading/empty/populated) | 390x844, 768x1024, 1440x900 | skeletons, empty state, list |
+| SocialConnections (hero + list) | 390x844, 768x1024, 1440x900 | hero, cards, connect button, modal |
+| SocialConnections (connect modal) | 390x844, 768x1024, 1440x900 | platform grid, keyboard nav, focus trap |
+
+### 6.2 Web Design Guidelines Review (web-design-guidelines skill)
+
+Review all redesigned components against:
+
+1. Is the primary action obvious?
+2. Is visual hierarchy clear?
+3. Is spacing consistent?
+4. Are controls visually recognizable?
+5. Are interactive states clear?
+6. Does mobile appear intentionally designed?
+7. Are errors understandable?
+8. Are loading states stable?
+9. Are destructive actions distinguishable?
+10. Is content density appropriate?
+11. Does the interface look coherent rather than automatically generated?
+12. Are accessibility fundamentals respected?
+
+### 6.3 Design-Taste-Frontend House Style Compliance
+
+Verify all redesigned components comply with:
+
+- [ ] Square corners (house rule: `--radius: 0`)
+- [ ] Switzer type (grotesk-tight), clamp-based type scale
+- [ ] Mono-accent palette (no assistant palette: no cream/terracotta/violet)
+- [ ] Flat buttons, one fill color
+- [ ] Visible focus rings (3px outline, offset 2px)
+- [ ] 44px touch targets
+- [ ] Color contrast ≥ 4.5:1
+- [ ] No generic/templated/AI-made appearance
+- [ ] No gradients (platform brand gradient allowed as icon background only)
+- [ ] No shadows at rest (focus rings only; modal overlay is true overlay)
+- [ ] No thin rules/hairlines (separators use background tone steps)
+- [ ] No tiny uppercase letter-spaced labels
+- [ ] No icon-topped feature cards (cards are interface fragments)
+- [ ] No glass/backdrop blur (modal overlay is solid rgba)
+- [ ] Reduced-motion support (`prefers-reduced-motion: reduce`)
+
+### 6.4 Browser Console / Network / API Inspection
+
+Tester MUST inspect:
+- browser console (no unexpected errors)
+- network requests (no unexpected 4xx/5xx)
+- API responses (correct status codes, no token leakage)
+- failed resources
+- unexpected redirects
+
+Unexpected console errors fail review. Unexpected application 4xx/5xx errors fail review unless explicitly required by the tested scenario.
+
+---
+
+## 7. Governance & Quality Gates
+
+### 7.1 Backend Lint (Pint)
 ```bash
 vendor/bin/pint --dirty --format agent
 ```
 - 0 errors
 
-### 6.2 Frontend Lint (ESLint)
+### 7.2 Frontend Lint (ESLint)
 ```bash
 npm run lint
 ```
-- 0 errors
+- 0 errors in social-publish/social files (19 pre-existing warnings in out-of-scope files acceptable)
 
-### 6.3 TypeScript Build
+### 7.3 TypeScript Build
 ```bash
 npm run build
 ```
 - Compiles without errors
 
-### 6.4 Governance Tests
+### 7.4 Governance Tests
 ```bash
 php artisan test --filter=Governance
 ```
-- All pass
+- All pass (Python governance tests in `tests/governance/`)
 
-### 6.5 Full Test Suite
+### 7.5 Full Test Suite
 ```bash
 # Backend
 php artisan test --compact
@@ -318,7 +422,7 @@ npm run test:e2e
 
 ---
 
-## 7. Manual Verification Checklist
+## 8. Manual Verification Checklist
 
 | Check | Verification Method |
 |-------|---------------------|
@@ -336,22 +440,24 @@ npm run test:e2e
 | CSRF protection: missing token → 419 | Submit without X-XSRF-TOKEN |
 | Keyboard navigation throughout | Tab through entire dialog |
 | Focus indicators visible | 3px outline on each focused element |
+| Visual QA passes at 3 viewports | Playwright visual QA + web-design-guidelines |
+| Design-taste-house-style compliance | All house rules verified |
 
 ---
 
-## 8. Test Data Requirements
+## 9. Test Data Requirements
 
-### 8.1 Fake Provider Behaviors
+### 9.1 Fake Provider Behaviors
 - `FakeInstagramPublisher`: deterministic success/failure, no network, implements `SocialPublisher`.
 
-### 8.2 Database Seeding
+### 9.2 Database Seeding
 - `SocialConnectionFactory`: connected Instagram and YouTube connections.
 - `SocialPublishFactory`: publishes in various states.
 - Factories for User, Project, ClipReview, DerivedAsset (existing).
 
 ---
 
-## 9. Evidence Collection
+## 10. Evidence Collection
 
 Upon completion, update `specs/120-social-publishing/evidence.md` with:
 
@@ -361,11 +467,14 @@ Upon completion, update `specs/120-social-publishing/evidence.md` with:
    - E2E test count/pass/fail (per viewport)
    - Governance test count
 
-2. **Screenshots**
+2. **Screenshots** (from Playwright visual QA)
    - PublishClipDialog with Instagram (3 viewports)
+   - PublishClipDialog with YouTube (3 viewports)
    - PublishList with published Instagram post (3 viewports)
    - Instagram disabled state (3 viewports)
+   - SocialConnections hero + list (3 viewports)
    - Focus indicators visible
+   - Loading/empty/error states
 
 3. **Console/Network Logs**
    - Clean console output
@@ -380,7 +489,7 @@ Upon completion, update `specs/120-social-publishing/evidence.md` with:
 
 ---
 
-## 10. Test Execution Order (CI Pipeline)
+## 11. Test Execution Order (CI Pipeline)
 
 ```yaml
 # Conceptual CI job order
@@ -393,21 +502,26 @@ jobs:
     - npm run test       # Vitest unit/component
     - npm run lint       # ESLint
     - npm run build      # TypeScript compile
+  visual-qa:
+    - playwright-visual-qa at 390x844, 768x1024, 1440x900
+    - web-design-guidelines review
   e2e-tests:
     - npm run test:e2e   # Playwright at 3 viewports
   governance:
     - php artisan test --filter=Governance
+    - python -m unittest discover -s tests/governance
   merge-gate:
     - scripts/merge_gate.py
 ```
 
 ---
 
-## 11. Risk Areas & Mitigation
+## 12. Risk Areas & Mitigation
 
 | Risk | Mitigation |
 |------|------------|
 | Auth 500 still present at runtime | AuthFlowVerificationTest gates csrf-cookie/register/login/session before E2E |
+| Double-EncryptCookies not fully removed | Verify only one EncryptCookies registration in bootstrap/app.php |
 | Token leakage in logs | Unit test `no_tokens_in_logs`, code review of all Log:: calls |
 | Token leakage in API | Resource tests verify whitelist, integration test `tokens_never_in_api_response` |
 | Cross-user access | Feature tests `*_returns_404_for_other_user` on all endpoints |
@@ -417,16 +531,21 @@ jobs:
 | Unapproved clip published | Feature test `store_returns_404_for_unapproved_clip` |
 | UI accessibility gaps | E2E tests for keyboard, focus, ARIA |
 | Mobile layout broken | E2E tests at 390x844 viewport |
-| Interface drift from M10 | Spec enforces exact M10 interface (`publishVideo`, `hasPublishPermission`, `getPlatformLabel`); contract test catches drift |
+| Interface drift from M10 | Spec enforces exact M10 interface; contract test catches drift |
+| Visual design still unsatisfactory | design-taste-frontend skill process + playwright-visual-qa + web-design-guidelines |
+| Scope creep (full redesign of all screens) | Scope split defined in spec §8.1; non-publishing screens deferred to future issue |
 
 ---
 
-## 12. Definition of Done (Testing)
+## 13. Definition of Done (Testing)
 
 - [ ] All unit tests pass (backend + frontend)
 - [ ] All feature tests pass (including AuthFlowVerificationTest)
 - [ ] All integration tests pass
 - [ ] All E2E tests pass at 3 viewports
+- [ ] Visual QA passes at 3 viewports (playwright-visual-qa)
+- [ ] web-design-guidelines review passes
+- [ ] design-taste-house-style compliance verified
 - [ ] Lint passes (backend + frontend)
 - [ ] TypeScript build passes
 - [ ] Governance tests pass

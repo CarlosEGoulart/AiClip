@@ -128,13 +128,7 @@ export function PublishClipDialog({
   const platformOptions = availablePlatforms.map((p) => {
     const config = PLATFORM_CONFIG[p];
     return (
-      <label
-        key={p}
-        className="platform-option"
-        role="radio"
-        aria-checked={platform === p}
-        aria-label={config.ariaLabel}
-      >
+      <label key={p} className="platform-option">
         <input
           type="radio"
           name="publish-platform"

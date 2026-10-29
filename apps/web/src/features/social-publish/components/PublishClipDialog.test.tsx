@@ -3,8 +3,6 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PublishClipDialog } from './PublishClipDialog';
 
-type Platform = 'youtube' | 'instagram';
-
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn());
 });
