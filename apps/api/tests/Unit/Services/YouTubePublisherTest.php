@@ -8,6 +8,7 @@ use App\Contracts\SocialPublisher;
 use App\Models\SocialConnection;
 use App\Services\SocialConnectionManager;
 use App\Services\YouTubePublisher;
+use Illuminate\Support\Facades\Http;
 use Mockery;
 use Tests\TestCase;
 
@@ -64,6 +65,8 @@ it('publish_video_returns_failed_when_no_token', function () {
 });
 
 it('publish_video_does_not_leak_token', function () {
+    Http::fake();
+
     $manager = Mockery::mock(SocialConnectionManager::class);
     $manager->shouldReceive('getValidAccessToken')->andReturn('fake_token_123');
     $publisher = new YouTubePublisher($manager);
@@ -76,7 +79,7 @@ it('publish_video_does_not_leak_token', function () {
         'title' => 'Test Clip',
     ]);
 
-    $resultAsString = (string) $result->externalVideoId . (string) $result->videoUrl . (string) $result->errorMessage;
+    $resultAsString = (string) $result->externalVideoId.(string) $result->videoUrl.(string) $result->errorMessage;
 
     expect($resultAsString)->not->toContain('token');
 });
