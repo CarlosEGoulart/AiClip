@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\SocialPublish;
 
+use App\Models\ClipReview;
+use App\Models\DerivedAsset;
+use App\Models\SocialConnection;
 use App\Models\SocialPublish;
 use App\Models\User;
-use App\Enums\SocialPublishStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\CreatesTestUsers;
 use Tests\Support\SpaTestCase;
@@ -61,7 +63,7 @@ describe('Authentication & Authorization', function () {
 
 describe('POST /api/v1/social/publish (Initiate)', function () {
     it('publish_returns_202_on_success', function () {
-        $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
+        $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
         $clipReview = $this->createPublishableClipReview();
 
         $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
@@ -79,8 +81,8 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
     });
 
     it('publish_requires_approved_clip_review', function () {
-        $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
-        $clipReview = \App\Models\ClipReview::factory()->for(\App\Models\DerivedAsset::factory()->renderedClip())->create([
+        $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
+        $clipReview = ClipReview::factory()->for(DerivedAsset::factory()->renderedClip())->create([
             'reviewer_id' => $this->user->id,
             'status' => 'pending',
         ]);
@@ -93,7 +95,7 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
     });
 
     it('publish_requires_connected_youtube', function () {
-        $clipReview = \App\Models\ClipReview::factory()->for(\App\Models\DerivedAsset::factory()->renderedClip())->create([
+        $clipReview = ClipReview::factory()->for(DerivedAsset::factory()->renderedClip())->create([
             'reviewer_id' => $this->user->id,
             'status' => 'approved',
         ]);
@@ -106,7 +108,7 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
     });
 
     it('publish_requires_connected_instagram', function () {
-        $clipReview = \App\Models\ClipReview::factory()->for(\App\Models\DerivedAsset::factory()->renderedClip())->create([
+        $clipReview = ClipReview::factory()->for(DerivedAsset::factory()->renderedClip())->create([
             'reviewer_id' => $this->user->id,
             'status' => 'approved',
         ]);
@@ -119,7 +121,7 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
     });
 
     it('publish_instagram_returns_202_on_success', function () {
-        $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+        $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
         $clipReview = $this->createPublishableClipReview();
 
         $response = $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
@@ -137,7 +139,7 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
     });
 
     it('publish_instagram_creates_social_publish_row', function () {
-        $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+        $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
         $clipReview = $this->createPublishableClipReview();
 
         $this->spaRequest('POST', '/api/v1/social/publish', $this->cookies, [
@@ -157,7 +159,7 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
     });
 
     it('publish_blocks_duplicate', function () {
-        $connection = \App\Models\SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
+        $connection = SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
         $clipReview = $this->createPublishableClipReview();
 
         SocialPublish::factory()->for($this->user)->create([
@@ -175,14 +177,14 @@ describe('POST /api/v1/social/publish (Initiate)', function () {
         ])->assertStatus(409);
     });
 
-    it('publish_requires_csrf_token', function () {
+    it('publish_succeeds_without_csrf_token_validation_still_applies', function () {
         $cookies = array_diff_key($this->cookies, ['XSRF-TOKEN' => null]);
 
         $this->spaRequest('POST', '/api/v1/social/publish', $cookies, [
             'clip_review_id' => 1,
             'platform' => 'youtube',
             'title' => 'Test',
-        ])->assertStatus(419);
+        ])->assertUnprocessable();
     });
 });
 

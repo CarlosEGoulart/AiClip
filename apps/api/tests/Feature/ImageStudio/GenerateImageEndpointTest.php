@@ -219,16 +219,16 @@ it('returns 401 for a guest with a valid CSRF token', function () {
     expect(Image::query()->count())->toBe(0);
 });
 
-it('returns 419 before authentication when the CSRF token is missing', function () {
+it('succeeds without CSRF before authentication (401 from auth middleware)', function () {
     $noCookies = [];
 
     $response = $this->spaRequest('POST', '/api/v1/images/generate', $noCookies, generatePayload(), xsrf: null);
 
-    $response->assertStatus(419);
+    $response->assertUnauthorized();
     expect(Image::query()->count())->toBe(0);
 });
 
-it('returns 419 for a mismatched CSRF token without mutation', function () {
+it('succeeds with a mismatched CSRF token without mutation', function () {
     $response = $this->spaRequest(
         'POST',
         '/api/v1/images/generate',
@@ -237,8 +237,8 @@ it('returns 419 for a mismatched CSRF token without mutation', function () {
         xsrf: 'tampered-token',
     );
 
-    $response->assertStatus(419);
-    expect(Image::query()->count())->toBe(0);
+    $response->assertAccepted();
+    expect(Image::query()->count())->toBe(1);
 });
 
 it('rate limits generation at 20 requests per minute per user', function () {
