@@ -26,7 +26,7 @@ publishing infrastructure. This file references the primary evidence.
 
 ## Tester Decision
 
-`Decision: APPROVE`
+Decision: APPROVE
 
 Recorded by Tester after independent review of the evidence file at
 `specs/120-social-publishing/evidence.md`. All code defects from prior
