@@ -83,8 +83,10 @@ it('publish_request_accepts_tiktok_platform_value', function () {
     $request = new PublishClipRequest();
     $rules = $request->rules();
 
+    $clipReview = \App\Models\ClipReview::factory()->create();
+
     $validator = Validator::make([
-        'clip_review_id' => 1,
+        'clip_review_id' => $clipReview->id,
         'platform' => 'tiktok',
         'title' => 'Test Clip',
     ], $rules);

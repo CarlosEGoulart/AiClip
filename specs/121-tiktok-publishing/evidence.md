@@ -36,8 +36,8 @@ Direct inspection of all 7 fixed files confirms every defect is properly resolve
 ### Defect 3 — `SocialPublishRequestTest.php` invalid-platform 422 ✅ FIXED
 - File: `apps/api/tests/Feature/SocialPublish/SocialPublishRequestTest.php`
 - `publish_request_rejects_invalid_platform`: `platform=invalid` → validator fails with platform error
-- `publish_request_accepts_tiktok_platform_value`: `platform=tiktok` → validator passes
-- Existing coverage for valid tiktok platform already present
+- `publish_request_accepts_tiktok_platform_value`: now creates a ClipReview record via `ClipReview::factory()->create()` and uses its real ID, so `exists:clip_reviews,id` passes; `platform=tiktok` → validator passes with no platform error
+- CI failure resolved: test no longer fails because no ClipReview with id=1 existed
 
 ### Defect 4 — `TikTokPublisher::publishVideo()` exception message leak ✅ FIXED
 - File: `apps/api/app/Services/TikTokPublisher.php`
