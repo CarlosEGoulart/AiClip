@@ -105,6 +105,22 @@ Frontend (Vitest: 427 tests) and Governance (173 tests) previously passed and ar
 
 ---
 
+## TDD Evidence
+
+### RED
+
+Tests written first for `TikTokPublisher`, `PublishToTikTok` job, `PublishClipRequest` validation, and frontend `PublishClipDialog` — all failed due to missing behavior (TikTok platform not supported, no publisher service, no publish job, no dialog option).
+
+### GREEN
+
+Implemented `TikTokPublisher` service, `PublishToTikTok` queue job, provider registration in `AppServiceProvider`, `PublishClipRequest` validation extension (`platform in:youtube,instagram,tiktok`), `SocialPublishController` dispatch, and frontend `PublishClipDialog` TikTok platform option.
+
+### REFACTOR
+
+Fixed 7 defects from independent Tester review: sanitized exception messages in `publishVideo()` catch block, generic 404 message in `SocialPublishController` (no platform name leak), removed empty `validateToken('')` call in `getPublishStatus()`, added null guard for `$publish->socialConnection->user_id` in job, changed default `availablePlatforms` to `[]` (TikTok only when caller provides), rewrote `PublishToTikTokTest` to cover all 12 test-plan scenarios, added invalid-platform 422 test to `PublishClipRequestTest`.
+
+---
+
 ## Files Changed (verified by direct inspection)
 
 No scope expansion beyond issue #121. No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` secrets touched.
