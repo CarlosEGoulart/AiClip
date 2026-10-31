@@ -9,6 +9,7 @@ use App\Http\Resources\SocialPublishResource;
 use App\Enums\ClipReviewStatus;
 use App\Enums\SocialPublishStatus;
 use App\Jobs\PublishToInstagram;
+use App\Jobs\PublishToTikTok;
 use App\Jobs\PublishToYouTube;
 use App\Models\ClipReview;
 use App\Models\SocialConnection;
@@ -67,7 +68,7 @@ class SocialPublishController extends Controller
 
         if (! $connection) {
             return response()->json([
-                'message' => sprintf('No connected %s account found', ucfirst($platform)),
+                'message' => 'No connected account found',
             ], Response::HTTP_NOT_FOUND);
         }
 
@@ -96,6 +97,8 @@ class SocialPublishController extends Controller
         // Dispatch publish job based on platform
         if ($platform === 'instagram') {
             PublishToInstagram::dispatch($publish->id);
+        } elseif ($platform === 'tiktok') {
+            PublishToTikTok::dispatch($publish->id);
         } else {
             PublishToYouTube::dispatch($publish->id);
         }

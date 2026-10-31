@@ -31,6 +31,7 @@ class SocialPublishResource extends JsonResource
     {
         return match ($platform) {
             'youtube' => 'YouTube',
+            'tiktok' => 'TikTok',
             default => ucfirst($platform),
         };
     }
