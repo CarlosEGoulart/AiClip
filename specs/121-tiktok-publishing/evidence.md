@@ -108,3 +108,5 @@ Frontend (Vitest: 427 tests) and Governance (173 tests) previously passed and ar
 ## Files Changed (verified by direct inspection)
 
 No scope expansion beyond issue #121. No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` secrets touched.
+
+Decision: APPROVE
