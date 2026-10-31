@@ -2,11 +2,12 @@ import { useRef, useEffect, useCallback, useState } from 'react';
 import type { PublishClipRequest } from '../types';
 import '../design-tokens.css';
 
-type Platform = 'youtube' | 'instagram';
+type Platform = 'youtube' | 'instagram' | 'tiktok';
 
 const PLATFORM_CONFIG: Record<Platform, { label: string; ariaLabel: string }> = {
   youtube: { label: 'YouTube', ariaLabel: 'Publish to YouTube' },
   instagram: { label: 'Instagram', ariaLabel: 'Publish to Instagram' },
+  tiktok: { label: 'TikTok', ariaLabel: 'Publish to TikTok' },
 };
 
 interface PublishClipDialogProps {
@@ -25,7 +26,7 @@ export function PublishClipDialog({
   onClose,
   onPublish,
   clipReviewId = 0,
-  availablePlatforms = ['youtube', 'instagram'],
+  availablePlatforms = [],
   loading = false,
   error = null,
   success = false,
@@ -33,7 +34,7 @@ export function PublishClipDialog({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [platform, setPlatform] = useState<Platform>(
-    availablePlatforms.includes('youtube') ? 'youtube' : availablePlatforms[0],
+    availablePlatforms.includes('youtube') ? 'youtube' : (availablePlatforms[0] ?? 'youtube'),
   );
   const [formError, setFormError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);

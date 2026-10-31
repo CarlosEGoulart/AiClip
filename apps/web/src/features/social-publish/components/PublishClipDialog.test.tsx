@@ -113,6 +113,92 @@ describe('PublishClipDialog', () => {
     );
   });
 
+  it('renders TikTok option when in availablePlatforms', () => {
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        availablePlatforms={['youtube', 'tiktok']}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Publish to TikTok' })).toBeInTheDocument();
+  });
+
+  it('does not render TikTok option when not in availablePlatforms', () => {
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        availablePlatforms={['youtube']}
+      />,
+    );
+    expect(screen.queryByRole('radio', { name: 'Publish to TikTok' })).not.toBeInTheDocument();
+  });
+
+  it('publish button calls onPublish with platform tiktok when selected', async () => {
+    const user = userEvent.setup();
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        clipReviewId={42}
+        availablePlatforms={['youtube', 'tiktok']}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('Title'), 'My TikTok Video');
+    await user.click(screen.getByRole('radio', { name: 'Publish to TikTok' }));
+    await user.click(screen.getByRole('button', { name: 'Publish to TikTok' }));
+
+    expect(onPublish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clip_review_id: 42,
+        platform: 'tiktok',
+        title: 'My TikTok Video',
+        description: undefined,
+      }),
+    );
+  });
+
+  it('dialog title updates when platform changes to TikTok', async () => {
+    const user = userEvent.setup();
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        availablePlatforms={['youtube', 'tiktok']}
+      />,
+    );
+
+    expect(screen.getByText('Publish to YouTube')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Publish to TikTok' }));
+
+    expect(screen.getByText('Publish to TikTok')).toBeInTheDocument();
+    expect(screen.queryByText('Publish to YouTube')).not.toBeInTheDocument();
+  });
+
+  it('defaults to tiktok when youtube not available but tiktok is', () => {
+    const onPublish = vi.fn();
+    render(
+      <PublishClipDialog
+        isOpen={true}
+        onClose={vi.fn()}
+        onPublish={onPublish}
+        availablePlatforms={['tiktok']}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Publish to TikTok', checked: true })).toBeInTheDocument();
+  });
+
   it('publish button omits clip_review_id when prop is not provided', async () => {
     const user = userEvent.setup();
     const onPublish = vi.fn();

@@ -38,6 +38,44 @@ it('resource_includes_all_public_fields', function () {
     expect($content['data']['error_message'])->toBeNull();
 });
 
+it('resource_tiktok_platform_label', function () {
+    $publish = new SocialPublish;
+    $publish->id = 2;
+    $publish->user_id = 1;
+    $publish->social_connection_id = 1;
+    $publish->clip_review_id = 1;
+    $publish->platform = 'tiktok';
+    $publish->status = SocialPublishStatus::Published->value;
+    $publish->external_video_id = 'tiktok_video_123';
+    $publish->video_url = 'https://www.tiktok.com/@user/video/tiktok_video_123';
+    $publish->title = 'TikTok Clip';
+    $publish->description = null;
+    $publish->error_message = null;
+    $publish->exists = true;
+
+    $resource = new \App\Http\Resources\SocialPublishResource($publish);
+    $response = $resource->response(null);
+    $content = json_decode($response->getContent(), true);
+
+    expect($content['data']['platform'])->toBe('tiktok');
+    expect($content['data']['platform_label'])->toBe('TikTok');
+});
+
+it('resource_does_not_include_tokens', function () {
+    $publish = new SocialPublish;
+    $publish->id = 1;
+    $publish->platform = 'tiktok';
+    $publish->status = SocialPublishStatus::Published->value;
+    $publish->exists = true;
+
+    $resource = new \App\Http\Resources\SocialPublishResource($publish);
+    $response = $resource->response(null);
+    $content = json_decode($response->getContent(), true);
+
+    expect(array_key_exists('access_token', $content['data']))->toBeFalse();
+    expect(array_key_exists('refresh_token', $content['data']))->toBeFalse();
+});
+
 it('collection_wraps_in_pagination_envelope', function () {
     $collection = new \App\Http\Resources\SocialPublishCollection(
         new \Illuminate\Pagination\LengthAwarePaginator(
