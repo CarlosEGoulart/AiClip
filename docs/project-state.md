@@ -207,6 +207,12 @@ and verified: backend Pest suite 1714 tests (1694 passed, 20 skipped, 0 failed),
 Vitest 372 passed, Playwright E2E 102 passed at 3 viewports, lint/build clean.
 PR #130 merged via scripts/merge_gate.py. Issue #118 closed.
 
+M12 — TikTok Publishing (Issue #121, PR #137) completed and verified: TikTokPublisher
+service, PublishToTikTok queue job, provider registration (SocialPublisher:tiktok),
+API platform support (platform="tiktok"), FakeTikTokPublisher, frontend PublishClipDialog
+TikTok option. All backend, frontend, E2E, and governance CI green. PR #137 merged
+via scripts/merge_gate.py. Issue #121 closed.
+
 # Next Architectural Goal
 
 M8 — AI Image Studio continues beyond Slice 2: remaining slices (a real
