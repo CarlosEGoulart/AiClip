@@ -496,3 +496,74 @@ $response->assertJsonStructure([
 - `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignControllerTest.php` line 201 — replaced invalid `[*]` with valid `'*' => ['id', 'status']` nested structure
 
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
+
+---
+
+## Backend CI Fixes (Issue #122 — Multiple test failures)
+
+### Fix 1: `Call to undefined method ...::whenLoaded()` — SocialPublishCampaign model
+
+**Root cause:** `SocialPublishCampaignResource::toArray()` calls `$campaign->whenLoaded('publishes')`, but `whenLoaded()` is provided by the `Illuminate\Database\Eloquent\Concerns\HasRelationships` trait, which the model did not use.
+
+**Fix:** Added `use Illuminate\Database\Eloquent\Concerns\HasRelationships;` import and added `HasRelationships` to the model's `use` list.
+
+**Files changed:**
+- `apps/api/app/Models/SocialPublishCampaign.php` — added import + `use HasFactory, HasRelationships;`
+
+---
+
+### Fix 2: `Expected response status code [202] but received 422` — TikTok connection not found
+
+**Root cause:** Two integration tests expected `202` but the campaign payload includes a `tiktok` target while only `youtube` and `instagram` connections were created. The controller's pre-execution validation checks ALL targets before queueing ANY, so a missing TikTok connection returned `422 "No connected account found for Tiktok"`.
+
+**Fix:** Added `SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'tiktok']);` to both tests.
+
+**Files changed:**
+- `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignIntegrationTest.php` — "full campaign flow all-failed" test (added tiktok connection)
+- `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignIntegrationTest.php` — "publish uses encrypted token never in response" test (added tiktok connection)
+
+---
+
+### Fix 3: `Class "ClipReviewStatus" not found` — line 305
+
+**Root cause:** `ClipReviewStatus::APPROVED` was referenced without a `use App\Enums\ClipReviewStatus;` import, so PHP resolved it as `Tests\Feature\SocialPublish\ClipReviewStatus` which does not exist.
+
+**Fix:** Changed `'status' => ClipReviewStatus::APPROVED` to `'status' => 'approved'` (string value; the model casts it to the enum on save).
+
+**Files changed:**
+- `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignIntegrationTest.php` line 307 — `'status' => 'approved',`
+
+---
+
+### Fix 4: `Class "Tests\Feature\SocialPublish\SocialPublishCampaignStatus" not found` — ResourceTest line 17
+
+**Root cause:** `SocialPublishCampaignStatus::PartiallyPublished->value` was referenced without a `use App\Enums\SocialPublishCampaignStatus;` import, so PHP resolved it as `Tests\Feature\SocialPublish\SocialPublishCampaignStatus` which does not exist.
+
+**Fix:** Changed to string value `'partially_published'`.
+
+**Files changed:**
+- `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignResourceTest.php` line 17 — `$campaign->status = 'partially_published';`
+
+---
+
+### Fix 5: `Failed asserting that ... Enum ... is identical to 'published'` — line 219
+
+**Root cause:** `SocialPublish.status` is cast to `SocialPublishStatus` enum, so `$failedPublish->status` returns an Enum object, not a string. Comparing it to `SocialPublishStatus::Published->value` (a string) with strict `toBe()` failed.
+
+**Fix:** Changed `expect($failedPublish->status)->toBe(SocialPublishStatus::Published->value)` to `expect($failedPublish->status)->toBe(SocialPublishStatus::Published)`.
+
+**Files changed:**
+- `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignIntegrationTest.php` line 220
+
+---
+
+### Fix 6: `Failed asserting that ... Enum ... is identical to 'cancelled'` — line 247
+
+**Root cause:** Same as Fix 5 — `SocialPublishCampaign.status` is cast to `SocialPublishCampaignStatus` enum, so comparing the Enum object to the string `'cancelled'` with strict `toBe()` failed.
+
+**Fix:** Changed `expect($campaign->status)->toBe(SocialPublishCampaignStatus::Cancelled->value)` to `expect($campaign->status)->toBe(SocialPublishCampaignStatus::Cancelled)`.
+
+**Files changed:**
+- `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignIntegrationTest.php` line 248
+
+No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.

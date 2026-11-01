@@ -141,6 +141,7 @@ it('full campaign flow all-failed', function () {
 
     SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
     SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+    SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'tiktok']);
 
     $clipReview = $this->createPublishableClipReview();
 
@@ -216,7 +217,7 @@ it('retry failed target does not duplicate publication', function () {
 
     // Job runs synchronously; fake publisher succeeds → publish becomes Published
     $failedPublish->refresh();
-    expect($failedPublish->status)->toBe(SocialPublishStatus::Published->value);
+    expect($failedPublish->status)->toBe(SocialPublishStatus::Published);
 
     // Only one publish record for this campaign+platform (no duplicate)
     expect(SocialPublish::where('campaign_id', $campaign->id)->where('platform', 'youtube')->count())->toBe(1);
@@ -244,7 +245,7 @@ it('cancel campaign before execution cancels pending targets', function () {
     $response->assertOk();
 
     $campaign->refresh();
-    expect($campaign->status)->toBe(SocialPublishCampaignStatus::Cancelled->value);
+    expect($campaign->status)->toBe(SocialPublishCampaignStatus::Cancelled);
 
     // Cancelled pending targets are marked failed with cancellation error
     $this->assertDatabaseHas('social_publishes', [
@@ -264,6 +265,7 @@ it('cancel campaign before execution cancels pending targets', function () {
 it('publish uses encrypted token never in response', function () {
     SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'youtube']);
     SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'instagram']);
+    SocialConnection::factory()->for($this->user)->connected()->create(['platform' => 'tiktok']);
 
     $clipReview = $this->createPublishableClipReview();
 
@@ -302,7 +304,7 @@ it('cross-user campaign returns 404', function () {
         DerivedAsset::factory()->renderedClip()
     )->create([
         'reviewer_id' => $other->id,
-        'status' => ClipReviewStatus::APPROVED,
+        'status' => 'approved',
     ]);
 
     $payload = campaignPayload(['clip_review_id' => $clipReview->id]);

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\SocialPublishCampaignStatus;
+use Illuminate\Database\Eloquent\Concerns\HasRelationships;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 
 class SocialPublishCampaign extends Model
 {
-    use HasFactory;
+    use HasFactory, HasRelationships;
 
     protected $fillable = [
         'user_id',

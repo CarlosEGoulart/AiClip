@@ -14,7 +14,7 @@ it('resource includes campaign status and per-target publishes', function () {
     $campaign->id = 1;
     $campaign->user_id = 1;
     $campaign->clip_review_id = 1;
-    $campaign->status = SocialPublishCampaignStatus::PartiallyPublished->value;
+    $campaign->status = 'partially_published';
     $campaign->exists = true;
 
     $publish = new SocialPublish;
