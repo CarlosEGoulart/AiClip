@@ -4,7 +4,7 @@ import type {
   SocialPublishCampaignStatus,
 } from '../types';
 import {
-  usePublishCampaign,
+  usePublishCampaignCreate,
   useCancelPublishCampaign,
   useRetryPublishCampaign,
   usePublishCampaignDetail,
@@ -56,7 +56,7 @@ export function PublishCampaignDialog({
   });
   const [campaignId, setCampaignId] = useState<number | null>(null);
 
-  const { createCampaign, isPending, error: apiError } = usePublishCampaign();
+  const { createCampaign, isPending, error: apiError } = usePublishCampaignCreate();
   const { cancel: cancelCampaign, isPending: cancelPending, error: cancelError } = useCancelPublishCampaign();
   const { retry: retryCampaign, isPending: retryPending, error: retryError } = useRetryPublishCampaign();
   const {

@@ -22,7 +22,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube', 'instagram']},
+        availablePlatforms={['youtube', 'instagram']}
       />,
     );
     expect(screen.getByRole('checkbox', { name: 'Publish to YouTube' })).toBeInTheDocument();

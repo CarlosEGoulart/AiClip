@@ -100,6 +100,35 @@ Code reviewed for consistency with existing enums, models, controllers, jobs, an
 
 ---
 
+## Frontend CI Fixes (Post-Review)
+
+### Fix 1: Duplicate export `usePublishCampaign` in hooks.ts
+
+**Root cause:** `hooks.ts` exported two functions with the same name `usePublishCampaign`:
+- Line 125: `usePublishCampaign()` (no-arg, creates campaign)
+- Line 204: `usePublishCampaign(id)` (detail, fetches campaign)
+
+Rolldown build failed with `Duplicated export 'usePublishCampaign' at lines 74 and 129`.
+
+**Fix:** Renamed the no-arg (create) version to `usePublishCampaignCreate` and kept `usePublishCampaign(id)` as the detail version.
+
+**Files changed:**
+- `apps/web/src/features/social-publish/hooks.ts` line 125: `export function usePublishCampaign()` → `export function usePublishCampaignCreate()`
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.tsx` line 7: import `usePublishCampaign` → `usePublishCampaignCreate`
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.tsx` line 59: `usePublishCampaign()` → `usePublishCampaignCreate()`
+- `apps/web/src/features/social-publish/index.ts`: no change needed — `export * from './hooks'` automatically re-exports the renamed function
+
+**Note:** `apps/web/src/features/social-publish/hooks.test.tsx` imports and calls `usePublishCampaign()` (no-arg) at lines 6, 194, 211, 228 and will need updating to `usePublishCampaignCreate` — this file is outside the Builder's editable scope.
+
+### Fix 2: Parse error in PublishCampaignDialog.test.tsx line 25
+
+**Root cause:** Syntax/encoding issue at line 25 (trailing comma and potential hidden characters in `availablePlatforms={['youtube', 'instagram']},`).
+
+**Fix:** Rewrote line 25 cleanly as `availablePlatforms={['youtube', 'instagram']}` (removed trailing comma, clean characters).
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` line 25
+
 ## Tester Decision
 
 **Decision: APPROVE**

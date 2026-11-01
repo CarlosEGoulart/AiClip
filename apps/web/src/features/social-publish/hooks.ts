@@ -122,7 +122,7 @@ export interface UsePublishCampaignReturn {
   clearErrors: () => void;
 }
 
-export function usePublishCampaign(): UsePublishCampaignReturn {
+export function usePublishCampaignCreate(): UsePublishCampaignReturn {
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
