@@ -684,3 +684,49 @@ return SocialPublishResource::collection($campaign->publishes);
 - `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` line 24 — added missing semicolon after `return` inside `when()` closure.
 
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
+
+---
+
+## Backend CI Fix (Issue #122 — Enum comparison errors in integration tests)
+
+### Fix: Multiple `->toBe(SomeEnum::SomeValue->value)` → `->toBe(SomeEnum::SomeValue)` in SocialPublishCampaignIntegrationTest.php
+
+**Root cause:** Backend CI failed with Enum comparison errors in integration tests. The `status` column returns an Enum object (`App\Enums\SocialPublishCampaignStatus` or `App\Enums\SocialPublishStatus`), not a raw string. Strict `toBe()` comparison between an Enum object and a string value (`->value`) fails.
+
+**Fix:** Removed `->value` from 3 enum comparisons so the Enum object is compared against the Enum object:
+
+| Line | Before | After |
+|------|--------|-------|
+| 74 | `SocialPublishCampaignStatus::Published->value` | `SocialPublishCampaignStatus::Published` |
+| 118 | `SocialPublishCampaignStatus::PartiallyPublished->value` | `SocialPublishCampaignStatus::PartiallyPublished` |
+| 156 | `SocialPublishCampaignStatus::Failed->value` | `SocialPublishCampaignStatus::Failed` |
+
+**Files changed:**
+- `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignIntegrationTest.php` lines 74, 118, 156 — removed `->value` from enum comparisons
+
+**Verification:** Post-fix grep for `->value` in `SocialPublishCampaignIntegrationTest.php` returns no matches. All remaining enum comparisons already use the Enum object directly (line 220 `SocialPublishStatus::Published`, line 248 `SocialPublishCampaignStatus::Cancelled`).
+
+No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
+
+---
+
+## Backend CI Fix Verification (Issue #122 — PHP Parse Error on `SocialPublishCampaignResource.php`)
+
+### Verification: Semicolon already present on line 24
+
+**Root cause:** Backend CI failed with a PHP parse error at `app/Http/Resources/SocialPublishCampaignResource.php:25`:
+```
+ParseError: syntax error, unexpected token "}", expecting ";" at app/Http/Resources/SocialPublishCampaignResource.php:25
+```
+Line 24 had a missing semicolon after the `return` statement inside the `when()` closure body, causing PHP to treat the closing `}` of the closure as unexpected.
+
+**Fix applied (previously documented at lines 659-687 of this evidence file):** Added the missing semicolon so line 24 reads:
+```php
+return SocialPublishResource::collection($campaign->publishes);
+```
+
+**Current state verification:** Direct re-read of `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` confirms line 24 ends with a semicolon (`;`), not a comma. The closure body correctly terminates the `return` statement, and the `}` on line 25 properly closes the closure. The PHP parse error is resolved.
+
+**Files changed:** None required — fix already present in current file state.
+
+No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
