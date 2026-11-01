@@ -653,3 +653,34 @@ return SocialPublishResource::collection($campaign->publishes)
 - `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` line 24 — removed trailing comma after `return` inside `when()` closure.
 
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
+
+---
+
+## Backend CI Fix (Issue #122 — Missing Semicolon on Resource Return Statement)
+
+### Fix: Add missing semicolon after `return` inside `when()` closure in `SocialPublishCampaignResource.php`
+
+**Root cause:** Backend CI failed with a PHP parse error at `app/Http/Resources/SocialPublishCampaignResource.php:24`:
+
+```
+ParseError: syntax error, unexpected token "}", expecting ";" at app/Http/Resources/SocialPublishCampaignResource.php:25
+```
+
+Line 24 was:
+
+```php
+return SocialPublishResource::collection($campaign->publishes)
+```
+
+A `return` statement inside a closure body must be terminated with a semicolon, just like any other statement. The missing semicolon caused PHP to parse the closing `}` of the closure as an unexpected token.
+
+**Fix:** Added the missing semicolon at the end of line 24:
+
+```php
+return SocialPublishResource::collection($campaign->publishes);
+```
+
+**Files changed:**
+- `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` line 24 — added missing semicolon after `return` inside `when()` closure.
+
+No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
