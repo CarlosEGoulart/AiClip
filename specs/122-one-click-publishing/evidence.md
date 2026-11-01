@@ -621,3 +621,35 @@ return SocialPublishResource::collection($campaign->publishes),
 - `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` line 24 — removed `->resolve()` from the `when()` closure return statement.
 
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
+
+---
+
+## Backend CI Fix (Issue #122 — PHP Parse Error — trailing comma in `when()` closure)
+
+### Fix: Remove trailing comma after `return` inside `when()` closure in `SocialPublishCampaignResource.php`
+
+**Root cause:** Backend CI failed with a PHP parse error at `app/Http/Resources/SocialPublishCampaignResource.php:24`:
+
+```
+syntax error, unexpected token ",", expecting ";"
+at app/Http/Resources/SocialPublishCampaignResource.php:24
+```
+
+Line 24 was:
+
+```php
+return SocialPublishResource::collection($campaign->publishes),
+```
+
+The trailing comma after a `return` statement inside the `when()` callback closure body is invalid PHP syntax — a comma is only valid inside array literals or function call argument lists, not as a statement terminator in a closure body.
+
+**Fix:** Removed the trailing comma so line 24 returns the collection directly:
+
+```php
+return SocialPublishResource::collection($campaign->publishes)
+```
+
+**Files changed:**
+- `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` line 24 — removed trailing comma after `return` inside `when()` closure.
+
+No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
