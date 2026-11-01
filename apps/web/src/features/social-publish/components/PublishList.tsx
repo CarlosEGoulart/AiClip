@@ -9,6 +9,8 @@ import { fetchClipReviews } from '../../clip-review/api';
 import type { ClipReview } from '../../clip-review/types';
 import '../design-tokens.css';
 
+type Platform = 'youtube' | 'instagram' | 'tiktok';
+
 interface PublishListProps {
   publishes?: SocialPublish[];
   loading?: boolean;
@@ -127,7 +129,7 @@ export function PublishList({
             isOpen={campaignDialogOpen}
             onClose={() => setCampaignDialogOpen(false)}
             clipReviewId={clipReviewId}
-            availablePlatforms={platforms}
+            availablePlatforms={platforms as Platform[]}
             onCampaignCreated={() => setCampaignDialogOpen(false)}
           />
         )}
@@ -155,7 +157,7 @@ export function PublishList({
           isOpen={campaignDialogOpen}
           onClose={() => setCampaignDialogOpen(false)}
           clipReviewId={clipReviewId}
-          availablePlatforms={platforms}
+          availablePlatforms={platforms as Platform[]}
           onCampaignCreated={() => setCampaignDialogOpen(false)}
         />
       )}

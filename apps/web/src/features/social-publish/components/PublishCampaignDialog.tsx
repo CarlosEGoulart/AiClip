@@ -92,7 +92,7 @@ export function PublishCampaignDialog({
       setTargetStates({ youtube: 'pending', instagram: 'pending', tiktok: 'pending' });
       setTimeout(() => {
         const firstCheckbox = modalRef.current?.querySelector('input[type="checkbox"]');
-        firstCheckbox?.focus();
+        (firstCheckbox as HTMLElement)?.focus();
       }, 0);
     } else {
       document.body.style.overflow = '';
@@ -345,8 +345,6 @@ export function PublishCampaignDialog({
                 const status = targetStates[platform];
                 const config = PLATFORM_CONFIG[platform];
                 const isFailed = status === 'failed';
-                const isPublished = status === 'published';
-                const isPublishing = status === 'processing' || status === 'pending';
 
                 return (
                   <div key={platform} className="campaign-target" data-testid={`campaign-target-${platform}`}>

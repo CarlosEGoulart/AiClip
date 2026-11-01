@@ -8,7 +8,6 @@ import type {
   PublishResponseWrapper,
   PublishStatusResponse,
   PublishStatusResponseWrapper,
-  SocialPublish,
   SocialPublishError,
   SocialPublishCampaign,
 } from '../types';

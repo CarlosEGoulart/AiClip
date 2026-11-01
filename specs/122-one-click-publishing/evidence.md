@@ -393,4 +393,66 @@ This assigns the actual `vi.fn()` mock to `fetchMock` (making it a spy) and sepa
 
 **Verification:** `npx vitest run src/features/social-publish/components/PublishCampaignDialog.test.tsx` — **14 tests passed** (1 test file). `fetchMock` is now a defined spy in both the "confirm-before-execute" test (line 67-68) and the "title missing" validation test (line 108-109).
 
+---
+
+## Frontend CI Fixes (Issue #122 — TypeScript BUILD step `tsc -b`)
+
+### Fix 1: Unused import `SocialPublish` in api/index.ts
+
+**Root cause:** `api/index.ts` line 11 imported `SocialPublish` from `../types` but never used it, causing `TS6196: 'SocialPublish' is declared but never used` at `api/index.ts(11,3)`.
+
+**Fix:** Removed `SocialPublish,` from the import type block.
+
+**File changed:**
+- `apps/web/src/features/social-publish/api/index.ts` line 11 — removed `SocialPublish,`
+
+### Fix 2: `.focus()` on `Element` type in PublishCampaignDialog.tsx
+
+**Root cause:** `PublishCampaignDialog.tsx` line 95 called `.focus()` on `firstCheckbox`, which is typed as `Element | null` (return of `querySelector`). `Element` has no `focus` method, causing `TS2339: Property 'focus' does not exist on type 'Element'` at `PublishCampaignDialog.tsx(95,24)`.
+
+**Fix:** Cast to `HTMLElement` before calling `.focus()`:
+```typescript
+(firstCheckbox as HTMLElement)?.focus();
+```
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.tsx` line 95
+
+### Fix 3: Unused variable `isPublished` in PublishCampaignDialog.tsx
+
+**Root cause:** `PublishCampaignDialog.tsx` line 348 declared `const isPublished = status === 'published';` but never read it, causing `TS6133: 'isPublished' is declared but its value is never read` at `PublishCampaignDialog.tsx(348,23)`.
+
+**Fix:** Removed the unused variable declaration.
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.tsx` line 348
+
+### Fix 4: Unused variable `isPublishing` in PublishCampaignDialog.tsx
+
+**Root cause:** `PublishCampaignDialog.tsx` line 349 declared `const isPublishing = status === 'processing' || status === 'pending';` but never read it, causing `TS6133: 'isPublishing' is declared but its value is never read` at `PublishCampaignDialog.tsx(349,23)`.
+
+**Fix:** Removed the unused variable declaration.
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.tsx` line 349
+
+### Fix 5: `string[]` not assignable to `Platform[]` in PublishList.tsx (line 132)
+
+**Root cause:** `PublishList.tsx` line 130 (now 132) passed `platforms` (inferred as `string[]`) to `availablePlatforms={platforms}` on `PublishCampaignDialog`, which expects `Platform[]`, causing `TS2322: Type 'string[]' is not assignable to type 'Platform[]'` at `PublishList.tsx(130,13)`.
+
+**Fix:** Added local `type Platform = 'youtube' | 'instagram' | 'tiktok';` (line 12, matching `PublishCampaignDialog.tsx`) and cast `platforms as Platform[]`.
+
+**Files changed:**
+- `apps/web/src/features/social-publish/components/PublishList.tsx` line 12 — added `type Platform = 'youtube' | 'instagram' | 'tiktok';`
+- `apps/web/src/features/social-publish/components/PublishList.tsx` line 132 — `availablePlatforms={platforms as Platform[]}`
+
+### Fix 6: `string[]` not assignable to `Platform[]` in PublishList.tsx (line 160)
+
+**Root cause:** `PublishList.tsx` line 158 (now 160) passed `platforms` (inferred as `string[]`) to `availablePlatforms={platforms}` on `PublishCampaignDialog`, which expects `Platform[]`, causing `TS2322: Type 'string[]' is not assignable to type 'Platform[]'` at `PublishList.tsx(158,11)`.
+
+**Fix:** Cast `platforms as Platform[]` using the locally-defined `Platform` type.
+
+**Files changed:**
+- `apps/web/src/features/social-publish/components/PublishList.tsx` line 160 — `availablePlatforms={platforms as Platform[]}`
+
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
