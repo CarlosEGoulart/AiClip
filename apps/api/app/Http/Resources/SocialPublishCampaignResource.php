@@ -20,7 +20,9 @@ class SocialPublishCampaignResource extends JsonResource
             'status_label' => $campaign->status instanceof SocialPublishCampaignStatus
                 ? $campaign->status->label()
                 : SocialPublishCampaignStatus::from($campaign->status)->label(),
-            'publishes' => SocialPublishResource::collection($campaign->whenLoaded('publishes')),
+            'publishes' => $this->when($campaign->relationLoaded('publishes'), function () use ($campaign) {
+                return SocialPublishResource::collection($campaign->publishes)->resolve(),
+            }),
             'created_at' => $campaign->created_at?->toIso8601String(),
             'updated_at' => $campaign->updated_at?->toIso8601String(),
         ];

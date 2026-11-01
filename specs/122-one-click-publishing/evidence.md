@@ -567,3 +567,27 @@ No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` mod
 - `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignIntegrationTest.php` line 248
 
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
+
+---
+
+## Backend CI Fix (Issue #122 — `Call to undefined method ...::whenLoaded()` — Resource)
+
+**Root cause:** `SocialPublishCampaignResource::toArray()` called `$campaign->whenLoaded('publishes')` where `$campaign` is the `SocialPublishCampaign` Eloquent model. The `whenLoaded()` method is not available on the model in the installed Laravel version (only `relationLoaded()` exists), even though `HasRelationships` is used on the model. This caused backend CI failure:
+
+```
+Call to undefined method App\Models\SocialPublishCampaign::whenLoaded()
+at app/Http/Resources/SocialPublishCampaignResource.php line 23
+```
+
+**Fix:** Removed the `whenLoaded()` call from the resource. The `publishes` key now only appears when the relationship is loaded, using `JsonResource::when()` + `relationLoaded()`:
+
+```php
+'publishes' => $this->when($campaign->relationLoaded('publishes'), function () use ($campaign) {
+    return SocialPublishResource::collection($campaign->publishes)->resolve(),
+}),
+```
+
+**Files changed:**
+- `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` line 23 — replaced `SocialPublishResource::collection($campaign->whenLoaded('publishes'))` with `$this->when($campaign->relationLoaded('publishes'), ...)`
+
+**Verification:** `relationLoaded()` is provided by `HasRelationships` (already used on the model), so no model change is needed. The key is `null` when `publishes` is not eager-loaded, and returns the resolved resource collection when it is. No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
