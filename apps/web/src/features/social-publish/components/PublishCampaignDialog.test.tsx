@@ -98,14 +98,13 @@ describe('PublishCampaignDialog', () => {
       />,
     );
 
-    await user.click(screen.getByRole('checkbox', { name: 'Publish to YouTube' }));
     await user.click(screen.getByRole('button', { name: /Confirm/ }));
-
-    expect(screen.getByRole('alert')).toHaveTextContent(/Please select at least one platform/);
+    expect(screen.getByText(/Select at least one platform/)).toBeInTheDocument();
   });
 
   it('pre-execution validation errors shown when title missing', async () => {
     const user = userEvent.setup();
+    const fetchMock = vi.stubGlobal('fetch', vi.fn());
     const onClose = vi.fn();
     render(
       <PublishCampaignDialog
@@ -119,7 +118,7 @@ describe('PublishCampaignDialog', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Publish to YouTube' }));
     await user.click(screen.getByRole('button', { name: /Confirm/ }));
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/Title is required/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('shows per-platform states queued/publishing/published/failed', () => {

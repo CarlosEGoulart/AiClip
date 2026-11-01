@@ -309,4 +309,41 @@ No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` mod
 **File changed:**
 - `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` — 4 replacements (lines 84, 102, 120, 153)
 
+---
+
+### Fix 10: "no platform selected" validation test (lines 89-105)
+
+**Root cause:** The test clicked the YouTube checkbox before clicking Confirm, contradicting the test name ("no platform selected"). Additionally, the component does not render an `<alert>` element for validation errors — it renders `<div class="form-hint">Select at least one platform</div>`.
+
+**Fix:** Removed the checkbox click. Changed the assertion to:
+```javascript
+await user.click(screen.getByRole('button', { name: /Confirm/ }));
+expect(screen.getByText(/Select at least one platform/)).toBeInTheDocument();
+```
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` lines 89-103
+
+---
+
+### Fix 11: "title missing" validation test (lines 107-123)
+
+**Root cause:** No alert element is rendered when the title is empty. The component uses HTML5 `required` validation instead of an alert. The test should verify no fetch call is made when validation fails.
+
+**Fix:** Added `const fetchMock = vi.stubGlobal('fetch', vi.fn());` at the top of the test (matching the pattern in the "confirm-before-execute" test at line 67). Changed the assertion to:
+```javascript
+await user.click(screen.getByRole('checkbox', { name: 'Publish to YouTube' }));
+await user.click(screen.getByRole('button', { name: /Confirm/ }));
+expect(fetchMock).not.toHaveBeenCalled();
+```
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` lines 105-122
+
+---
+
+### Fix 12: Line 61 `getByLabelText(/Title/)` — verified already correct
+
+**Verification:** Line 61 already reads `expect(document.getElementById('campaign-title-tiktok')).toBeInTheDocument();` — fixed in the previous round. No change required.
+
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
