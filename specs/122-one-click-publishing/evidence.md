@@ -591,3 +591,33 @@ at app/Http/Resources/SocialPublishCampaignResource.php line 23
 - `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` line 23 — replaced `SocialPublishResource::collection($campaign->whenLoaded('publishes'))` with `$this->when($campaign->relationLoaded('publishes'), ...)`
 
 **Verification:** `relationLoaded()` is provided by `HasRelationships` (already used on the model), so no model change is needed. The key is `null` when `publishes` is not eager-loaded, and returns the resolved resource collection when it is. No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
+
+---
+
+## Backend CI Fix (Issue #122 — PHP Parse Error on `->resolve()` in `SocialPublishCampaignResource.php`)
+
+**Root cause:** Backend CI failed with a PHP parse error at `app/Http/Resources/SocialPublishCampaignResource.php:24`:
+
+```
+syntax error, unexpected token ",", expecting ";"
+at app/Http/Resources/SocialPublishCampaignResource.php:24
+```
+
+Line 24 was:
+
+```php
+return SocialPublishResource::collection($campaign->publishes)->resolve(),
+```
+
+Calling `->resolve()` on a `SocialPublishResourceCollection` inside a `when()` arrow-function closure caused a PHP syntax error because `resolve()` is not valid in that context. Inside a `when()` callback, the resource collection can be returned directly — Laravel's `JsonResource::when()` serializes it properly.
+
+**Fix:** Removed `->resolve()` so line 24 returns the collection directly:
+
+```php
+return SocialPublishResource::collection($campaign->publishes),
+```
+
+**Files changed:**
+- `apps/api/app/Http/Resources/SocialPublishCampaignResource.php` line 24 — removed `->resolve()` from the `when()` closure return statement.
+
+No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
