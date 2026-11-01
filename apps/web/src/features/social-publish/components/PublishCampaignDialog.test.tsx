@@ -81,7 +81,7 @@ describe('PublishCampaignDialog', () => {
     // No fetch call yet
     expect(fetchMock).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: /Confirm & Publish/ }));
+    await user.click(screen.getByRole('button', { name: /Confirm/ }));
 
     expect(fetchMock).toHaveBeenCalled();
   });
@@ -99,7 +99,7 @@ describe('PublishCampaignDialog', () => {
     );
 
     await user.click(screen.getByRole('checkbox', { name: 'Publish to YouTube' }));
-    await user.click(screen.getByRole('button', { name: /Confirm & Publish/ }));
+    await user.click(screen.getByRole('button', { name: /Confirm/ }));
 
     expect(screen.getByRole('alert')).toHaveTextContent(/Please select at least one platform/);
   });
@@ -117,7 +117,7 @@ describe('PublishCampaignDialog', () => {
     );
 
     await user.click(screen.getByRole('checkbox', { name: 'Publish to YouTube' }));
-    await user.click(screen.getByRole('button', { name: /Confirm & Publish/ }));
+    await user.click(screen.getByRole('button', { name: /Confirm/ }));
 
     expect(screen.getByRole('alert')).toHaveTextContent(/Title is required/);
   });
@@ -150,7 +150,7 @@ describe('PublishCampaignDialog', () => {
         availablePlatforms={['youtube']}
       />,
     );
-    expect(screen.getByRole('button', { name: /Confirm & Publish/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Confirm/ })).toBeInTheDocument();
   });
 
   it('retry failed target button present when target failed', () => {

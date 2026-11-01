@@ -293,3 +293,20 @@ No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` mod
 
 **File verified (no change needed):**
 - `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` line 101
+
+### Fix 9: aria-label mismatch — `/Confirm & Publish/` → `/Confirm/` (Issue #122)
+
+**Root cause:** Frontend CI failed because `PublishCampaignDialog.tsx` renders the confirm button with `aria-label="Confirm and publish campaign"`, but `PublishCampaignDialog.test.tsx` queried the button using `name: /Confirm & Publish/` (with `&` instead of "and"). The `&` regex never matched the actual accessible name, so frontend CI tests could not locate the button.
+
+**Fix:** Replaced all 4 occurrences of `name: /Confirm & Publish/` with `name: /Confirm/` using `replaceAll: true`:
+- Line 84: `await user.click(screen.getByRole('button', { name: /Confirm/ }));`
+- Line 102: `await user.click(screen.getByRole('button', { name: /Confirm/ }));`
+- Line 120: `await user.click(screen.getByRole('button', { name: /Confirm/ }));`
+- Line 153: `expect(screen.getByRole('button', { name: /Confirm/ })).toBeInTheDocument();`
+
+**Verification:** Post-fix grep for `/Confirm & Publish/` returns no matches; grep for `/Confirm/` returns exactly 4 matches (lines 84, 102, 120, 153).
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` — 4 replacements (lines 84, 102, 120, 153)
+
+No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
