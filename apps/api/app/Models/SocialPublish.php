@@ -15,6 +15,7 @@ class SocialPublish extends Model
         'user_id',
         'social_connection_id',
         'clip_review_id',
+        'campaign_id',
         'platform',
         'status',
         'external_video_id',
@@ -46,6 +47,11 @@ class SocialPublish extends Model
         return $this->belongsTo(ClipReview::class);
     }
 
+    public function campaign(): BelongsTo
+    {
+        return $this->belongsTo(SocialPublishCampaign::class, 'campaign_id');
+    }
+
     // Scopes
     public function scopePending($query)
     {
@@ -70,5 +76,10 @@ class SocialPublish extends Model
     public function scopePlatform($query, string $platform)
     {
         return $query->where('platform', $platform);
+    }
+
+    public function scopeByCampaign($query, int $campaignId)
+    {
+        return $query->where('campaign_id', $campaignId);
     }
 }

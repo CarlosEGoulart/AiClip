@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\ImageController;
 use App\Http\Controllers\Api\V1\MediaAssetController;
 use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\SocialConnectionController;
+use App\Http\Controllers\Api\V1\SocialPublishCampaignController;
 use App\Http\Controllers\Api\V1\SocialPublishController;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\DB;
@@ -93,6 +94,18 @@ Route::prefix('v1')->group(function () {
             ->middleware('throttle:social-list');
         Route::get('/social/publishes/{publish}', [SocialPublishController::class, 'show'])
             ->middleware('throttle:social-list');
+
+        // Social Publish Campaign routes (authenticated + CSRF for state-changing ops)
+        Route::post('/social/publish/campaign', [SocialPublishCampaignController::class, 'store'])
+            ->middleware(['throttle:social-campaign-publish', VerifyCsrfToken::class]);
+        Route::get('/social/publish/campaigns', [SocialPublishCampaignController::class, 'index'])
+            ->middleware('throttle:social-list');
+        Route::get('/social/publish/campaigns/{campaign}', [SocialPublishCampaignController::class, 'show'])
+            ->middleware('throttle:social-list');
+        Route::post('/social/publish/campaigns/{campaign}/cancel', [SocialPublishCampaignController::class, 'cancel'])
+            ->middleware(['throttle:social-campaign-cancel', VerifyCsrfToken::class]);
+        Route::post('/social/publish/campaigns/{campaign}/retry', [SocialPublishCampaignController::class, 'retry'])
+            ->middleware(['throttle:social-campaign-retry', VerifyCsrfToken::class]);
     });
 
     // Callback must be accessible without authentication (OAuth redirect from provider)
