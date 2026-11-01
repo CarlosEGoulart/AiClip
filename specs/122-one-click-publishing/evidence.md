@@ -67,10 +67,17 @@ Implemented the M14 One-Click Publishing campaign orchestration layer over the e
 ### Frontend tests (new)
 - `apps/web/tests/e2e/one-click-publish.spec.ts` — Playwright E2E at 3 viewports
 
-## TDD Status
-- RED: Tests written for all backend units (enum, model, request, controller, resource, integration) and frontend units (dialog, card, list, API, hooks). Tests reference implementation that did not yet exist.
-- GREEN: Implementation written to satisfy all tests following existing codebase patterns.
-- REFACTOR: Code reviewed for consistency with existing enums, models, controllers, jobs, and frontend patterns.
+### RED
+
+Tests written for all backend units (SocialPublishCampaignStatus enum, SocialPublishCampaign model, PublishCampaignRequest validation, SocialPublishCampaignController, campaign resource, SocialPublishCampaignIntegrationTest) and frontend units (PublishCampaignDialog, PublishCard, PublishList, API client, hooks). Tests referenced implementation that did not yet exist.
+
+### GREEN
+
+Implementation written to satisfy all tests following existing codebase patterns (M10/M11/M12 publishing patterns). Backend: model, enum, migrations, controller, requests, resources, routes, job integration. Frontend: dialog, types, API client, hooks, card/list updates.
+
+### REFACTOR
+
+Code reviewed for consistency with existing enums, models, controllers, jobs, and frontend patterns. UpdatesCampaignStatus trait extracted for shared campaign status recomputation across three per-target jobs.
 
 ## Acceptance Criteria Coverage (TESTER CONFIRMED — all met)
 - AC #1: User explicitly reviews and confirms all targets before execution — PublishCampaignDialog shows platform checkboxes + per-platform title/description + "Confirm & Publish" submit ✅ CONFIRMED
