@@ -71,7 +71,7 @@ it('full campaign flow all-success', function () {
 
     // Jobs run synchronously in testing; all targets publish
     $campaign->refresh();
-    expect($campaign->status)->toBe(SocialPublishCampaignStatus::Published->value);
+    expect($campaign->status)->toBe(SocialPublishCampaignStatus::Published);
 
     $this->assertDatabaseHas('social_publishes', [
         'platform' => 'youtube',
@@ -115,7 +115,7 @@ it('full campaign flow partial-success', function () {
     $campaign = SocialPublishCampaign::first();
     $campaign->refresh();
 
-    expect($campaign->status)->toBe(SocialPublishCampaignStatus::PartiallyPublished->value);
+    expect($campaign->status)->toBe(SocialPublishCampaignStatus::PartiallyPublished);
 
     $this->assertDatabaseHas('social_publishes', [
         'platform' => 'youtube',
@@ -153,7 +153,7 @@ it('full campaign flow all-failed', function () {
     $campaign = SocialPublishCampaign::first();
     $campaign->refresh();
 
-    expect($campaign->status)->toBe(SocialPublishCampaignStatus::Failed->value);
+    expect($campaign->status)->toBe(SocialPublishCampaignStatus::Failed);
 
     $this->assertDatabaseHas('social_publishes', [
         'platform' => 'youtube',
