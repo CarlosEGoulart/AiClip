@@ -370,4 +370,27 @@ await user.type(document.getElementById('campaign-title-youtube'), 'My Campaign 
 
 **Verification:** Line 107 already declares `const fetchMock = vi.stubGlobal('fetch', vi.fn());` before the test body (matching the pattern in the "confirm-before-execute" test at line 67). This was previously documented as Fix 11 in this evidence file. No code change required — line 121's `expect(fetchMock).not.toHaveBeenCalled();` resolves correctly.
 
+---
+
+### Fix 15: `fetchMock` not a spy (undefined) — PublishCampaignDialog.test.tsx lines 67 and 108
+
+**Root cause:** `vi.stubGlobal('fetch', vi.fn())` does NOT return the mock function; it returns `undefined`. Assigning its result to `fetchMock` left `fetchMock` undefined, so any `expect(fetchMock)...` assertion threw `TypeError: Cannot read properties of undefined` and frontend CI failed with 2 test failures.
+
+**Fix:** Changed both occurrences from:
+```javascript
+const fetchMock = vi.stubGlobal('fetch', vi.fn());
+```
+to:
+```javascript
+const fetchMock = vi.fn();
+vi.stubGlobal('fetch', fetchMock);
+```
+
+This assigns the actual `vi.fn()` mock to `fetchMock` (making it a spy) and separately registers it as the global `fetch` stub. `afterEach()` already calls `vi.unstubAllGlobals()` and `vi.restoreAllMocks()`, so cleanup is unaffected.
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` lines 67-68 and 108-109
+
+**Verification:** `npx vitest run src/features/social-publish/components/PublishCampaignDialog.test.tsx` — **14 tests passed** (1 test file). `fetchMock` is now a defined spy in both the "confirm-before-execute" test (line 67-68) and the "title missing" validation test (line 108-109).
+
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.

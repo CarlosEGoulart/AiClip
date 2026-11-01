@@ -64,7 +64,8 @@ describe('PublishCampaignDialog', () => {
 
   it('confirm-before-execute: no publish API call until confirm clicked', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.stubGlobal('fetch', vi.fn());
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
     const onClose = vi.fn();
     render(
       <PublishCampaignDialog
@@ -104,7 +105,8 @@ describe('PublishCampaignDialog', () => {
 
   it('pre-execution validation errors shown when title missing', async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.stubGlobal('fetch', vi.fn());
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
     const onClose = vi.fn();
     render(
       <PublishCampaignDialog
