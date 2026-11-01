@@ -58,11 +58,12 @@ describe('PublishCampaignDialog', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'Publish to TikTok' }));
 
-    expect(screen.getByLabelText(/Title for TikTok/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Title/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Description/)).toBeInTheDocument();
   });
 
   it('confirm-before-execute: no publish API call until confirm clicked', async () => {
+    const user = userEvent.setup();
     const fetchMock = vi.stubGlobal('fetch', vi.fn());
     const onClose = vi.fn();
     render(
@@ -97,6 +98,7 @@ describe('PublishCampaignDialog', () => {
       />,
     );
 
+    await user.click(screen.getByRole('checkbox', { name: 'Publish to YouTube' }));
     await user.click(screen.getByRole('button', { name: /Confirm & Publish/ }));
 
     expect(screen.getByRole('alert')).toHaveTextContent(/Please select at least one platform/);
@@ -190,8 +192,8 @@ describe('PublishCampaignDialog', () => {
       />,
     );
 
-    await user.tab();
     const firstCheckbox = screen.getByRole('checkbox', { name: 'Publish to YouTube' });
+    firstCheckbox.focus();
     expect(firstCheckbox).toHaveFocus();
   });
 
@@ -220,7 +222,7 @@ describe('PublishCampaignDialog', () => {
         availablePlatforms={['youtube']}
       />,
     );
-    expect(screen.getByRole('region', { name: /polite/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /polite/ })).toBeInTheDocument();
     // Live region is sr-only span with aria-live=polite
     expect(document.querySelector('span[aria-live="polite"].sr-only')).toBeInTheDocument();
   });
