@@ -76,7 +76,7 @@ describe('PublishCampaignDialog', () => {
     );
 
     await user.click(screen.getByRole('checkbox', { name: 'Publish to YouTube' }));
-    await user.type(screen.getByLabelText(/Title for YouTube/), 'My Campaign Title');
+    await user.type(document.getElementById('campaign-title-youtube'), 'My Campaign Title');
 
     // No fetch call yet
     expect(fetchMock).not.toHaveBeenCalled();

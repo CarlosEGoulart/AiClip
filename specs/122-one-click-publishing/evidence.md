@@ -346,4 +346,28 @@ expect(fetchMock).not.toHaveBeenCalled();
 
 **Verification:** Line 61 already reads `expect(document.getElementById('campaign-title-tiktok')).toBeInTheDocument();` — fixed in the previous round. No change required.
 
+### Fix 13: Line 79 Title input lookup — `getByLabelText(/Title for YouTube/)` → `document.getElementById`
+
+**Root cause:** Frontend CI failed because the YouTube title input is not directly labellable via `<label for="">` text "Title for YouTube". It uses `aria-labelledby` (`meta-youtube-title campaign-title-youtube`), so `screen.getByLabelText(/Title for YouTube/)` cannot resolve the input.
+
+**Fix:** Changed line 79 from:
+```javascript
+await user.type(screen.getByLabelText(/Title for YouTube/), 'My Campaign Title');
+```
+to:
+```javascript
+await user.type(document.getElementById('campaign-title-youtube'), 'My Campaign Title');
+```
+
+**Verification against component:** `PublishCampaignDialog.tsx` renders `<input id="campaign-title-${platform}" ... aria-labelledby="meta-${platform}-title campaign-title-${platform}" />`. The `document.getElementById('campaign-title-youtube')` lookup directly resolves the YouTube title input.
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` line 79
+
+### Fix 14: `fetchMock` undefined at line 121 — verified already present
+
+**Root cause:** Reported that `fetchMock` was used at line 121 but never declared in the "pre-execution validation errors shown when title missing" test (lines 105-123).
+
+**Verification:** Line 107 already declares `const fetchMock = vi.stubGlobal('fetch', vi.fn());` before the test body (matching the pattern in the "confirm-before-execute" test at line 67). This was previously documented as Fix 11 in this evidence file. No code change required — line 121's `expect(fetchMock).not.toHaveBeenCalled();` resolves correctly.
+
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.
