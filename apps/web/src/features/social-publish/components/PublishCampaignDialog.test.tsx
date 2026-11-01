@@ -52,7 +52,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube', 'tiktok']},
+        availablePlatforms={['youtube', 'tiktok']}
       />,
     );
 
@@ -70,7 +70,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube']},
+        availablePlatforms={['youtube']}
       />,
     );
 
@@ -93,7 +93,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube']},
+        availablePlatforms={['youtube']}
       />,
     );
 
@@ -110,7 +110,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube']},
+        availablePlatforms={['youtube']}
       />,
     );
 
@@ -127,7 +127,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube', 'instagram']},
+        availablePlatforms={['youtube', 'instagram']}
       />,
       // Note: initial render shows form; campaign states render after createCampaign.
       // We test state badges via the campaign branch indirectly through data-testid.
@@ -145,7 +145,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube']},
+        availablePlatforms={['youtube']}
       />,
     );
     expect(screen.getByRole('button', { name: /Confirm & Publish/ })).toBeInTheDocument();
@@ -158,7 +158,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube']},
+        availablePlatforms={['youtube']}
       />,
     );
     // Retry button only appears in campaign state; not in initial form state
@@ -172,7 +172,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube']},
+        availablePlatforms={['youtube']}
       />,
     );
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
@@ -186,7 +186,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube', 'instagram']},
+        availablePlatforms={['youtube', 'instagram']}
       />,
     );
 
@@ -202,7 +202,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube', 'instagram']},
+        availablePlatforms={['youtube', 'instagram']}
       />,
     );
     expect(screen.getByRole('checkbox', { name: 'Publish to YouTube' })).toBeInTheDocument();
@@ -217,7 +217,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube']},
+        availablePlatforms={['youtube']}
       />,
     );
     expect(screen.getByRole('region', { name: /polite/ })).not.toBeInTheDocument();
@@ -233,7 +233,7 @@ describe('PublishCampaignDialog', () => {
         isOpen={true}
         onClose={onClose}
         clipReviewId={1}
-        availablePlatforms={['youtube']},
+        availablePlatforms={['youtube']}
       />,
     );
 

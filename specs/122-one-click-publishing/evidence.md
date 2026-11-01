@@ -129,6 +129,20 @@ Rolldown build failed with `Duplicated export 'usePublishCampaign' at lines 74 a
 **File changed:**
 - `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` line 40
 
+### Fix 3: Parse error — trailing commas after JSX attribute closing braces in PublishCampaignDialog.test.tsx
+
+**Root cause:** The JSX parser does not allow a trailing comma after the closing `}` of an attribute value expression. Multiple occurrences of `availablePlatforms={...},` (with comma after `}`) caused parse errors in frontend CI. The reported error was at line 55 (`availablePlatforms={['youtube', 'tiktok']},`), but the same defect existed at every attribute that listed platforms.
+
+**Fix:** Removed the trailing comma after the closing `}` on all `availablePlatforms={...}` attributes throughout the file using `replaceAll: true`:
+- `availablePlatforms={['youtube', 'instagram']},` → `availablePlatforms={['youtube', 'instagram']}` (3 occurrences)
+- `availablePlatforms={['youtube', 'tiktok']},` → `availablePlatforms={['youtube', 'tiktok']}` (1 occurrence)
+- `availablePlatforms={['youtube']},` → `availablePlatforms={['youtube']}` (8 occurrences)
+
+**Files changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` — 12 total trailing commas removed
+
+**Verification:** Post-fix grep for `availablePlatforms=\[.*\],` returns no matches. Line 25 (`availablePlatforms={['youtube', 'instagram']}`) was already correct and remains unchanged.
+
 ## Tester Decision
 
 **Decision: APPROVE**
