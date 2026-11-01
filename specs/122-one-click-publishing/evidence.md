@@ -455,4 +455,44 @@ This assigns the actual `vi.fn()` mock to `fetchMock` (making it a spy) and sepa
 **Files changed:**
 - `apps/web/src/features/social-publish/components/PublishList.tsx` line 160 — `availablePlatforms={platforms as Platform[]}`
 
+---
+
+## Backend CI Fix (Issue #122 — PHP Parse Error)
+
+### Fix: Invalid `[*]` array literal in SocialPublishCampaignControllerTest.php
+
+**Root cause:** Backend CI failed with a PHP parse error at line 201 of `tests/Feature/SocialPublish/SocialPublishCampaignControllerTest.php`:
+
+```
+syntax error, unexpected token "*", expecting "]"
+```
+
+The `assertJsonStructure` call used the invalid `[*]` shorthand:
+
+```php
+'data' => ['id', 'status', 'publishes' => [*]],
+```
+
+`[*]` is not valid PHP. In Laravel's `assertJsonStructure`, nested arrays must be structured with a `'*'` key pointing to the array of field names.
+
+**Fix:** Replaced line 201's `assertJsonStructure` call with the proper nested array structure:
+
+```php
+$response->assertJsonStructure([
+    'data' => [
+        'id',
+        'status',
+        'publishes' => [
+            '*' => [
+                'id',
+                'status',
+            ],
+        ],
+    ],
+]);
+```
+
+**Files changed:**
+- `apps/api/tests/Feature/SocialPublish/SocialPublishCampaignControllerTest.php` line 201 — replaced invalid `[*]` with valid `'*' => ['id', 'status']` nested structure
+
 No `.opencode/**`, `tests/governance/**`, `scripts/merge_gate.py`, or `.env` modifications. English-only content.

@@ -198,7 +198,16 @@ describe('GET /api/v1/social/publish/campaigns/{campaign} (show)', function () {
 
         $response->assertOk();
         $response->assertJsonStructure([
-            'data' => ['id', 'status', 'publishes' => [*]],
+            'data' => [
+                'id',
+                'status',
+                'publishes' => [
+                    '*' => [
+                        'id',
+                        'status',
+                    ],
+                ],
+            ],
         ]);
         $response->assertJsonPath('data.id', $campaign->id);
     });
