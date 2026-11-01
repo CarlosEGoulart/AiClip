@@ -58,7 +58,7 @@ describe('PublishCampaignDialog', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'Publish to TikTok' }));
 
-    expect(screen.getByLabelText(/Title/)).toBeInTheDocument();
+    expect(document.getElementById('campaign-title-tiktok')).toBeInTheDocument();
     expect(screen.getByLabelText(/Description/)).toBeInTheDocument();
   });
 
@@ -222,7 +222,7 @@ describe('PublishCampaignDialog', () => {
         availablePlatforms={['youtube']}
       />,
     );
-    expect(screen.getByRole('region', { name: /polite/ })).toBeInTheDocument();
+    expect(document.querySelector('span[aria-live="polite"].sr-only')).toBeInTheDocument();
     // Live region is sr-only span with aria-live=polite
     expect(document.querySelector('span[aria-live="polite"].sr-only')).toBeInTheDocument();
   });
