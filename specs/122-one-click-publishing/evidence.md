@@ -118,16 +118,16 @@ Rolldown build failed with `Duplicated export 'usePublishCampaign' at lines 74 a
 - `apps/web/src/features/social-publish/components/PublishCampaignDialog.tsx` line 59: `usePublishCampaign()` → `usePublishCampaignCreate()`
 - `apps/web/src/features/social-publish/index.ts`: no change needed — `export * from './hooks'` automatically re-exports the renamed function
 
-**Note:** `apps/web/src/features/social-publish/hooks.test.tsx` imports and calls `usePublishCampaign()` (no-arg) at lines 6, 194, 211, 228 and will need updating to `usePublishCampaignCreate` — this file is outside the Builder's editable scope.
+**Note:** `apps/web/src/features/social-publish/hooks.test.tsx` imports and calls `usePublishCampaign()` (no-arg) at lines 6, 194, 211, 228 — updated to `usePublishCampaignCreate` (import line 6, hook calls lines 194, 211, 228). The renamed hook returns `{ createCampaign, isPending, error, clearErrors }`, so `createCampaign` now resolves correctly.
 
-### Fix 2: Parse error in PublishCampaignDialog.test.tsx line 25
+### Fix 2: Parse error in PublishCampaignDialog.test.tsx line 40
 
-**Root cause:** Syntax/encoding issue at line 25 (trailing comma and potential hidden characters in `availablePlatforms={['youtube', 'instagram']},`).
+**Root cause:** Trailing comma after JSX attribute closing brace (`availablePlatforms={['youtube']},`) and potential hidden Unicode characters caused a parse error in the JSX parser.
 
-**Fix:** Rewrote line 25 cleanly as `availablePlatforms={['youtube', 'instagram']}` (removed trailing comma, clean characters).
+**Fix:** Rewrote line 40 cleanly as `availablePlatforms={['youtube']}` (removed trailing comma, ensured clean ASCII characters).
 
 **File changed:**
-- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` line 25
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.test.tsx` line 40
 
 ## Tester Decision
 

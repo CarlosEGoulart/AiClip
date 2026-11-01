@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import {
   usePublishClip,
   usePublishes,
-  usePublishCampaign,
+  usePublishCampaignCreate,
   usePublishCampaigns,
   useCancelPublishCampaign,
   useRetryPublishCampaign,
@@ -191,7 +191,7 @@ describe('usePublishCampaign', () => {
   it('returns pending during mutation', async () => {
     vi.mocked(socialPublishApi.createPublishCampaign).mockResolvedValue(mockCampaignResponse);
 
-    const { result } = renderHook(() => usePublishCampaign());
+    const { result } = renderHook(() => usePublishCampaignCreate());
 
     expect(result.current.isPending).toBe(false);
 
@@ -208,7 +208,7 @@ describe('usePublishCampaign', () => {
   it('returns data on success', async () => {
     vi.mocked(socialPublishApi.createPublishCampaign).mockResolvedValue(mockCampaignResponse);
 
-    const { result } = renderHook(() => usePublishCampaign());
+    const { result } = renderHook(() => usePublishCampaignCreate());
 
     let data = null;
     await act(async () => {
@@ -225,7 +225,7 @@ describe('usePublishCampaign', () => {
   it('returns error on failure', async () => {
     vi.mocked(socialPublishApi.createPublishCampaign).mockRejectedValue({ type: 'validation', errors: {} });
 
-    const { result } = renderHook(() => usePublishCampaign());
+    const { result } = renderHook(() => usePublishCampaignCreate());
 
     let data = null;
     await act(async () => {
