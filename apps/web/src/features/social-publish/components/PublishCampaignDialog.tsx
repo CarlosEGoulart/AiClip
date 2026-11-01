@@ -7,7 +7,7 @@ import {
   usePublishCampaignCreate,
   useCancelPublishCampaign,
   useRetryPublishCampaign,
-  usePublishCampaignDetail,
+  usePublishCampaign,
 } from '../hooks';
 import '../design-tokens.css';
 
@@ -62,7 +62,7 @@ export function PublishCampaignDialog({
   const {
     campaign: campaignDetail,
     fetchCampaign: fetchCampaignDetail,
-  } = usePublishCampaignDetail(campaignId || 0);
+  } = usePublishCampaign(campaignId || 0);
   const modalRef = useRef<HTMLDivElement>(null);
   const liveRegionRef = useRef<HTMLSpanElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);

@@ -143,6 +143,17 @@ Rolldown build failed with `Duplicated export 'usePublishCampaign' at lines 74 a
 
 **Verification:** Post-fix grep for `availablePlatforms=\[.*\],` returns no matches. Line 25 (`availablePlatforms={['youtube', 'instagram']}`) was already correct and remains unchanged.
 
+### Fix 4: `usePublishCampaignDetail` → `usePublishCampaign` in PublishCampaignDialog.tsx
+
+**Root cause:** Frontend CI failed with `TypeError: usePublishCampaignDetail is not a function` at `PublishCampaignDialog.tsx:65:7`. Per plan §5.3, `hooks.ts` exports `usePublishCampaign(id)` as the detail hook — there is no `usePublishCampaignDetail` export.
+
+**Fix:**
+- Line 10: import `usePublishCampaignDetail` → `usePublishCampaign`
+- Line 65: `usePublishCampaignDetail(campaignId || 0)` → `usePublishCampaign(campaignId || 0)`
+
+**File changed:**
+- `apps/web/src/features/social-publish/components/PublishCampaignDialog.tsx` lines 10 and 65
+
 ## Tester Decision
 
 **Decision: APPROVE**
