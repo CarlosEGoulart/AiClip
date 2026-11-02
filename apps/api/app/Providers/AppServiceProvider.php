@@ -69,7 +69,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Fail fast in production if required environment variables are
         // missing or insecure. Never silently fall back to defaults.
-        if ($this->app->environment('production')) {
+        if ($this->app->environment('production') && !$this->app->runningInConsole()) {
             app(ProductionEnvironmentValidator::class)->validateProductionRequired();
             app(ProductionEnvironmentValidator::class)->validateProductionSafety();
         }
