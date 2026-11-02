@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Contracts\SocialPublisher;
 use App\Enums\SocialPublishStatus;
 use App\Models\SocialPublish;
+use App\Jobs\Traits\UpdatesCampaignStatus;
 use App\Services\SocialConnectionManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Storage;
 
 class PublishToTikTok implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UpdatesCampaignStatus;
 
     public int $tries = 3;
 
@@ -28,6 +29,7 @@ class PublishToTikTok implements ShouldQueue
      */
     public function __construct(
         public int $publishId,
+        public ?int $campaignId = null,
     ) {}
 
     /**
@@ -141,6 +143,10 @@ class PublishToTikTok implements ShouldQueue
                 ]);
             });
 
+            if ($this->campaignId !== null) {
+                $this->updateCampaignStatus($this->campaignId);
+            }
+
             Log::info('PublishToTikTok: Publish completed', [
                 'publish_id' => $this->publishId,
                 'external_video_id' => $result->externalVideoId,
@@ -162,6 +168,10 @@ class PublishToTikTok implements ShouldQueue
                 'error_message' => $errorMessage,
             ]);
         });
+
+        if ($this->campaignId !== null) {
+            $this->updateCampaignStatus($this->campaignId);
+        }
 
         Log::warning('PublishToTikTok: Publish failed', [
             'publish_id' => $this->publishId,

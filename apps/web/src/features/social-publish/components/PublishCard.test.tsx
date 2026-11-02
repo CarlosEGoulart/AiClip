@@ -8,6 +8,7 @@ const mockPublish: SocialPublish = {
   platform: 'youtube',
   platform_label: 'YouTube',
   status: 'pending',
+  campaign_id: null,
   external_video_id: null,
   video_url: null,
   title: 'Test Clip',
@@ -120,5 +121,20 @@ describe('PublishCard', () => {
     render(<PublishCard publish={mockInstagramPublish} />);
     const svg = document.querySelector('svg');
     expect(svg).toBeInTheDocument();
+  });
+
+  it('renders campaign badge when campaign_id is present', () => {
+    const campaignPublish: SocialPublish = {
+      ...mockPublish,
+      id: 3,
+      campaign_id: 7,
+    };
+    render(<PublishCard publish={campaignPublish} />);
+    expect(screen.getByText('Campaign')).toBeInTheDocument();
+  });
+
+  it('does not render campaign badge when campaign_id is null', () => {
+    render(<PublishCard publish={mockPublish} />);
+    expect(screen.queryByText('Campaign')).not.toBeInTheDocument();
   });
 });

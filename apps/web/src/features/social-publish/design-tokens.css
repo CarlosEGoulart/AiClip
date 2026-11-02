@@ -596,3 +596,146 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --- Campaign Dialog extensions --- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.form-hint {
+  font-size: var(--sp-step-small);
+  color: var(--sp-muted);
+  margin-top: var(--sp-space-xs);
+}
+
+.btn-small {
+  padding: var(--sp-space-xs) var(--sp-space-md);
+  min-height: 32px;
+  font-size: var(--sp-step-small);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-space-xs);
+  padding: var(--sp-space-xs) var(--sp-space-sm);
+  border-radius: var(--sp-radius);
+  font-size: var(--sp-step-small);
+  font-weight: 600;
+  letter-spacing: var(--sp-tracking-normal);
+  line-height: 1.4;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.status-badge-pending { background: var(--sp-code-bg); color: var(--sp-muted); }
+.status-badge-processing { background: var(--sp-accent-bg); color: var(--sp-accent); }
+.status-badge-published { background: var(--sp-success-bg); color: var(--sp-success); }
+.status-badge-partially_published { background: rgba(234, 179, 8, 0.1); color: #a16207; }
+.status-badge-failed { background: var(--sp-error-bg); color: var(--sp-error); }
+.status-badge-cancelled { background: var(--sp-code-bg); color: var(--sp-muted); }
+
+.campaign-status-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-space-sm);
+  padding: var(--sp-space-md) var(--sp-space-xl);
+  border-bottom: 1px solid var(--sp-border);
+  flex-shrink: 0;
+}
+
+.campaign-targets {
+  padding: var(--sp-space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-space-md);
+  border-bottom: 1px solid var(--sp-border);
+}
+
+.campaign-target {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-space-sm);
+  padding: var(--sp-space-md);
+  background: var(--sp-bg);
+  border: 1px solid var(--sp-border);
+  border-radius: var(--sp-radius);
+}
+
+.campaign-target-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-space-sm);
+}
+
+.campaign-target-platform {
+  font-size: var(--sp-step-body);
+  font-weight: 600;
+  color: var(--sp-ink);
+}
+
+.target-status-badge {
+  font-size: var(--sp-step-small);
+  font-weight: 600;
+}
+
+.target-status-pending { background: var(--sp-code-bg); color: var(--sp-muted); }
+.target-status-processing { background: var(--sp-accent-bg); color: var(--sp-accent); }
+.target-status-published { background: var(--sp-success-bg); color: var(--sp-success); }
+.target-status-failed { background: var(--sp-error-bg); color: var(--sp-error); }
+
+.campaign-target-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-space-xs);
+}
+
+.campaign-target-title {
+  font-size: var(--sp-step-body);
+  color: var(--sp-ink);
+  overflow-wrap: break-word;
+}
+
+.campaign-target-description {
+  font-size: var(--sp-step-small);
+  color: var(--sp-muted);
+  overflow-wrap: break-word;
+}
+
+.campaign-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-space-xs);
+  padding: var(--sp-space-xs) var(--sp-space-sm);
+  border-radius: var(--sp-radius);
+  font-size: var(--sp-step-small);
+  font-weight: 600;
+  background: var(--sp-accent-bg);
+  color: var(--sp-accent);
+  margin-left: var(--sp-space-sm);
+}
+
+.platform-metadata-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-space-sm);
+  padding: var(--sp-space-md);
+  background: var(--sp-bg);
+  border: 1px solid var(--sp-border);
+  border-radius: var(--sp-radius);
+}
+
+.platform-metadata-title {
+  font-size: var(--sp-step-small);
+  font-weight: 600;
+  color: var(--sp-ink);
+  margin: 0 0 var(--sp-space-xs) 0;
+}
