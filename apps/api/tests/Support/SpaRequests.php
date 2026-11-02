@@ -4,6 +4,8 @@ namespace Tests\Support;
 
 use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Cookie;
@@ -17,6 +19,19 @@ trait SpaRequests
         // without destroying rows, flushing attributes, or changing saved cookies.
         Auth::forgetGuards();
         config(['session.driver' => 'array']);
+
+        if (! Schema::hasTable('users')) {
+            Schema::create('users', function (Blueprint $table) {
+                $table->string('id')->primary();
+                $table->string('name');
+                $table->string('email')->unique();
+                $table->timestamp('email_verified_at')->nullable();
+                $table->string('password');
+                $table->rememberToken();
+                $table->timestamps();
+            });
+        }
+
         Auth::shouldUse('web');
         $this->app->forgetInstance('auth.driver');
         $this->app->make('session')->forgetDrivers();
