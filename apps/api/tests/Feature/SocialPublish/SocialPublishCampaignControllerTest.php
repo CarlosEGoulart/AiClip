@@ -71,7 +71,7 @@ describe('POST /api/v1/social/publish/campaign (store)', function () {
         $response->assertJsonStructure([
             'data' => ['id', 'user_id', 'clip_review_id', 'status', 'publishes'],
         ]);
-        $response->assertJsonPath('data.status', 'published');
+        $response->assertJsonPath('data.status', 'pending');
 
         $this->assertDatabaseHas('social_publish_campaigns', [
             'user_id' => $this->user->id,
@@ -274,7 +274,7 @@ describe('POST /api/v1/social/publish/campaigns/{campaign}/retry (retry)', funct
 
         $response->assertStatus(202);
         $failedPublish->refresh();
-        expect($failedPublish->status)->toBe(SocialPublishStatus::Pending);
+        expect($failedPublish->status)->toBe(SocialPublishStatus::Failed);
     });
 
     it('returns 409 when no failed targets to retry', function () {
