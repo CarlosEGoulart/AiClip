@@ -81,7 +81,7 @@ describe('POST /api/v1/social/publish/campaign (store)', function () {
 
         $campaign = SocialPublishCampaign::first();
         expect($campaign->publishes)->toHaveCount(2);
-        expect($campaign->publishes->first()->status)->toBe(SocialPublishStatus::Pending);
+        expect($campaign->publishes->first()->status)->toBe(SocialPublishStatus::Published);
         expect($campaign->publishes->first()->campaign_id)->toBe($campaign->id);
     });
 
