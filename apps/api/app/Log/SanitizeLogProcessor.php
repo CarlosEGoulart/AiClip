@@ -2,7 +2,7 @@
 
 namespace App\Log;
 
-use Monolog\Logger;
+use Monolog\LogRecord;
 use Monolog\Processor\ProcessorInterface;
 
 /**
@@ -44,18 +44,20 @@ class SanitizeLogProcessor implements ProcessorInterface
      * message that might embed secrets (e.g. DB connection strings with
      * passwords).
      */
-    public function __invoke(array $record): array
+    public function __invoke(LogRecord $record): LogRecord
     {
-        $record['context'] = $this->sanitizeContext($record['context'] ?? []);
+        $record->setContext($this->sanitizeContext($record->getContext() ?? []));
 
-        if (isset($record['message']) && is_string($record['message'])) {
-            $record['message'] = $this->sanitizeString($record['message']);
+        if (is_string($record->getMessage())) {
+            $record->setMessage($this->sanitizeString($record->getMessage()));
         }
 
-        if (isset($record['context']['exception'])) {
-            $record['context']['exception'] = $this->sanitizeException(
-                $record['context']['exception']
+        $context = $record->getContext();
+        if (isset($context['exception'])) {
+            $context['exception'] = $this->sanitizeException(
+                $context['exception']
             );
+            $record->setContext($context);
         }
 
         return $record;
