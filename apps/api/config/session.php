@@ -18,7 +18,7 @@ return [
     |
     */
 
-    'driver' => env('SESSION_DRIVER', app()->environment('production') ? 'database' : 'array'),
+    'driver' => env('SESSION_DRIVER', env('APP_ENV', 'production') === 'production' ? 'database' : 'array'),
 
     /*
     |--------------------------------------------------------------------------
