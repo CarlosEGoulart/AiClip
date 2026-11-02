@@ -13,6 +13,7 @@ use App\Services\FakeTikTokProvider;
 use App\Services\FakeYouTubePublisher;
 use App\Services\FakeYouTubeProvider;
 use App\Services\InstagramPublisher;
+use App\Services\ProductionEnvironmentValidator;
 use App\Services\SocialConnectionManager;
 use App\Services\TikTokPublisher;
 use App\Services\YouTubePublisher;
@@ -66,6 +67,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Fail fast in production if required environment variables are
+        // missing or insecure. Never silently fall back to defaults.
+        if ($this->app->environment('production')) {
+            app(ProductionEnvironmentValidator::class)->validateProductionRequired();
+            app(ProductionEnvironmentValidator::class)->validateProductionSafety();
+        }
+
         RateLimiter::for('project-create', function (Request $request) {
             return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
         });
@@ -125,6 +133,32 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('social-campaign-cancel', function (Request $request) {
             return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Authentication rate limiters (apply outside auth:sanctum group)
+        RateLimiter::for('auth-register', function (Request $request) {
+            return Limit::perMinute(5)->by($request->ip());
+        });
+
+        RateLimiter::for('auth-login', function (Request $request) {
+            return Limit::perMinute(10)->by($request->ip());
+        });
+
+        RateLimiter::for('auth-logout', function (Request $request) {
+            return Limit::perMinute(30)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Destructive action rate limiters
+        RateLimiter::for('project-destroy', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('media-destroy', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('test-seed', function (Request $request) {
+            return Limit::perMinute(5)->by($request->user()?->id ?: $request->ip());
         });
     }
 }

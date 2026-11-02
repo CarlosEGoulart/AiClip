@@ -39,7 +39,16 @@ return [
     |
     */
 
-    'debug' => (bool) env('APP_DEBUG', false),
+    'debug' => (function (): bool {
+        // Force debug off in production. It can only be enabled in
+        // non-production environments. This prevents accidental exposure
+        // of stack traces and internals in production.
+        if (env('APP_ENV', 'production') === 'production') {
+            return false;
+        }
+
+        return (bool) env('APP_DEBUG', false);
+    })(),
 
     /*
     |--------------------------------------------------------------------------
