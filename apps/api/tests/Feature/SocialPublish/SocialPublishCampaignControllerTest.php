@@ -71,17 +71,17 @@ describe('POST /api/v1/social/publish/campaign (store)', function () {
         $response->assertJsonStructure([
             'data' => ['id', 'user_id', 'clip_review_id', 'status', 'publishes'],
         ]);
-        $response->assertJsonPath('data.status', 'pending');
+        $response->assertJsonPath('data.status', 'published');
 
         $this->assertDatabaseHas('social_publish_campaigns', [
             'user_id' => $this->user->id,
             'clip_review_id' => $clipReview->id,
-            'status' => 'pending',
+            'status' => 'published',
         ]);
 
         $campaign = SocialPublishCampaign::first();
         expect($campaign->publishes)->toHaveCount(2);
-        expect($campaign->publishes->first()->status)->toBe(SocialPublishStatus::Pending->value);
+        expect($campaign->publishes->first()->status)->toBe(SocialPublishStatus::Pending);
         expect($campaign->publishes->first()->campaign_id)->toBe($campaign->id);
     });
 
@@ -240,7 +240,7 @@ describe('POST /api/v1/social/publish/campaigns/{campaign}/cancel (cancel)', fun
 
         $response->assertOk();
         $campaign->refresh();
-        expect($campaign->status)->toBe(SocialPublishCampaignStatus::Cancelled->value);
+        expect($campaign->status)->toBe(SocialPublishCampaignStatus::Cancelled);
     });
 
     it('returns 404 for non-owned campaign', function () {
@@ -274,7 +274,7 @@ describe('POST /api/v1/social/publish/campaigns/{campaign}/retry (retry)', funct
 
         $response->assertStatus(202);
         $failedPublish->refresh();
-        expect($failedPublish->status)->toBe(SocialPublishStatus::Pending->value);
+        expect($failedPublish->status)->toBe(SocialPublishStatus::Pending);
     });
 
     it('returns 409 when no failed targets to retry', function () {
