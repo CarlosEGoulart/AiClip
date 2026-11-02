@@ -16,6 +16,7 @@ trait SpaRequests
         // Forget auth guards, not global facade instances. Rebuild session stores
         // without destroying rows, flushing attributes, or changing saved cookies.
         Auth::forgetGuards();
+        config(['session.driver' => 'array']);
         Auth::shouldUse('web');
         $this->app->forgetInstance('auth.driver');
         $this->app->make('session')->forgetDrivers();
