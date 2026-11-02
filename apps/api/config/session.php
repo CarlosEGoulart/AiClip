@@ -18,7 +18,7 @@ return [
     |
     */
 
-    'driver' => env('APP_ENV') === 'production' ? 'database' : 'array',
+    'driver' => 'array',
 
     /*
     |--------------------------------------------------------------------------
