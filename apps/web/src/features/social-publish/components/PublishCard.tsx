@@ -11,6 +11,7 @@ function StatusBadge({ status }: { status: string }) {
     uploading: { label: 'Uploading', className: 'uploading' },
     published: { label: 'Published', className: 'published' },
     failed: { label: 'Failed', className: 'failed' },
+    cancelled: { label: 'Cancelled', className: 'cancelled' },
   };
 
   const config = statusConfig[status] || { label: status, className: '' };
@@ -69,6 +70,7 @@ function PlatformIcon({ platform }: { platform: string }) {
 export function PublishCard({ publish }: PublishCardProps) {
   const isPublished = publish.status === 'published';
   const isFailed = publish.status === 'failed';
+  const isCampaign = publish.campaign_id != null;
 
   return (
     <article className="publish-card" data-testid="publish-card">
@@ -77,6 +79,11 @@ export function PublishCard({ publish }: PublishCardProps) {
           <div className="card-title-row">
             <h3 className="card-title">{publish.title}</h3>
             <PlatformIcon platform={publish.platform} />
+            {isCampaign && (
+              <span className="campaign-badge" aria-label="Part of publish campaign">
+                Campaign
+              </span>
+            )}
           </div>
           <p className="card-platform">{publish.platform_label}</p>
         </div>

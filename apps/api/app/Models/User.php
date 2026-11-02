@@ -54,4 +54,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(SocialPublish::class);
     }
+
+    /**
+     * Get the social publish campaigns for the user.
+     */
+    public function socialPublishCampaigns(): HasMany
+    {
+        return $this->hasMany(SocialPublishCampaign::class);
+    }
 }

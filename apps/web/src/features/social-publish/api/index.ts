@@ -1,11 +1,15 @@
 import type {
+  CampaignListResponse,
   PublishClipRequest,
+  PublishCampaignRequest,
+  PublishCampaignResponse,
+  PublishListResponse,
   PublishResponse,
   PublishResponseWrapper,
-  PublishListResponse,
   PublishStatusResponse,
   PublishStatusResponseWrapper,
   SocialPublishError,
+  SocialPublishCampaign,
 } from '../types';
 
 function getCsrfToken(): string | null {
@@ -140,4 +144,39 @@ export async function getPublishStatus(id: number): Promise<PublishStatusRespons
     `/api/v1/social/publishes/${id}`,
   );
   return response.data;
+}
+
+export async function createPublishCampaign(
+  body: PublishCampaignRequest,
+): Promise<PublishCampaignResponse> {
+  const response = await request<{ data: PublishCampaignResponse }>('/api/v1/social/publish/campaign', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return response.data;
+}
+
+export async function getPublishCampaigns(): Promise<CampaignListResponse> {
+  return request<CampaignListResponse>('/api/v1/social/publish/campaigns');
+}
+
+export async function getPublishCampaign(id: number): Promise<SocialPublishCampaign> {
+  const response = await request<{ data: SocialPublishCampaign }>(
+    `/api/v1/social/publish/campaigns/${id}`,
+  );
+  return response.data;
+}
+
+export async function cancelPublishCampaign(id: number): Promise<{ campaign_id: number; status: string }> {
+  return request<{ data: { campaign_id: number; status: string } }>(
+    `/api/v1/social/publish/campaigns/${id}/cancel`,
+    { method: 'POST' },
+  ).then((r) => r.data);
+}
+
+export async function retryPublishCampaign(id: number): Promise<{ campaign_id: number; status: string; retried_count: number }> {
+  return request<{ data: { campaign_id: number; status: string; retried_count: number } }>(
+    `/api/v1/social/publish/campaigns/${id}/retry`,
+    { method: 'POST' },
+  ).then((r) => r.data);
 }

@@ -14,6 +14,7 @@ class SocialPublishResource extends JsonResource
 
         return [
             'id' => $publish->id,
+            'campaign_id' => $publish->campaign_id,
             'platform' => $publish->platform,
             'platform_label' => $this->getPlatformLabel($publish->platform),
             'status' => $publish->status,

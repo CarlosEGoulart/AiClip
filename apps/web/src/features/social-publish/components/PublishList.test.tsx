@@ -9,6 +9,7 @@ const mockPublishes: SocialPublish[] = [
     platform: 'youtube',
     platform_label: 'YouTube',
     status: 'pending',
+    campaign_id: null,
     external_video_id: null,
     video_url: null,
     title: 'Clip 1',
@@ -22,6 +23,7 @@ const mockPublishes: SocialPublish[] = [
     platform: 'youtube',
     platform_label: 'YouTube',
     status: 'published',
+    campaign_id: 5,
     external_video_id: 'abc123',
     video_url: 'https://youtu.be/abc123',
     title: 'Clip 2',
@@ -57,5 +59,10 @@ describe('PublishList', () => {
     render(<PublishList publishes={mockPublishes} loading={false} />);
     expect(screen.getByText('Clip 1')).toBeInTheDocument();
     expect(screen.getByText('Clip 2')).toBeInTheDocument();
+  });
+
+  it('renders campaign badge for publishes with campaign_id', () => {
+    render(<PublishList publishes={mockPublishes} loading={false} />);
+    expect(screen.getByText('Campaign')).toBeInTheDocument();
   });
 });
