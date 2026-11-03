@@ -5,24 +5,25 @@ namespace Tests\Support;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
 abstract class SpaTestCase extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseTransactions;
     use SpaRequests;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        // SpaTestCase::setUp() shadows RefreshDatabase::setUp() (parent class
-        // methods take precedence over trait methods in PHP), so
-        // refreshTestDatabase() never runs automatically. Call it explicitly
-        // so that tests extending SpaTestCase + RefreshDatabase have their
-        // migration tables available.
-        $this->refreshTestDatabase();
+        // CI runs migrations once during "Run Migrations" step, so tables already exist.
+        // SpaTestCase::setUp() shadows DatabaseTransactions::setUp(), so
+        // beginDatabaseTransaction() never runs automatically. Call it explicitly
+        // so each test runs within a transaction that rolls back in tearDown.
+        // This avoids calling migrate:fresh (refreshTestDatabase) before every test,
+        // which was extremely slow and caused CI timeouts.
+        $this->beginDatabaseTransaction();
 
         // Exercise production error contracts independently of the local .env.
         config(['app.debug' => false, 'session.driver' => 'array', 'session.lottery' => [0, 100]]);
