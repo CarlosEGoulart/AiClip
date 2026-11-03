@@ -5,6 +5,7 @@ namespace Tests\Support;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 abstract class SpaTestCase extends TestCase
@@ -15,15 +16,10 @@ abstract class SpaTestCase extends TestCase
     {
         parent::setUp();
 
-        // SpaTestCase::setUp() shadows RefreshDatabase::setUp() (parent class
-        // methods take precedence over trait methods in PHP), so
-        // refreshTestDatabase() never runs automatically. Call it explicitly
-        // so that tests extending SpaTestCase + RefreshDatabase have their
-        // migration tables available. $this refers to the test class instance
-        // which uses RefreshDatabase, so the method is available.
-        if (method_exists($this, 'refreshTestDatabase')) {
-            $this->refreshTestDatabase();
-        }
+        // Ensure migration tables are available for tests extending
+        // SpaTestCase + RefreshDatabase. parent::setUp() shadows
+        // RefreshDatabase::setUp(), so run migrations directly via Artisan.
+        Artisan::call('migrate', ['--force' => true]);
 
         // Exercise production error contracts independently of the local .env.
         config(['app.debug' => false, 'session.driver' => 'array', 'session.lottery' => [0, 100]]);
