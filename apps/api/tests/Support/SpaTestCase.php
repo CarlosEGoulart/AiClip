@@ -15,10 +15,6 @@ abstract class SpaTestCase extends TestCase
     {
         parent::setUp();
 
-        // SpaTestCase::setUp() shadows RefreshDatabase::setUp(), so migrate fresh
-        // to guarantee a clean schema for every test using this base case.
-        $this->artisan('migrate:fresh', ['--force' => true]);
-
         // Exercise production error contracts independently of the local .env.
         config(['app.debug' => false, 'session.driver' => 'array', 'session.lottery' => [0, 100]]);
 
