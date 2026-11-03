@@ -15,6 +15,16 @@ abstract class SpaTestCase extends TestCase
     {
         parent::setUp();
 
+        // SpaTestCase::setUp() shadows RefreshDatabase::setUp() (parent class
+        // methods take precedence over trait methods in PHP), so
+        // refreshTestDatabase() never runs automatically. Call it explicitly
+        // so that tests extending SpaTestCase + RefreshDatabase have their
+        // migration tables available. $this refers to the test class instance
+        // which uses RefreshDatabase, so the method is available.
+        if (method_exists($this, 'refreshTestDatabase')) {
+            $this->refreshTestDatabase();
+        }
+
         // Exercise production error contracts independently of the local .env.
         config(['app.debug' => false, 'session.driver' => 'array', 'session.lottery' => [0, 100]]);
 
