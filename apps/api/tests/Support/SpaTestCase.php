@@ -13,10 +13,10 @@ abstract class SpaTestCase extends TestCase
 
     protected function setUp(): void
     {
+        parent::setUp();
+
         // Exercise production error contracts independently of the local .env.
         config(['app.debug' => false, 'session.driver' => 'array', 'session.lottery' => [0, 100]]);
-
-        parent::setUp();
 
         // Replace only Laravel's testing bypass; retain token validation and
         // every production middleware, including any duplicate stack.
