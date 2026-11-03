@@ -18,14 +18,14 @@ it('allowed origins are driven by env and never wildcard with credentials', func
 });
 
 it('CORS does not allow * origin when credentials are enabled', function () {
-    Config::set('cors.supports_credentials', true);
-    Config::set('cors.allowed_origins', ['*']);
-
     $origins = config('cors.allowed_origins');
+    $credentials = config('cors.supports_credentials');
 
     // When credentials are supported, a wildcard origin is not acceptable.
-    expect(config('cors.supports_credentials'))->toBeTrue();
-    expect($origins)->not->toEqual(['*']);
+    // The production CORS config derives allowed_origins from CORS_ALLOWED_ORIGINS
+    // env (no wildcards) and hardcodes supports_credentials to true.
+    expect($credentials)->toBeTrue();
+    expect($origins)->not->toContain('*');
 });
 
 it('allowed methods are scoped, not wildcard', function () {

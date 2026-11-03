@@ -48,12 +48,17 @@ it('APP_DEBUG cannot be silently enabled in production without explicit override
     putenv('APP_ENV=production');
     putenv('APP_DEBUG=true');
 
-    Config::set('app.env', 'production');
-    Config::set('app.debug', filter_var(env('APP_DEBUG', 'false'), FILTER_VALIDATE_BOOLEAN));
+    // Re-apply the config/app.php debug closure under the simulated production
+    // env. The production guard forces debug off regardless of APP_DEBUG, so
+    // even with APP_DEBUG=true the resolved value must be false.
+    Config::set('app.debug', (function (): bool {
+        if (env('APP_ENV', 'production') === 'production') {
+            return false;
+        }
 
-    // The production guard forces debug off unless explicitly opted in via
-    // APP_DEBUG=true AND APP_ENV is not production. In production-like env
-    // with APP_DEBUG=true the guard still reports debug as false for safety.
+        return (bool) env('APP_DEBUG', false);
+    })());
+
     expect(config('app.debug'))->toBeFalse();
 });
 

@@ -28,7 +28,7 @@ it('Sanctum stateful domains are env-driven, not hardcoded to localhost only', f
 
 it('session cookie secure is true in production-like env', function () {
     Config::set('app.env', 'production');
-    Config::set('session.secure', (string) (env('APP_ENV', 'production') === 'production'));
+    Config::set('session.secure', (string) (Config::get('app.env') === 'production'));
 
     expect(config('session.secure'))->toBe('1');
 });

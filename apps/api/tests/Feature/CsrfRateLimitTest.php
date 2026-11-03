@@ -33,9 +33,7 @@ it('every state-changing route has a throttle middleware', function () {
 });
 
 it('CSRF is applied to state-changing routes outside auth:sanctum (register, login)', function () {
-    $register = app('router')->getRoutes()->getByName(null) === null
-        ? null
-        : collect(app('router')->getRoutes())->first(fn ($r) => $r->uri === 'api/v1/auth/register');
+    $register = collect(app('router')->getRoutes())->first(fn ($r) => $r->uri === 'api/v1/auth/register');
 
     if ($register) {
         expect($register->middlewareContains(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class))->toBeTrue();
