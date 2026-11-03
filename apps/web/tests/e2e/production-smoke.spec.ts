@@ -20,8 +20,9 @@ const VIEWPORTS = [
 
 const API_REGISTER_URL_PART = '/api/v1/auth/register';
 const API_LOGIN_URL_PART = '/api/v1/auth/login';
-const API_UPLOAD_URL_PART = '/api/v1/projects';
 const CSRF_COOKIE_URL = '/sanctum/csrf-cookie';
+const SEED_CLIP_URL = '/api/v1/test/clip-reviews/seed';
+const YOUTUBE_CONNECT_URL = '/api/v1/social/youtube/connect';
 
 test.describe.configure({ retries: 1 });
 
@@ -127,15 +128,124 @@ async function uploadMedia(page: Page) {
   await expect(page.getByText(/processing|processed|complete/i).first()).toBeVisible({ timeout: 30000 });
 }
 
+/** Read the XSRF-TOKEN cookie and any auth/session cookies from the browser context. */
+async function getCsrfToken(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const cookieMap: Record<string, string> = {};
+    for (const part of document.cookie.split(';')) {
+      const eq = part.indexOf('=');
+      if (eq === -1) continue;
+      cookieMap[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
+    }
+    return decodeURIComponent(cookieMap['XSRF-TOKEN'] || '');
+  });
+}
+
+async function getProjectId(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const res = await fetch('/api/v1/projects', { credentials: 'include' });
+    const body = await res.json();
+    return body.data[0].id as number;
+  });
+}
+
+/** Seed a pending ClipReview via the test-seeding route (testing environment only). */
+async function seedClipReview(page: Page, projectId: number) {
+  const xsrf = await getCsrfToken(page);
+  const result = await page.evaluate(
+    async ({ pid, token }) => {
+      const res = await fetch('/api/v1/test/clip-reviews/seed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-XSRF-TOKEN': token,
+        },
+        body: JSON.stringify({ project_id: pid }),
+      });
+      const body = await res.json();
+      return { status: res.status, body };
+    },
+    { pid: projectId, token: xsrf }
+  );
+  expect(result.status, 'seed route status').toBe(200);
+  expect(result.body.data.status).toBe('pending');
+}
+
+/** Connect a YouTube social connection so the "Publish to YouTube" button renders. */
+async function connectYouTube(page: Page) {
+  const xsrf = await getCsrfToken(page);
+  const result = await page.evaluate(
+    async ({ token }) => {
+      const res = await fetch('/api/v1/social/youtube/connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-XSRF-TOKEN': token,
+        },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json();
+      return { status: res.status, body };
+    },
+    { token: xsrf }
+  );
+  // 200 = newly connected; 409 = already connected (both acceptable preconditions).
+  expect([200, 409]).toContain(result.status, 'youtube connect status');
+}
+
 async function approveClipReview(page: Page) {
-  await page.getByRole('button', { name: /Approve/i }).first().click();
+  // Open the approval confirmation dialog.
+  await page.getByRole('button', { name: 'Approve clip' }).first().click();
+  // Confirm the approval in the dialog.
+  await page.getByRole('button', { name: 'Confirm Approve' }).click();
   await expect(page.getByText(/approved/i)).toBeVisible({ timeout: 15000 });
 }
 
 async function publishClip(page: Page) {
-  await page.getByRole('button', { name: /Publish to YouTube|Publish to Instagram/i }).first().click();
-  await page.getByRole('button', { name: /Publish/i }).click();
-  await expect(page.getByText(/published|publishing/i)).toBeVisible({ timeout: 15000 });
+  // Open the publish dialog.
+  await page.getByRole('button', { name: 'Publish to YouTube' }).click();
+  await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
+
+  // Fill the required title.
+  await page.getByLabel('Title').fill('Smoke Test Clip');
+
+  // Submit the publish from within the dialog.
+  await page
+    .locator('[role="dialog"][aria-modal="true"]')
+    .getByRole('button', { name: 'Publish to YouTube' })
+    .click();
+
+  // The dialog closes on successful publish (setPublishDialogOpen(false)).
+  await expect(
+    page.locator('[role="dialog"][aria-modal="true"]')
+  ).not.toBeVisible({ timeout: 15000 });
+}
+
+async function publishClipWithRetry(page: Page) {
+  // Open the publish dialog.
+  await page.getByRole('button', { name: 'Publish to YouTube' }).click();
+  await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
+
+  // Fill the required title.
+  await page.getByLabel('Title').fill('Smoke Test Clip');
+
+  // First publish attempt.
+  await page
+    .locator('[role="dialog"][aria-modal="true"]')
+    .getByRole('button', { name: 'Publish to YouTube' })
+    .click();
+
+  // If the publish failed, the dialog shows an error; retry by clicking Publish again.
+  const dialog = page.locator('[role="dialog"][aria-modal="true"]');
+  const errorVisible = await dialog.locator('[role="alert"]').isVisible().catch(() => false);
+  if (errorVisible) {
+    await dialog.getByRole('button', { name: 'Publish to YouTube' }).click();
+  }
+
+  // The dialog closes on successful publish.
+  await expect(dialog).not.toBeVisible({ timeout: 15000 });
 }
 
 for (const viewport of VIEWPORTS) {
@@ -166,6 +276,14 @@ for (const viewport of VIEWPORTS) {
     test('H.2: View clip review -> approve -> publish to connected platform', async ({ page }) => {
       await createProject(page);
       await uploadMedia(page);
+
+      // Seed a ClipReview so the Approve button renders, and connect YouTube
+      // so the Publish to YouTube button renders.
+      const projectId = await getProjectId(page);
+      await seedClipReview(page, projectId);
+      await connectYouTube(page);
+
+      await page.getByRole('tab', { name: 'Review Clips' }).click();
       await approveClipReview(page);
       await publishClip(page);
 
@@ -178,21 +296,19 @@ for (const viewport of VIEWPORTS) {
     test('H.3: Publish failure -> retry -> success', async ({ page }) => {
       await createProject(page);
       await uploadMedia(page);
+
+      // Seed a ClipReview so the Approve button renders, and connect YouTube
+      // so the Publish to YouTube button renders.
+      const projectId = await getProjectId(page);
+      await seedClipReview(page, projectId);
+      await connectYouTube(page);
+
+      await page.getByRole('tab', { name: 'Review Clips' }).click();
       await approveClipReview(page);
 
-      // Attempt publish; if it fails, retry
-      await page.getByRole('button', { name: /Publish to YouTube|Publish to Instagram/i }).first().click();
-      const publishButton = page.getByRole('button', { name: /Publish/i });
-      if (await publishButton.isVisible()) {
-        await publishButton.click();
-      }
-
-      // Retry
-      const retryButton = page.getByRole('button', { name: /Retry/i });
-      if (await retryButton.isVisible()) {
-        await retryButton.click();
-        await expect(page.getByText(/published|success/i)).toBeVisible({ timeout: 15000 });
-      }
+      // Deterministic retry flow: always attempt publish, retry if an error
+      // surface is shown, then verify success. No isVisible() gates that silently skip.
+      await publishClipWithRetry(page);
 
       const { consoleErrors, failedRequests, server500 } = (page as any).__diagnostics;
       assertConsoleClean(consoleErrors);
