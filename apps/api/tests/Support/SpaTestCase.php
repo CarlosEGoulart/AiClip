@@ -14,11 +14,11 @@ abstract class SpaTestCase extends TestCase
 
     protected function setUp(): void
     {
-        parent::setUp();
-
         config(['app.debug' => false, 'session.driver' => 'array', 'session.lottery' => [0, 100]]);
 
-        if (!Schema::hasTable('social_publish_campaigns')) {
+        parent::setUp();
+
+        if (!Schema::hasTable('sessions')) {
             $this->artisan('migrate', ['--force' => true]);
         }
 
