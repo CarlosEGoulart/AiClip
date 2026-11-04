@@ -26,3 +26,4 @@ abstract class SpaTestCase extends TestCase
             $this->app->bind($middleware, EnforcedCsrf::class);
         }
     }
+}
