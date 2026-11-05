@@ -22,9 +22,9 @@ it('fails fast when required production environment variables are missing', func
 
     try {
         $validator->validateProductionRequired();
-        expect(true)->toBeFalse('expected ProductionEnvironmentValidator to throw when APP_KEY is missing');
+        expect(true)->toBeFalse('expected ProductionEnvironmentValidator to throw when required var is missing');
     } catch (\RuntimeException $e) {
-        expect($e->getMessage())->toContain('APP_KEY');
+        expect($e->getMessage())->toMatch('/Missing required production environment variable:/');
     } finally {
         if ($missing !== false) {
             putenv('APP_KEY='.$missing);
