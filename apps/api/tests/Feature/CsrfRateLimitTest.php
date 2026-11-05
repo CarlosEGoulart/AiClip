@@ -11,10 +11,11 @@ it('every state-changing auth:sanctum route has CSRF middleware', function () {
     $routes = collect(app('router')->getRoutes())
         ->filter(fn ($route) => str_starts_with($route->uri, 'api/v1/'))
         ->filter(fn ($route) => in_array($route->methods()[0] ?? '', ['POST', 'PUT', 'PATCH', 'DELETE'], true))
-        ->filter(fn ($route) => $route->middlewareContains('auth:sanctum'));
+        ->filter(fn ($route) => in_array('auth:sanctum', $route->gatherMiddleware()));
 
     foreach ($routes as $route) {
-        expect($route->middlewareContains(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class))
+        $middleware = $route->gatherMiddleware();
+        expect(in_array(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class, $middleware, true))
             ->toBeTrue('Route ' . $route->uri . ' is missing VerifyCsrfToken middleware');
     }
 });
@@ -36,12 +37,14 @@ it('CSRF is applied to state-changing routes outside auth:sanctum (register, log
     $register = collect(app('router')->getRoutes())->first(fn ($r) => $r->uri === 'api/v1/auth/register');
 
     if ($register) {
-        expect($register->middlewareContains(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class))->toBeTrue();
+        $middleware = $register->gatherMiddleware();
+        expect(in_array(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class, $middleware, true))->toBeTrue();
     }
 
     $login = collect(app('router')->getRoutes())->first(fn ($r) => $r->uri === 'api/v1/auth/login');
     if ($login) {
-        expect($login->middlewareContains(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class))->toBeTrue();
+        $middleware = $login->gatherMiddleware();
+        expect(in_array(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class, $middleware, true))->toBeTrue();
     }
 });
 
