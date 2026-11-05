@@ -19,4 +19,9 @@ it('migrate:rollback succeeds and migrations reverse cleanly', function () {
     $exitCode = Artisan::call('migrate:rollback');
 
     expect($exitCode)->toBe(0);
+
+    // Re-create tables for subsequent test classes and reset migration
+    // state so TestCase::setUp() will run migrate again.
+    TestCase::resetMigrationsRan();
+    Artisan::call('migrate', ['--force' => true]);
 });
