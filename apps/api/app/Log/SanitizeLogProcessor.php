@@ -53,12 +53,6 @@ class SanitizeLogProcessor implements ProcessorInterface
             $message = $this->sanitizeString($message);
         }
 
-        if (isset($context['exception'])) {
-            $context['exception'] = $this->sanitizeException(
-                $context['exception']
-            );
-        }
-
         return new LogRecord(
             $record->datetime,
             $record->channel,

@@ -28,7 +28,7 @@ it('masks access_token and refresh_token in log context', function () {
 
     $sanitized = $processor($record);
 
-    $context = $sanitized->getContext();
+    $context = $sanitized->context;
     expect($context['access_token'])->toBe('[REDACTED]');
     expect($context['refresh_token'])->toBe('[REDACTED]');
     expect($context['publish_id'])->toBe(42);
@@ -53,7 +53,7 @@ it('masks API secrets and DB credentials in log context', function () {
 
     $sanitized = $processor($record);
 
-    $context = $sanitized->getContext();
+    $context = $sanitized->context;
     expect($context['client_secret'])->toBe('[REDACTED]');
     expect($context['db_password'])->toBe('[REDACTED]');
     expect($context['api_secret'])->toBe('[REDACTED]');
@@ -77,7 +77,7 @@ it('masks storage_key and bucket in log context', function () {
 
     $sanitized = $processor($record);
 
-    $context = $sanitized->getContext();
+    $context = $sanitized->context;
     expect($context['storage_key'])->toBe('[REDACTED]');
     expect($context['bucket'])->toBe('[REDACTED]');
     expect($context['project_id'])->toBe(42);
@@ -100,7 +100,7 @@ it('redacts passwords embedded in exception messages', function () {
 
     $sanitized = $processor($record);
 
-    $context = $sanitized->getContext();
+    $context = $sanitized->context;
     $message = $context['exception']['message'];
     expect($message)->not->toContain('real-password-here');
     expect($message)->toContain('[REDACTED]');
@@ -119,8 +119,8 @@ it('redacts access_token query parameters in log messages', function () {
 
     $sanitized = $processor($record);
 
-    expect($sanitized->getMessage())->not->toContain('ya29.a0AfH6SMB');
-    expect($sanitized->getMessage())->toContain('access_token=[REDACTED]');
+    expect($sanitized->message)->not->toContain('ya29.a0AfH6SMB');
+    expect($sanitized->message)->toContain('access_token=[REDACTED]');
 });
 
 it('production LOG_LEVEL is not debug', function () {
