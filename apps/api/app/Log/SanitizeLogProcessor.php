@@ -112,8 +112,8 @@ class SanitizeLogProcessor implements ProcessorInterface
     {
         // Redact DB connection strings that may embed passwords.
         $value = preg_replace(
-            '/password=[^;\s]+/i',
-            'password=[REDACTED]',
+            '/(password[=:]\s*)[^;\s]+/i',
+            '$1[REDACTED]',
             $value
         );
 

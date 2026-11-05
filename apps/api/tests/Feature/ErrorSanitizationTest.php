@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Support\Facades\DB;
+use App\Models\User;
 use Tests\TestCase;
 
 uses(TestCase::class);
@@ -40,7 +41,7 @@ it('422/404 bodies contain no tokens or credentials', function () {
 it('exception message with DB password is sanitized before log/response', function () {
     $exceptionMessage = 'SQLSTATE[08006] [1045] Access denied for user aiclip (using password: real-db-password)';
 
-    $sanitized = preg_replace('/password=[^;\s]+/i', 'password=[REDACTED]', $exceptionMessage);
+    $sanitized = preg_replace('/(password[=:]\s*)[^;\s]+/i', '$1[REDACTED]', $exceptionMessage);
 
     expect($sanitized)->not->toContain('real-db-password');
     expect($sanitized)->toContain('password=[REDACTED]');
