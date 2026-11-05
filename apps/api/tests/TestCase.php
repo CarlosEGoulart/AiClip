@@ -5,7 +5,6 @@ namespace Tests;
 use App\Services\ProcessMediaAction;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Schema;
 use Mockery;
 
 abstract class TestCase extends BaseTestCase
@@ -16,10 +15,9 @@ abstract class TestCase extends BaseTestCase
 
         // Ensure database tables exist for all tests. RefreshDatabase::setUp()
         // is shadowed by TestCase::setUp() (class method takes precedence over
-        // trait method), so run migrations here as a fallback.
-        if (!Schema::hasTable('users')) {
-            Artisan::call('migrate', ['--force' => true]);
-        }
+        // trait method), so run migrations here as a fallback. migrate is
+        // idempotent: it is a no-op when all migrations have already run.
+        Artisan::call('migrate', ['--force' => true]);
 
         // Mock ProcessMediaAction to prevent actual worker invocation during testing
         $actionMock = Mockery::mock(ProcessMediaAction::class);
