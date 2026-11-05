@@ -9,6 +9,8 @@ use Mockery;
 
 abstract class TestCase extends BaseTestCase
 {
+    protected static bool $migrationsRan = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -17,8 +19,12 @@ abstract class TestCase extends BaseTestCase
         // is shadowed by TestCase::setUp() (class method takes precedence over
         // trait method), so run migrations here as a fallback for tests that
         // don't extend SpaTestCase (which has its own migration guard).
-        if (!Schema::hasTable('users')) {
-            $this->artisan('migrate', ['--force' => true]);
+        // Migrations run only once per process to avoid exhausting DB connections.
+        if (!self::$migrationsRan) {
+            if (!Schema::hasTable('users')) {
+                $this->artisan('migrate', ['--force' => true]);
+            }
+            self::$migrationsRan = true;
         }
 
         // Mock ProcessMediaAction to prevent actual worker invocation during testing
