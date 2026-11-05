@@ -46,21 +46,26 @@ class SanitizeLogProcessor implements ProcessorInterface
      */
     public function __invoke(LogRecord $record): LogRecord
     {
-        $record = $record->withContext($this->sanitizeContext($record->getContext() ?? []));
+        $context = $this->sanitizeContext($record->getContext() ?? []);
 
-        if (is_string($record->getMessage())) {
-            $record = $record->withMessage($this->sanitizeString($record->getMessage()));
+        $message = $record->getMessage();
+        if (is_string($message)) {
+            $message = $this->sanitizeString($message);
         }
 
-        $context = $record->getContext();
         if (isset($context['exception'])) {
             $context['exception'] = $this->sanitizeException(
                 $context['exception']
             );
-            $record = $record->withContext($context);
         }
 
-        return $record;
+        return new LogRecord(
+            $record->getDatetime(),
+            $record->getChannel(),
+            $record->getLevel(),
+            $message,
+            $context,
+        );
     }
 
     /**
