@@ -41,6 +41,11 @@ class GenerateImage implements ShouldQueue
     public int $backoff = 5;
 
     /**
+     * Maximum seconds the job may run before the worker stops it.
+     */
+    public int $timeout = 120;
+
+    /**
      * Create a new job instance.
      */
     public function __construct(

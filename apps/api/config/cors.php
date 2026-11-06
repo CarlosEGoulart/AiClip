@@ -12,20 +12,27 @@ return [
     | Browsers require Access-Control-Allow-Credentials: true together with an
     | explicit Access-Control-Allow-Origin (not '*') when credentials are used.
     |
+    | In production, allowed origins are driven by the CORS_ALLOWED_ORIGINS
+    | environment variable (comma-separated). A wildcard origin is never
+    | permitted when supports_credentials is true.
+    |
     */
 
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'allowed_origins' => [
-        'http://127.0.0.1:5173',
-        'http://localhost:5173',
-    ],
+    'allowed_origins' => (function (): array {
+        $origins = explode(',', (string) env('CORS_ALLOWED_ORIGINS', ''));
+        $origins = array_map('trim', $origins);
+        $origins = array_filter($origins);
+
+        return array_values($origins);
+    })(),
 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With', 'X-XSRF-TOKEN'],
 
     'exposed_headers' => [],
 
