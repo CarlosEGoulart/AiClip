@@ -20,7 +20,9 @@ abstract class SpaTestCase extends TestCase
         // Migrations are handled by RefreshDatabase's migrate:fresh (for tests
         // that use it) or by CI's "Run Migrations" step. Unit tests that don't
         // use RefreshDatabase use the array session driver from phpunit.xml.
-        config(['app.debug' => false, 'session.lottery' => [0, 100]]);
+        // Database session driver is required for SPA auth flow tests that
+        // persist sessions across multiple HTTP requests via spaRequest().
+        config(['app.debug' => false, 'session.driver' => 'database', 'session.lottery' => [0, 100]]);
 
         // Replace only Laravel's testing bypass; retain token validation and
         // every production middleware, including any duplicate stack.
