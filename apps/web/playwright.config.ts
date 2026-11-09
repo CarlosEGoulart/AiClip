@@ -28,6 +28,12 @@ export default defineConfig({
         MEDIA_DISK: 'local',
         SESSION_DRIVER: 'database',
         SESSION_LOTTERY: '0',
+        DB_CONNECTION: 'pgsql',
+        DB_HOST: '127.0.0.1',
+        DB_PORT: '5432',
+        DB_DATABASE: 'aiclip',
+        DB_USERNAME: 'aiclip',
+        DB_PASSWORD: 'secret',
       },
     },
     {
