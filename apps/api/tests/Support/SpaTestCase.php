@@ -16,10 +16,16 @@ abstract class SpaTestCase extends TestCase
     {
         parent::setUp();
 
+        // SpaTestCase::setUp() shadows RefreshDatabase::setUp(), so migrate:fresh
+        // may not run automatically for tests that use both SpaTestCase and
+        // RefreshDatabase. Call refreshTestDatabase() explicitly when the trait
+        // is in use so migration tables (users, projects, social_connections,
+        // clip_reviews, images, etc.) exist for every test.
+        if (method_exists($this, 'refreshTestDatabase')) {
+            $this->refreshTestDatabase();
+        }
+
         // Exercise production error contracts independently of the local .env.
-        // Migrations are handled by RefreshDatabase's migrate:fresh (for tests
-        // that use it) or by CI's "Run Migrations" step. Unit tests that don't
-        // use RefreshDatabase use the array session driver from phpunit.xml.
         // Database session driver is required for SPA auth flow tests that
         // persist sessions across multiple HTTP requests via spaRequest().
         config(['app.debug' => false, 'session.driver' => 'database', 'session.lottery' => [0, 100]]);
