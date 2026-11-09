@@ -26,7 +26,7 @@ export default defineConfig({
         APP_ENV: 'testing',
         QUEUE_CONNECTION: 'sync',
         MEDIA_DISK: 'local',
-        SESSION_DRIVER: 'file',
+        SESSION_DRIVER: 'cookie',
         SESSION_LOTTERY: '0',
       },
     },
