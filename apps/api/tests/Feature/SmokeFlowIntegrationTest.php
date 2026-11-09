@@ -27,6 +27,7 @@ it('register -> login -> create project -> upload media -> processing completes'
         'name' => 'Integration User',
         'email' => 'integration@example.com',
         'password' => 'password123',
+        'password_confirmation' => 'password123',
     ]);
 
     expect($registerResponse->status())->toBe(201);
