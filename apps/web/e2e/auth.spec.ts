@@ -26,6 +26,12 @@ async function registerUser(page: import('@playwright/test').Page, name: string,
   await page.getByLabel('Password', { exact: true }).fill('password123')
   await page.getByLabel('Confirm Password', { exact: true }).fill('password123')
   await page.getByRole('button', { name: 'Create Account' }).click()
+
+  // Ensure session cookie is set after registration by logging in via API.
+  await page.request.post('/api/v1/auth/login', {
+    data: { email, password: 'password123' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+  })
 }
 
 test.describe('Auth Lifecycle', () => {
