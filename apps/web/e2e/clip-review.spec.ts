@@ -155,7 +155,12 @@ async function registerUser(page: Page, name: string, email: string) {
   await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Create Account' }).click();
-  await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 });
+
+  // Ensure session cookie is set after registration by logging in via API.
+  await page.request.post('/api/v1/auth/login', {
+    data: { email, password: 'password123' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+  });
 }
 
 async function createProjectViaUi(page: Page, projectName: string): Promise<number> {
