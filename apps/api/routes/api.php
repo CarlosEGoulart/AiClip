@@ -1,18 +1,18 @@
 <?php
 
-use AppHttpControllersApiV1AuthController;
-use AppHttpControllersApiV1ClipReviewController;
-use AppHttpControllersApiV1ImageController;
-use AppHttpControllersApiV1MediaAssetController;
-use AppHttpControllersApiV1ProjectController;
-use AppHttpControllersApiV1SocialConnectionController;
-use AppHttpControllersApiV1SocialPublishCampaignController;
-use AppHttpControllersApiV1SocialPublishController;
-use IlluminateFoundationHttpMiddlewareVerifyCsrfToken;
-use IlluminateSessionMiddlewareStartSession;
-use IlluminateSupportFacadesDB;
-use IlluminateSupportFacadesRoute;
-use IlluminateSupportFacadesStorage;
+use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\ClipReviewController;
+use App\Http\Controllers\Api\V1\ImageController;
+use App\Http\Controllers\Api\V1\MediaAssetController;
+use App\Http\Controllers\Api\V1\ProjectController;
+use App\Http\Controllers\Api\V1\SocialConnectionController;
+use App\Http\Controllers\Api\V1\SocialPublishCampaignController;
+use App\Http\Controllers\Api\V1\SocialPublishController;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', function () {
@@ -23,7 +23,7 @@ Route::prefix('v1')->group(function () {
                 'database' => 'connected',
                 'timestamp' => now()->toIso8601String(),
             ]);
-        } catch (Exception $e) {
+        } catch (Exception \$e) {
             return response()->json([
                 'status' => 'error',
                 'database' => 'disconnected',
@@ -32,17 +32,17 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::get('/readiness', function () {
-        $database = 'ok';
-        try { DB::select('SELECT 1'); } catch (Exception $e) { $database = 'disconnected'; }
-        $storage = 'ok';
-        try { Storage::disk(config('media.disk', 'media'))->getDriver(); } catch (Exception $e) { $storage = 'unreachable'; }
-        $queue = 'ok';
-        try { DB::table('jobs')->limit(1)->exists(); } catch (Exception $e) { $queue = 'unreachable'; }
-        $degraded = $database !== 'ok' || $storage !== 'ok' || $queue !== 'ok';
+        \$database = 'ok';
+        try { DB::select('SELECT 1'); } catch (Exception \$e) { \$database = 'disconnected'; }
+        \$storage = 'ok';
+        try { Storage::disk(config('media.disk', 'media'))->getDriver(); } catch (Exception \$e) { \$storage = 'unreachable'; }
+        \$queue = 'ok';
+        try { DB::table('jobs')->limit(1)->exists(); } catch (Exception \$e) { \$queue = 'unreachable'; }
+        \$degraded = \$database !== 'ok' || \$storage !== 'ok' || \$queue !== 'ok';
         return response()->json([
-            'status' => $degraded ? 'degraded' : 'ok',
-            'dependencies' => [ 'database' => $database, 'storage' => $storage, 'queue' => $queue ],
-        ], $degraded ? 503 : 200);
+            'status' => \$degraded ? 'degraded' : 'ok',
+            'dependencies' => [ 'database' => \$database, 'storage' => \$storage, 'queue' => \$queue ],
+        ], \$degraded ? 503 : 200);
     });
 
     Route::post('/auth/register', [AuthController::class, 'register'])
