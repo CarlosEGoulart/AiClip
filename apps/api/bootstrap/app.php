@@ -19,7 +19,15 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->encryptCookies(except: ['XSRF-TOKEN', 'laravel_session']);
         $middleware->validateCsrfTokens(except: [
             'api/v1/projects/*/media/upload',
-            'api/*',
+            'api/v1/social/*/connect',
+            'api/v1/social/connections/*',
+            'api/v1/social/publish',
+            'api/v1/social/publish/campaign',
+            'api/v1/social/publish/campaigns/*/cancel',
+            'api/v1/social/publish/campaigns/*/retry',
+            'api/v1/auth/register',
+            'api/v1/auth/login',
+            'api/v1/auth/logout',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
