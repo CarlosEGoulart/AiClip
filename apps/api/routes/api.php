@@ -23,7 +23,7 @@ Route::prefix('v1')->group(function () {
                 'database' => 'connected',
                 'timestamp' => now()->toIso8601String(),
             ]);
-        } catch (Exception \$e) {
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
                 'database' => 'disconnected',
