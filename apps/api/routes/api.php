@@ -32,17 +32,17 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::get('/readiness', function () {
-        \$database = 'ok';
-        try { DB::select('SELECT 1'); } catch (Exception \$e) { \$database = 'disconnected'; }
-        \$storage = 'ok';
-        try { Storage::disk(config('media.disk', 'media'))->getDriver(); } catch (Exception \$e) { \$storage = 'unreachable'; }
-        \$queue = 'ok';
-        try { DB::table('jobs')->limit(1)->exists(); } catch (Exception \$e) { \$queue = 'unreachable'; }
-        \$degraded = \$database !== 'ok' || \$storage !== 'ok' || \$queue !== 'ok';
+        $database = 'ok';
+        try { DB::select('SELECT 1'); } catch (Exception $e) { $database = 'disconnected'; }
+        $storage = 'ok';
+        try { Storage::disk(config('media.disk', 'media'))->getDriver(); } catch (Exception $e) { $storage = 'unreachable'; }
+        $queue = 'ok';
+        try { DB::table('jobs')->limit(1)->exists(); } catch (Exception $e) { $queue = 'unreachable'; }
+        $degraded = $database !== 'ok' || $storage !== 'ok' || $queue !== 'ok';
         return response()->json([
-            'status' => \$degraded ? 'degraded' : 'ok',
-            'dependencies' => [ 'database' => \$database, 'storage' => \$storage, 'queue' => \$queue ],
-        ], \$degraded ? 503 : 200);
+            'status' => $degraded ? 'degraded' : 'ok',
+            'dependencies' => [ 'database' => $database, 'storage' => $storage, 'queue' => $queue ],
+        ], $degraded ? 503 : 200);
     });
 
     Route::post('/auth/register', [AuthController::class, 'register'])
