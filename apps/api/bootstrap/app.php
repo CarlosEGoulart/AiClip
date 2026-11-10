@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'api/v1/projects',
             'api/v1/projects/*',
+            'api/v1/projects/*/media/upload',
             'api/v1/social/*/connect',
             'api/v1/social/connections/*',
             'api/v1/social/publish',
