@@ -13,8 +13,6 @@ async function switchToRegister(page: import('@playwright/test').Page) {
 }
 
 async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
-  // Register via API to guarantee session cookie is set reliably,
-  // independent of UI flow or session driver behavior in the E2E webServer.
   await page.request.post('/sanctum/csrf-cookie', {
     headers: { Accept: 'application/json' },
   })
@@ -25,34 +23,28 @@ async function registerUser(page: import('@playwright/test').Page, name: string,
   })
   expect(registerResponse.status()).toBe(201)
 
-  // Login via API to establish session cookie for subsequent browser requests.
   const loginResponse = await page.request.post('/api/v1/auth/login', {
     data: { email, password: 'password123' },
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
   })
   expect(loginResponse.status()).toBe(200)
 
-  // Navigate to the app so the browser has the session cookie.
   await page.goto('/')
   await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
 
 test.describe('Media Upload and Management', () => {
   test('upload video → appears in list → delete removes it', async ({ page }) => {
-    // 1. Register and login
     const email = uniqueEmail()
     await registerUser(page, 'Test User', email)
 
-    // Create the real project before intercepting only its Media requests.
     await page.getByLabel('Project Name').fill('Media Test Project')
     const created = page.waitForResponse(response =>
       new URL(response.url()).pathname === '/api/v1/projects' && response.request().method() === 'POST')
     await page.getByRole('button', { name: 'Create Project' }).click()
     const projectResponse = await created
     expect(projectResponse.status()).toBe(201)
-    const { data: project } = await projectResponse.json()
 
-    // Upload a video
     await page.getByRole('button', { name: 'Upload' }).click()
     await page.getByLabel('Select file').setInputFiles({
       name: 'test-video.mp4',
@@ -61,6 +53,7 @@ test.describe('Media Upload and Management', () => {
     })
 
     await expect(page.getByText('Media Test Project')).toBeVisible()
+    await expect(page.getByText(/video/i)).toBeVisible()
   })
 
   test('rejects non-video file upload', async ({ page }) => {
@@ -73,9 +66,7 @@ test.describe('Media Upload and Management', () => {
     await page.getByRole('button', { name: 'Create Project' }).click()
     const projectResponse = await created
     expect(projectResponse.status()).toBe(201)
-    const { data: project } = await projectResponse.json()
 
-    // Upload a non-video file
     await page.getByRole('button', { name: 'Upload' }).click()
     await page.getByLabel('Select file').setInputFiles({
       name: 'test.txt',
