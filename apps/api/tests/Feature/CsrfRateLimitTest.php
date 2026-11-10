@@ -11,10 +11,11 @@ it('every state-changing auth:sanctum route has CSRF middleware', function () {
     $routes = collect(app('router')->getRoutes())
         ->filter(fn ($route) => str_starts_with($route->uri, 'api/v1/'))
         ->filter(fn ($route) => in_array($route->methods()[0] ?? '', ['POST', 'PUT', 'PATCH', 'DELETE'], true))
-        ->filter(fn ($route) => in_array('auth:sanctum', $route->gatherMiddleware()));
+        ->filter(fn ($route) => in_array('auth:sanctum', $route->gatherMiddleware(), true));
 
     foreach ($routes as $route) {
         $middleware = $route->gatherMiddleware();
+
         expect(in_array(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class, $middleware, true))
             ->toBeTrue('Route ' . $route->uri . ' is missing VerifyCsrfToken middleware');
     }
