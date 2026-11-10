@@ -53,12 +53,9 @@ class SanitizeLogProcessor implements ProcessorInterface
             $message = $this->sanitizeString($message);
         }
 
-        return new LogRecord(
-            $record->datetime,
-            $record->channel,
-            $record->level,
-            $message,
-            $context,
+        return $record->with(
+            message: $message,
+            context: $context,
         );
     }
 
