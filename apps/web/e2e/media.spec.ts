@@ -44,6 +44,8 @@ test.describe('Media Upload and Management', () => {
     await page.getByRole('button', { name: 'Create Project' }).click()
     const projectResponse = await created
     expect(projectResponse.status()).toBe(201)
+    const { data: project } = await projectResponse.json()
+    await expect(page.getByText('Media Test Project')).toBeVisible()
 
     await page.getByRole('button', { name: 'Upload' }).click()
     await page.getByLabel('Select file').setInputFiles({
@@ -66,6 +68,8 @@ test.describe('Media Upload and Management', () => {
     await page.getByRole('button', { name: 'Create Project' }).click()
     const projectResponse = await created
     expect(projectResponse.status()).toBe(201)
+    const { data: project } = await projectResponse.json()
+    await expect(page.getByText('Test Project')).toBeVisible()
 
     await page.getByRole('button', { name: 'Upload' }).click()
     await page.getByLabel('Select file').setInputFiles({
