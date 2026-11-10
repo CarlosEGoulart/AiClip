@@ -16,18 +16,10 @@ abstract class SpaTestCase extends TestCase
     {
         parent::setUp();
 
-        // SpaTestCase::setUp() shadows RefreshDatabase::setUp(), so migrate:fresh
-        // may not run automatically for tests that use both SpaTestCase and
-        // RefreshDatabase. Call refreshTestDatabase() explicitly when the trait
-        // is in use so migration tables (users, projects, social_connections,
-        // clip_reviews, images, etc.) exist for every test.
-        if (method_exists(\$this, 'refreshTestDatabase')) {
-            \$this->refreshTestDatabase();
-        }
-
         // Exercise production error contracts independently of the local .env.
-        // Use array session driver for unit tests (no cross-request session
-        // persistence needed). E2E tests handle their own session via API login.
+        // Migration tables are created by CI's "Run Migrations" step before
+        // tests execute. SpaTestCase::setUp() shadows RefreshDatabase::setUp(),
+        // so migrate:fresh does not run automatically here.
         config(['app.debug' => false, 'session.driver' => 'array', 'session.lottery' => [0, 100]]);
 
         // Replace only Laravel's testing bypass; retain token validation and
