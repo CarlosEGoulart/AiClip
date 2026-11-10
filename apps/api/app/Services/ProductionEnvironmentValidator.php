@@ -40,7 +40,7 @@ class ProductionEnvironmentValidator
     public function validateProductionRequired(): void
     {
         foreach ($this->required as $var) {
-            $value = env($var);
+            $value = getenv($var);
 
             if ($value === false || $value === '' || trim((string) $value) === '') {
                 throw new \RuntimeException(

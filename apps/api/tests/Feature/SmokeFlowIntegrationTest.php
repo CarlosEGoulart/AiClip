@@ -18,7 +18,7 @@ use Tests\TestCase;
 uses(TestCase::class, RefreshDatabase::class);
 
 afterEach(function () {
-    Config::restore();
+
 });
 
 it('register -> login -> create project -> upload media -> processing completes', function () {

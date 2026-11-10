@@ -46,10 +46,10 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::post('/auth/register', [AuthController::class, 'register'])
-        ->middleware('throttle:auth-register', StartSession::class);
+        ->middleware('throttle:auth-register', StartSession::class, VerifyCsrfToken::class);
     Route::post('/auth/login', [AuthController::class, 'login'])
         ->name('login')
-        ->middleware('throttle:auth-login', StartSession::class);
+        ->middleware('throttle:auth-login', StartSession::class, VerifyCsrfToken::class);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout'])
