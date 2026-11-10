@@ -15,7 +15,7 @@ it('masks access_token and refresh_token in log context', function () {
 
     $record = new LogRecord(
         new \DateTimeImmutable(),
-        'test',
+        'INFO',
         Level::Info,
         'Publish succeeded',
         [
@@ -28,11 +28,10 @@ it('masks access_token and refresh_token in log context', function () {
 
     $sanitized = $processor($record);
 
-    $context = $sanitized->context;
-    expect($context['access_token'])->toBe('[REDACTED]');
-    expect($context['refresh_token'])->toBe('[REDACTED]');
-    expect($context['publish_id'])->toBe(42);
-    expect($context['platform'])->toBe('youtube');
+    expect($sanitized->context['access_token'])->toBe('[REDACTED]');
+    expect($sanitized->context['refresh_token'])->toBe('[REDACTED]');
+    expect($sanitized->context['publish_id'])->toBe(42);
+    expect($sanitized->context['platform'])->toBe('youtube');
 });
 
 it('masks API secrets and DB credentials in log context', function () {
@@ -40,7 +39,7 @@ it('masks API secrets and DB credentials in log context', function () {
 
     $record = new LogRecord(
         new \DateTimeImmutable(),
-        'test',
+        'INFO',
         Level::Info,
         'Connection established',
         [
@@ -53,11 +52,10 @@ it('masks API secrets and DB credentials in log context', function () {
 
     $sanitized = $processor($record);
 
-    $context = $sanitized->context;
-    expect($context['client_secret'])->toBe('[REDACTED]');
-    expect($context['db_password'])->toBe('[REDACTED]');
-    expect($context['api_secret'])->toBe('[REDACTED]');
-    expect($context['host'])->toBe('127.0.0.1');
+    expect($sanitized->context['client_secret'])->toBe('[REDACTED]');
+    expect($sanitized->context['db_password'])->toBe('[REDACTED]');
+    expect($sanitized->context['api_secret'])->toBe('[REDACTED]');
+    expect($sanitized->context['host'])->toBe('127.0.0.1');
 });
 
 it('masks storage_key and bucket in log context', function () {
@@ -65,7 +63,7 @@ it('masks storage_key and bucket in log context', function () {
 
     $record = new LogRecord(
         new \DateTimeImmutable(),
-        'test',
+        'ERROR',
         Level::Error,
         'Storage write failed',
         [
@@ -77,10 +75,9 @@ it('masks storage_key and bucket in log context', function () {
 
     $sanitized = $processor($record);
 
-    $context = $sanitized->context;
-    expect($context['storage_key'])->toBe('[REDACTED]');
-    expect($context['bucket'])->toBe('[REDACTED]');
-    expect($context['project_id'])->toBe(42);
+    expect($sanitized->context['storage_key'])->toBe('[REDACTED]');
+    expect($sanitized->context['bucket'])->toBe('[REDACTED]');
+    expect($sanitized->context['project_id'])->toBe(42);
 });
 
 it('redacts passwords embedded in exception messages', function () {
@@ -88,7 +85,7 @@ it('redacts passwords embedded in exception messages', function () {
 
     $record = new LogRecord(
         new \DateTimeImmutable(),
-        'test',
+        'ERROR',
         Level::Error,
         'DB connection failed',
         [
@@ -100,8 +97,7 @@ it('redacts passwords embedded in exception messages', function () {
 
     $sanitized = $processor($record);
 
-    $context = $sanitized->context;
-    $message = $context['exception']['message'];
+    $message = $sanitized->context['exception']['message'];
     expect($message)->not->toContain('real-password-here');
     expect($message)->toContain('[REDACTED]');
 });
@@ -111,7 +107,7 @@ it('redacts access_token query parameters in log messages', function () {
 
     $record = new LogRecord(
         new \DateTimeImmutable(),
-        'test',
+        'INFO',
         Level::Info,
         'Callback received with access_token=ya29.a0AfH6SMB and state=abc',
         []
@@ -125,6 +121,9 @@ it('redacts access_token query parameters in log messages', function () {
 
 it('production LOG_LEVEL is not debug', function () {
     Config::set('app.env', 'production');
+
+    putenv('LOG_LEVEL=error');
+    unset($_SERVER['LOG_LEVEL'], $_ENV['LOG_LEVEL']);
 
     $level = env('LOG_LEVEL', 'error');
 
