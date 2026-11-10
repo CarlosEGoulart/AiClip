@@ -40,12 +40,11 @@ class AppServiceProvider extends ServiceProvider
         // future slice without any domain changes.
         $this->app->singleton(ImageGenerationProvider::class, FakeImageGenerationProvider::class);
 
-        // Social connection providers - register fake providers for testing
-        if ($this->app->environment('testing')) {
-            $this->app->bind(SocialConnectionProvider::class.':youtube', FakeYouTubeProvider::class);
-            $this->app->bind(SocialConnectionProvider::class.':instagram', FakeInstagramProvider::class);
-            $this->app->bind(SocialConnectionProvider::class.':tiktok', FakeTikTokProvider::class);
-        }
+        // Social connection providers - register fake providers in all environments.
+        // Real provider implementations replace these bindings in a future slice.
+        $this->app->bind(SocialConnectionProvider::class.':youtube', FakeYouTubeProvider::class);
+        $this->app->bind(SocialConnectionProvider::class.':instagram', FakeInstagramProvider::class);
+        $this->app->bind(SocialConnectionProvider::class.':tiktok', FakeTikTokProvider::class);
 
         // Social publisher - YouTube publisher bound by platform key
         $this->app->bind(SocialPublisher::class.':youtube', YouTubePublisher::class);
