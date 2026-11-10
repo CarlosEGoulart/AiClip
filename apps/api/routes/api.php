@@ -1,17 +1,18 @@
 <?php
 
-use App\Http\Controllers\Api\V1\AuthController;
-use App\Http\Controllers\Api\V1\ClipReviewController;
-use App\Http\Controllers\Api\V1\ImageController;
-use App\Http\Controllers\Api\V1\MediaAssetController;
-use App\Http\Controllers\Api\V1\ProjectController;
-use App\Http\Controllers\Api\V1\SocialConnectionController;
-use App\Http\Controllers\Api\V1\SocialPublishCampaignController;
-use App\Http\Controllers\Api\V1\SocialPublishController;
-use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Storage;
+use AppHttpControllersApiV1AuthController;
+use AppHttpControllersApiV1ClipReviewController;
+use AppHttpControllersApiV1ImageController;
+use AppHttpControllersApiV1MediaAssetController;
+use AppHttpControllersApiV1ProjectController;
+use AppHttpControllersApiV1SocialConnectionController;
+use AppHttpControllersApiV1SocialPublishCampaignController;
+use AppHttpControllersApiV1SocialPublishController;
+use IlluminateFoundationHttpMiddlewareVerifyCsrfToken;
+use IlluminateSessionMiddlewareStartSession;
+use IlluminateSupportFacadesDB;
+use IlluminateSupportFacadesRoute;
+use IlluminateSupportFacadesStorage;
 
 Route::prefix('v1')->group(function () {
     // Health and readiness are unauthenticated, machine-readable endpoints
@@ -69,10 +70,10 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::post('/auth/register', [AuthController::class, 'register'])
-        ->middleware('throttle:auth-register', VerifyCsrfToken::class);
+        ->middleware('throttle:auth-register', StartSession::class);
     Route::post('/auth/login', [AuthController::class, 'login'])
         ->name('login')
-        ->middleware('throttle:auth-login', VerifyCsrfToken::class);
+        ->middleware('throttle:auth-login', StartSession::class);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout'])
