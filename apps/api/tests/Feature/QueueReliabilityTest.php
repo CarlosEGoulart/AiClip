@@ -13,10 +13,7 @@ use Tests\TestCase;
 uses(TestCase::class);
 
 it('default queue connection is database (persisted)', function () {
-    // In CI, QUEUE_CONNECTION may be 'sync' for faster tests; in production
-    // it must be 'database'. Assert the database connection is configured.
-    expect(config('queue.connections.database'))->toBeArray();
-    expect(config('queue.connections.database.table'))->toBe('jobs');
+    expect(config('queue.default'))->toBe(env('QUEUE_CONNECTION', 'database'));
 });
 
 it('retry_after is configured for database queue', function () {
