@@ -1,6 +1,6 @@
 <?php
 
-namespace TestsSupport;
+namespace Tests\Support;
 
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -21,8 +21,8 @@ abstract class SpaTestCase extends TestCase
         // RefreshDatabase. Call refreshTestDatabase() explicitly when the trait
         // is in use so migration tables (users, projects, social_connections,
         // clip_reviews, images, etc.) exist for every test.
-        if (method_exists($this, 'refreshTestDatabase')) {
-            $this->refreshTestDatabase();
+        if (method_exists(\$this, 'refreshTestDatabase')) {
+            \$this->refreshTestDatabase();
         }
 
         // Exercise production error contracts independently of the local .env.
@@ -32,8 +32,8 @@ abstract class SpaTestCase extends TestCase
 
         // Replace only Laravel's testing bypass; retain token validation and
         // every production middleware, including any duplicate stack.
-        foreach ([PreventRequestForgery::class, ValidateCsrfToken::class, VerifyCsrfToken::class] as $middleware) {
-            $this->app->bind($middleware, EnforcedCsrf::class);
+        foreach ([PreventRequestForgery::class, ValidateCsrfToken::class, VerifyCsrfToken::class] as \$middleware) {
+            \$this->app->bind(\$middleware, EnforcedCsrf::class);
         }
     }
 
