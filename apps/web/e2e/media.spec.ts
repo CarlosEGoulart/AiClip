@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { trackCleanliness } from './track-cleanliness'
 
 function uniqueEmail() {
   return `e2e-media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`

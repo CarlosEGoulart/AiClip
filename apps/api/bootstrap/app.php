@@ -29,6 +29,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/v1/auth/register',
             'api/v1/auth/login',
             'api/v1/auth/logout',
+            'api/v1/social/*/callback',
+            'api/v1/media/*',
+            'api/v1/images/generate',
+            'api/v1/images/download',
+            'api/v1/clip-reviews/*/status',
+            'api/v1/clip-reviews/*/feedback',
+            'api/v1/test/clip-reviews/seed',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
