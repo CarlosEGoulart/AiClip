@@ -22,12 +22,12 @@ it('fails fast when required production environment variables are missing', func
 
     try {
         $validator->validateProductionRequired();
-        expect(true)->toBeFalse('expected ProductionEnvironmentValidator to throw when required var is missing');
+        expect(true)->toBeFalse('expected ProductionEnvironmentValidator to throw when APP_KEY is missing');
     } catch (\RuntimeException $e) {
-        expect($e->getMessage())->toMatch('/Missing required production environment variable:/');
+        expect($e->getMessage())->toContain('APP_KEY');
     } finally {
         if ($missing !== false) {
-            putenv('APP_KEY='.$missing);
+            putenv('APP_KEY=' . $missing);
         } else {
             putenv('APP_KEY');
         }
@@ -37,6 +37,9 @@ it('fails fast when required production environment variables are missing', func
 it('APP_DEBUG is false in a production-like environment', function () {
     putenv('APP_ENV=production');
     putenv('APP_DEBUG=');
+    // env() reads \$_SERVER/\$_ENV before getenv(), so clear the superglobals
+    // that were populated from .env during bootstrap so putenv() takes effect.
+    unset($_SERVER['APP_DEBUG'], $_ENV['APP_DEBUG']);
 
     Config::set('app.env', 'production');
     Config::set('app.debug', (bool) env('APP_DEBUG', false));
@@ -47,6 +50,9 @@ it('APP_DEBUG is false in a production-like environment', function () {
 it('APP_DEBUG cannot be silently enabled in production without explicit override', function () {
     putenv('APP_ENV=production');
     putenv('APP_DEBUG=true');
+    // env() reads \$_SERVER/\$_ENV before getenv(), so clear the superglobals
+    // that were populated from .env during bootstrap so putenv() takes effect.
+    unset($_SERVER['APP_ENV'], $_ENV['APP_ENV'], $_SERVER['APP_DEBUG'], $_ENV['APP_DEBUG']);
 
     // Re-apply the config/app.php debug closure under the simulated production
     // env. The production guard forces debug off regardless of APP_DEBUG, so
@@ -75,8 +81,8 @@ it('does not contain hardcoded secret literals in source files', function () {
         '/sk_live_[0-9a-zA-Z]{24,}/',
         '/sk_test_[0-9a-zA-Z]{24,}/',
         '/AKIA[0-9A-Z]{16}/',
-        '/password\s*=\s*["\'][^"\']+["\']/i',
-        '/secret\s*=\s*["\'][^"\']+["\']/i',
+        '/password\s*=\s*["\'"][^"\']+["\']/i',
+        '/secret\s*=\s*["\'"][^"\']+["\']/i',
     ];
 
     $basePath = base_path('app');
