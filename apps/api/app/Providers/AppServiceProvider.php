@@ -67,9 +67,9 @@ class AppServiceProvider extends ServiceProvider
             app(ProductionEnvironmentValidator::class)->validateProductionSafety();
         }
 
-        // Override with real publishers in non-testing environments.
-        // Tests always use fake publishers (bound in register()).
-        if (! $this->app->environment('testing')) {
+        // Override with real publishers in production only.
+        // Tests and local dev use fake publishers (bound in register()).
+        if (config('app.env') === 'production') {
             $this->app->bind(SocialPublisher::class.':youtube', YouTubePublisher::class);
             $this->app->bind(SocialPublisher::class.':instagram', InstagramPublisher::class);
             $this->app->bind(SocialPublisher::class.':tiktok', TikTokPublisher::class);
