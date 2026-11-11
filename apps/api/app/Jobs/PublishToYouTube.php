@@ -177,6 +177,7 @@ class PublishToYouTube implements ShouldQueue
         Log::warning('PublishToYouTube: Publish failed', [
             'publish_id' => $this->publishId,
             'error' => $errorMessage,
+            'error_message_field' => $publish->fresh()->error_message ?? 'null',
         ]);
     }
 
