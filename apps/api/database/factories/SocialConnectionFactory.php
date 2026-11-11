@@ -27,13 +27,13 @@ class SocialConnectionFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
-            'platform' => $this->faker->randomElement(['youtube', 'instagram', 'tiktok']),
+            'platform' => 'youtube',
             'provider_user_id' => $this->faker->uuid(),
             'display_name' => $this->faker->name(),
             'avatar_url' => $this->faker->imageUrl(),
             'channel_url' => $this->faker->url(),
-            'access_token' => encrypt('encrypted_access_token_'.$this->faker->uuid()),
-            'refresh_token' => encrypt('encrypted_refresh_token_'.$this->faker->uuid()),
+            'access_token' => encrypt('fake_youtube_access_token_'.$this->faker->uuid()),
+            'refresh_token' => encrypt('fake_youtube_refresh_token_'.$this->faker->uuid()),
             'access_token_expires_at' => now()->addHours(1),
             'status' => 'connected',
             'last_error' => null,
