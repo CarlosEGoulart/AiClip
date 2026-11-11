@@ -154,8 +154,7 @@ class PublishToYouTube implements ShouldQueue
                 'platform' => 'youtube',
             ]);
         } catch (\Throwable $e) {
-            error_log("PUBLISH_DEBUG: catch block - publish_id={$this->publishId}, exception=" . get_class($e) . ", message=" . $e->getMessage());
-            $this->markFailed($publish, 'Upload failed: '.$e->getMessage().' (class: '.get_class($e).')');
+            $this->markFailed($publish, 'Upload failed: '.$e->getMessage());
         }
     }
 
@@ -175,7 +174,10 @@ class PublishToYouTube implements ShouldQueue
             $this->updateCampaignStatus($this->campaignId);
         }
 
-        error_log("PUBLISH_DEBUG: markFailed called - publish_id={$this->publishId}, error={$errorMessage}, campaign_id=" . ($this->campaignId ?? 'null'));
+        Log::warning('PublishToYouTube: Publish failed', [
+            'publish_id' => $this->publishId,
+            'error' => $errorMessage,
+        ]);
     }
 
     /**
