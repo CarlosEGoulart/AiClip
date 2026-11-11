@@ -46,17 +46,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SocialConnectionProvider::class.':instagram', FakeInstagramProvider::class);
         $this->app->bind(SocialConnectionProvider::class.':tiktok', FakeTikTokProvider::class);
 
-        // Social publisher - YouTube publisher bound by platform key
-        $this->app->bind(SocialPublisher::class.':youtube', YouTubePublisher::class);
-        $this->app->bind(SocialPublisher::class.':instagram', InstagramPublisher::class);
-        $this->app->bind(SocialPublisher::class.':tiktok', TikTokPublisher::class);
-
-        // Override with fake publisher in testing environment
-        if ($this->app->environment('testing')) {
-            $this->app->bind(SocialPublisher::class.':youtube', FakeYouTubePublisher::class);
-            $this->app->bind(SocialPublisher::class.':instagram', FakeInstagramPublisher::class);
-            $this->app->bind(SocialPublisher::class.':tiktok', FakeTikTokPublisher::class);
-        }
+        // Social publisher - bind fake publishers by default (safe for tests).
+        // Real publishers override in boot() for non-testing environments.
+        $this->app->bind(SocialPublisher::class.':youtube', FakeYouTubePublisher::class);
+        $this->app->bind(SocialPublisher::class.':instagram', FakeInstagramPublisher::class);
+        $this->app->bind(SocialPublisher::class.':tiktok', FakeTikTokPublisher::class);
 
         $this->app->singleton(SocialConnectionManager::class);
     }
@@ -71,6 +65,14 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production') && !$this->app->runningInConsole()) {
             app(ProductionEnvironmentValidator::class)->validateProductionRequired();
             app(ProductionEnvironmentValidator::class)->validateProductionSafety();
+        }
+
+        // Override with real publishers in non-testing environments.
+        // Tests always use fake publishers (bound in register()).
+        if (! $this->app->environment('testing')) {
+            $this->app->bind(SocialPublisher::class.':youtube', YouTubePublisher::class);
+            $this->app->bind(SocialPublisher::class.':instagram', InstagramPublisher::class);
+            $this->app->bind(SocialPublisher::class.':tiktok', TikTokPublisher::class);
         }
 
         RateLimiter::for('project-create', function (Request $request) {
