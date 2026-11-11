@@ -7,6 +7,7 @@ use App\Enums\SocialPublishStatus;
 use App\Jobs\PublishToYouTube;
 use App\Models\ClipReview;
 use App\Models\DerivedAsset;
+use App\Models\SocialConnection;
 use App\Models\SocialPublish;
 use App\Models\User;
 use Tests\Support\CreatesTestUsers;
@@ -33,20 +34,27 @@ it('unique_id_based_on_publish_id', function () {
     expect($job->uniqueId())->toBe('social-publish:42');
 });
 
-it('null_social_connection_fails_without_throwing', function () {
-    $this->user = User::factory()->create();
+it('ownership_validation_failed_when_connection_user_id_mismatch', function () {
+    $userA = User::factory()->create();
+    $userB = User::factory()->create();
+
+    $connection = SocialConnection::factory()->for($userB)->connected()->create([
+        'platform' => 'youtube',
+    ]);
 
     $clipReview = ClipReview::factory()->for(
         DerivedAsset::factory()->renderedClip()
     )->create([
-        'reviewer_id' => $this->user->id,
+        'reviewer_id' => $userA->id,
         'status' => ClipReviewStatus::APPROVED,
     ]);
+    $clipReview->derivedAsset->mediaAsset->project->update([
+        'user_id' => $userA->id,
+    ]);
 
-    // social_connection_id references a non-existent connection
     $publish = SocialPublish::query()->create([
-        'user_id' => $this->user->id,
-        'social_connection_id' => 999999,
+        'user_id' => $userA->id,
+        'social_connection_id' => $connection->id,
         'clip_review_id' => $clipReview->id,
         'platform' => 'youtube',
         'status' => SocialPublishStatus::Pending->value,
