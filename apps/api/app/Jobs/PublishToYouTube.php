@@ -154,7 +154,7 @@ class PublishToYouTube implements ShouldQueue
                 'platform' => 'youtube',
             ]);
         } catch (\Throwable $e) {
-            $this->markFailed($publish, 'Upload failed: '.$e->getMessage());
+            $this->markFailed($publish, 'Upload failed: '.$e->getMessage().' (class: '.get_class($e).')');
         }
     }
 
