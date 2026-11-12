@@ -30,6 +30,26 @@ async function registerUser(page: import('@playwright/test').Page, name: string,
   })
   expect(loginResponse.status()).toBe(200)
 
+  // Transfer session cookies from API responses to browser context
+  const allCookies = [];
+  for (const resp of [registerResponse, loginResponse]) {
+    const setCookieHeaders = resp.headers()['set-cookie'] || [];
+    for (const header of setCookieHeaders) {
+      const match = header.match(/^(laravel_session|XSRF-TOKEN)=([^;]+);/);
+      if (match) {
+        allCookies.push({
+          name: match[1],
+          value: match[2],
+          domain: '127.0.0.1',
+          path: '/',
+        });
+      }
+    }
+  }
+  if (allCookies.length > 0) {
+    await page.context().addCookies(allCookies);
+  }
+
   await page.goto('/')
   await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
