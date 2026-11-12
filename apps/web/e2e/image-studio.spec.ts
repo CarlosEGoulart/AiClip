@@ -14,23 +14,34 @@ async function switchToRegister(page: import('@playwright/test').Page) {
 }
 
 async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
-  // Switch to register view if needed
-  const registerHeading = page.getByRole('heading', { name: 'Create your workspace' })
-  if (await registerHeading.isVisible().catch(() => false)) {
-    // Already on register view
-  } else {
-    await page.getByRole('button', { name: 'Create one' }).click()
-    await expect(registerHeading).toBeVisible()
+  await page.request.post('/sanctum/csrf-cookie', {
+    headers: { Accept: 'application/json' },
+  })
+
+  const registerResponse = await page.request.post('/api/v1/auth/register', {
+    data: { name, email, password: 'password123', password_confirmation: 'password123' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+  })
+  expect(registerResponse.status()).toBe(201)
+
+  const loginResponse = await page.request.post('/api/v1/auth/login', {
+    data: { email, password: 'password123' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+  })
+  expect(loginResponse.status()).toBe(200)
+
+  // Transfer session cookie to browser context via document.cookie
+  const setCookie = Array.isArray(loginResponse.headers()['set-cookie'])
+    ? loginResponse.headers()['set-cookie'].join(', ')
+    : loginResponse.headers()['set-cookie'] || ''
+  const sessionMatch = setCookie.match(/laravel_session=([^;]+)/)
+  if (sessionMatch) {
+    await page.evaluate((sessionValue: string) => {
+      document.cookie = `laravel_session=${sessionValue}; domain=127.0.0.1; path=/; SameSite=Lax`
+    }, sessionMatch[1])
   }
 
-  // Fill and submit register form through UI
-  await page.getByLabel('Name').fill(name)
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password', { exact: true }).fill('password123')
-  await page.getByLabel('Confirm Password', { exact: true }).fill('password123')
-  await page.getByRole('button', { name: 'Create Account' }).click()
-
-  // Wait for session to be established
+  await page.goto('/')
   await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
 
