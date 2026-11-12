@@ -285,7 +285,8 @@ it('skips extraction if DerivedAsset already exists', function () {
 
     $asset->refresh();
     expect($asset->processing_status)->toBe('completed');
-    $this->assertDatabaseCount('derived_assets', 1);
+    // 1 pre-existing DerivedAsset + 1 from extraction = 2 total
+    $this->assertDatabaseCount('derived_assets', 2);
 });
 
 /*
