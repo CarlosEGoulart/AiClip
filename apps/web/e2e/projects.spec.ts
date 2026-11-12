@@ -24,50 +24,42 @@ async function switchToRegister(page: import('@playwright/test').Page) {
 }
 
 async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
-  // Register via API to guarantee session cookie is set reliably,
-  // independent of UI flow or session driver behavior in the E2E webServer.
-  await page.request.post('/sanctum/csrf-cookie', {
-    headers: { Accept: 'application/json' },
+  // Get CSRF cookie (page.evaluate with fetch manages cookies automatically)
+  await page.evaluate(async () => {
+    await fetch('/sanctum/csrf-cookie', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'include',
+    })
   })
 
-  const registerResponse = await page.request.post('/api/v1/auth/register', {
-    data: { name, email, password: 'password123', password_confirmation: 'password123' },
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-  })
-  expect(registerResponse.status()).toBe(201)
-
-  // Login via API to establish session cookie for subsequent browser requests.
-  const loginResponse = await page.request.post('/api/v1/auth/login', {
-    data: { email, password: 'password123' },
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-  })
-  expect(loginResponse.status()).toBe(200)
-
-  // Transfer session cookies from API responses to browser context
-  const allCookies = [];
-  for (const resp of [registerResponse, loginResponse]) {
-    const setCookieHeader = resp.headers()['set-cookie'];
-    if (!setCookieHeader) continue;
-    const setCookieHeaders = Array.isArray(setCookieHeader)
-      ? setCookieHeader
-      : [setCookieHeader];
-    for (const header of setCookieHeaders) {
-      const match = header.match(/^(laravel_session|XSRF-TOKEN)=([^;]+)/);
-      if (match) {
-        allCookies.push({
-          name: match[1],
-          value: match[2],
-          domain: '127.0.0.1',
-          path: '/',
-        });
-      }
+  // Register via browser fetch (cookies auto-managed)
+  await page.evaluate(async ({ name, email }) => {
+    const response = await fetch('/api/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name, email, password: 'password123', password_confirmation: 'password123' }),
+    })
+    if (response.status !== 201) {
+      throw new Error(`Register failed: ${response.status}`)
     }
-  }
-  if (allCookies.length > 0) {
-    await page.context().addCookies(allCookies);
-  }
+  }, { name, email })
 
-  // Navigate to the app so the browser has the session cookie.
+  // Login via browser fetch
+  await page.evaluate(async ({ email }) => {
+    const response = await fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password: 'password123' }),
+    })
+    if (response.status !== 200) {
+      throw new Error(`Login failed: ${response.status}`)
+    }
+  }, { email })
+
+  // Navigate to app - browser now has session cookie
   await page.goto('/')
   await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
