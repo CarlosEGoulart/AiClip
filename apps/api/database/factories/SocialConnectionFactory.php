@@ -49,6 +49,8 @@ class SocialConnectionFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'status' => 'connected',
+            'access_token' => 'fake_access_token',
+            'refresh_token' => 'fake_refresh_token',
             'access_token_expires_at' => now()->addHours(1),
             'last_error' => null,
         ]);

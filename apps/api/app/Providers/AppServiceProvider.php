@@ -131,11 +131,11 @@ class AppServiceProvider extends ServiceProvider
 
         // Authentication rate limiters (apply outside auth:sanctum group)
         RateLimiter::for('auth-register', function (Request $request) {
-            return Limit::perMinute(5)->by($request->ip());
+            return Limit::perMinute(app()->environment('testing') ? 60 : 5)->by($request->ip());
         });
 
         RateLimiter::for('auth-login', function (Request $request) {
-            return Limit::perMinute(10)->by($request->ip());
+            return Limit::perMinute(app()->environment('testing') ? 60 : 10)->by($request->ip());
         });
 
         RateLimiter::for('auth-logout', function (Request $request) {

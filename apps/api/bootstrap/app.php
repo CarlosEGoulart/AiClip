@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,7 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->appendToGroup('api', StartSession::class);
+        $middleware->appendToGroup('api', [StartSession::class, AddQueuedCookiesToResponse::class]);
         $middleware->statefulApi();
         $middleware->encryptCookies(except: ['XSRF-TOKEN', 'laravel_session']);
         $middleware->validateCsrfTokens(except: [
