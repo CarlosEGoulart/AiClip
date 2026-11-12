@@ -532,7 +532,7 @@ class TestGovernanceContract(unittest.TestCase):
     def test_g5_twelve_skills_parse(self):
         names = ["design-taste-frontend", "issue-linearity", "tdd-enforcer", "token-efficient-context",
                  "playwright-visual-qa", "media-pipeline", "social-publishing", "web-design-guidelines", 
-                 "search-first", "playwright-cli", "make-interfaces-feel-better", "frontend-pattens"]
+                 "search-first", "playwright-cli", "make-interfaces-feel-better", "frontend-patterns"]
         found = [d for d in SKILLS_DIR.iterdir() if d.is_dir()] if SKILLS_DIR.exists() else []
         self.assertEqual(sorted(d.name for d in found), sorted(names))
         for name in names:
