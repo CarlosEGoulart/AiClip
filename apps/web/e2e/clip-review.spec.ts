@@ -56,6 +56,13 @@ async function openProject(page: import('@playwright/test').Page, projectName: s
   await expect(page.getByRole('tab', { name: 'Review Clips' })).toBeVisible()
 }
 
+async function waitForAuthReady(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await expect(
+    page.getByRole('heading', { name: 'Sign in to your workspace' }).or(page.getByRole('heading', { name: 'Create your workspace' })),
+  ).toBeVisible({ timeout: 15000 })
+}
+
 async function openReviewTab(page: Page, projectId: number): Promise<Response> {
   const clipReviewsSeen = page.waitForResponse(
     new URL(response.url()).pathname === `/api/v1/projects/${projectId}/clip-reviews` &&

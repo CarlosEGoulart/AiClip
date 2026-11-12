@@ -148,6 +148,13 @@ async function cleanupProject(page: import('@playwright/test').Page, projectName
   await expect(page.getByText(/No projects yet/)).toBeVisible({ timeout: 10000 })
 }
 
+async function waitForAuthReady(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await expect(
+    page.getByRole('heading', { name: 'Sign in to your workspace' }).or(page.getByRole('heading', { name: 'Create your workspace' })),
+  ).toBeVisible({ timeout: 15000 })
+}
+
 test.describe('Image Studio (embedded)', () => {
   test('TC-E2E-01 generate-image flow: 202 pending, refetch to generated, whitelist', async ({ page }) => {
     const cleanliness = trackCleanliness(page)

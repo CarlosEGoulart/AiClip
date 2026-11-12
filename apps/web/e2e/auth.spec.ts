@@ -116,6 +116,9 @@ test.describe('Auth Lifecycle', () => {
 
   test('CSRF cookie is set and XSRF token is sent with state-changing requests', async ({ page }) => {
     await page.goto('/')
+    await page.request.post('/sanctum/csrf-cookie', {
+      headers: { Accept: 'application/json' },
+    })
     await page.getByRole('heading', { name: 'Sign in to your workspace' }).or(page.getByRole('heading', { name: 'Create your workspace' })).first()
 
     const cookies = await page.context().cookies()
