@@ -33,9 +33,13 @@ async function registerUser(page: import('@playwright/test').Page, name: string,
   // Transfer session cookies from API responses to browser context
   const allCookies = [];
   for (const resp of [registerResponse, loginResponse]) {
-    const setCookieHeaders = resp.headers()['set-cookie'] || [];
+    const setCookieHeader = resp.headers()['set-cookie'];
+    if (!setCookieHeader) continue;
+    const setCookieHeaders = Array.isArray(setCookieHeader)
+      ? setCookieHeader
+      : [setCookieHeader];
     for (const header of setCookieHeaders) {
-      const match = header.match(/^(laravel_session|XSRF-TOKEN)=([^;]+);/);
+      const match = header.match(/^(laravel_session|XSRF-TOKEN)=([^;]+)/);
       if (match) {
         allCookies.push({
           name: match[1],
