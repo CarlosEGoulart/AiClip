@@ -14,43 +14,23 @@ async function switchToRegister(page: import('@playwright/test').Page) {
 }
 
 async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
-  // Get CSRF cookie (page.evaluate with fetch manages cookies automatically)
-  await page.evaluate(async () => {
-    await fetch('/sanctum/csrf-cookie', {
-      method: 'POST',
-      headers: { 'Accept': 'application/json' },
-      credentials: 'include',
-    })
-  })
+  // Switch to register view if needed
+  const registerHeading = page.getByRole('heading', { name: 'Create your workspace' })
+  if (await registerHeading.isVisible().catch(() => false)) {
+    // Already on register view
+  } else {
+    await page.getByRole('button', { name: 'Create one' }).click()
+    await expect(registerHeading).toBeVisible()
+  }
 
-  // Register via browser fetch (cookies auto-managed)
-  await page.evaluate(async ({ name, email }) => {
-    const response = await fetch('/api/v1/auth/register', {
-      method: 'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ name, email, password: 'password123', password_confirmation: 'password123' }),
-    })
-    if (response.status !== 201) {
-      throw new Error(`Register failed: ${response.status}`)
-    }
-  }, { name, email })
+  // Fill and submit register form through UI
+  await page.getByLabel('Name').fill(name)
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password', { exact: true }).fill('password123')
+  await page.getByLabel('Confirm Password', { exact: true }).fill('password123')
+  await page.getByRole('button', { name: 'Create Account' }).click()
 
-  // Login via browser fetch
-  await page.evaluate(async ({ email }) => {
-    const response = await fetch('/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password: 'password123' }),
-    })
-    if (response.status !== 200) {
-      throw new Error(`Login failed: ${response.status}`)
-    }
-  }, { email })
-
-  // Navigate to app - browser now has session cookie
-  await page.goto('/')
+  // Wait for session to be established
   await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
 
