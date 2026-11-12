@@ -36,15 +36,19 @@ async function registerUser(page: import('@playwright/test').Page, name: string,
   })
   expect(loginResponse.status()).toBe(200)
 
-  // Transfer session cookie to browser context via document.cookie
-  const setCookie = Array.isArray(loginResponse.headers()['set-cookie'])
-    ? loginResponse.headers()['set-cookie'].join(', ')
-    : loginResponse.headers()['set-cookie'] || ''
-  const sessionMatch = setCookie.match(/laravel_session=([^;]+)/)
-  if (sessionMatch) {
-    await page.evaluate((sessionValue: string) => {
-      document.cookie = `laravel_session=${sessionValue}; domain=127.0.0.1; path=/; SameSite=Lax`
-    }, sessionMatch[1])
+  // Transfer session cookie to browser context via document.cookie (host-only, no domain attr)
+  const setCookie = loginResponse.headers()['set-cookie']
+  if (setCookie) {
+    const headers = Array.isArray(setCookie) ? setCookie : [setCookie]
+    for (const header of headers) {
+      const match = header.match(/laravel_session=([^;]+)/)
+      if (match) {
+        await page.evaluate((sessionValue: string) => {
+          document.cookie = `laravel_session=${sessionValue}; path=/; SameSite=Lax`
+        }, match[1])
+        break
+      }
+    }
   }
 
   await page.goto('/')
