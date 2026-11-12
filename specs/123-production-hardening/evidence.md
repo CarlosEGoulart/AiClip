@@ -96,15 +96,51 @@ All test execution evidence below is based on static code analysis + root-cause 
 
 ## 5. TDD Status
 
-RED: Root causes identified through static analysis of failing CI output (73 E2E + 13 backend failures across 3 viewports).
+### RED
+Root causes identified through static analysis of failing CI output (73 E2E + 13 backend failures across 3 viewports).
 
-GREEN: Six code fixes applied above addressing each root cause.
+### GREEN
+Six code fixes applied above addressing each root cause.
 
-REFACTOR: No refactoring needed — minimal targeted fixes only.
+### REFACTOR
+No refactoring needed — minimal targeted fixes only.
 
 ---
 
-## 6. Next Steps (Orchestrator)
+## 6. Tester Independent Validation
+
+### Scope verification
+All 6 fixes reviewed against root causes via static code analysis:
+
+| Fix | Root Cause | File | Verdict |
+|-----|-----------|------|---------|
+| 1 | Session cookie never written (no `AddQueuedCookiesToResponse`) | `apps/api/bootstrap/app.php` | ✅ Correct — middleware added alongside `StartSession` |
+| 2 | Auth rate limits exhausted by parallel E2E workers (5/min by IP) | `apps/api/app/Providers/AppServiceProvider.php` | ✅ Correct — testing env: 60/min register, 60/min login; prod unchanged |
+| 3 | `waitForAuthReady` ReferenceError in clip-review.spec.ts | `apps/web/e2e/clip-review.spec.ts` | ✅ Correct — helper defined at lines 59-64 before first use |
+| 4 | `waitForAuthReady` ReferenceError in image-studio.spec.ts | `apps/web/e2e/image-studio.spec.ts` | ✅ Correct — helper defined at lines 151-156 before first use |
+| 5 | CSRF XSRF-TOKEN not fetched before assertion | `apps/web/e2e/auth.spec.ts` | ✅ Correct — `page.request.post('/sanctum/csrf-cookie')` added before cookie check |
+| 6 | SocialPublish `failed` instead of `published` (missing tokens in factory) | `apps/api/database/factories/SocialConnectionFactory.php` | ✅ Correct — `connected()` sets `access_token`/`refresh_token` |
+
+### Unrelated changes check
+8 files modified total: 3 backend fixes + 3 frontend E2E fixes + 2 planning docs (spec.md, plan.md) + evidence.md. All changes are minimal, targeted, and match the 3 described commits. No unrelated code changes detected.
+
+### Local verification status (environment blockers)
+Shell access denied in this environment; no test commands executable:
+- `php artisan test --filter=SocialPublish` — BLOCKED: pdo_pgsql/PostgreSQL not available locally
+- `npm run test:e2e` — BLOCKED: needs PostgreSQL + Chromium + ports 5173/8000
+- `npm run test`, `npm run lint`, `npm run build` — Not executed (shell denied)
+Per decision criteria, these are documented as environment blockers, not grounds for REJECT. CI will execute dynamic verification.
+
+### Decision
+All 6 fixes correctly address their identified root causes. No fix introduces unrelated changes or defects. Environment blockers documented; CI will verify dynamic execution.
+
+**Tester Decision: APPROVE**
+
+Decision: APPROVE
+
+---
+
+## 7. Next Steps (Orchestrator)
 
 1. Commit all changes with Conventional Commits (Refs #123)
 2. Push branch `@carlosegoulart/123/feat/production-hardening-v2`
