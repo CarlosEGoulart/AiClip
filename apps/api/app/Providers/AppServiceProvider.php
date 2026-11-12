@@ -47,7 +47,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SocialConnectionProvider::class.':tiktok', FakeTikTokProvider::class);
 
         // Social publisher - bind fake publishers by default (safe for tests).
-        // Real publishers override in boot() for non-testing environments.
+        // Real publishers are bound in environment-specific providers or
+        // config, never here, to avoid test contamination.
         $this->app->bind(SocialPublisher::class.':youtube', FakeYouTubePublisher::class);
         $this->app->bind(SocialPublisher::class.':instagram', FakeInstagramPublisher::class);
         $this->app->bind(SocialPublisher::class.':tiktok', FakeTikTokPublisher::class);
@@ -65,14 +66,6 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production') && !$this->app->runningInConsole()) {
             app(ProductionEnvironmentValidator::class)->validateProductionRequired();
             app(ProductionEnvironmentValidator::class)->validateProductionSafety();
-        }
-
-        // Override with real publishers in production only.
-        // Tests and local dev use fake publishers (bound in register()).
-        if (config('app.env') === 'production') {
-            $this->app->bind(SocialPublisher::class.':youtube', YouTubePublisher::class);
-            $this->app->bind(SocialPublisher::class.':instagram', InstagramPublisher::class);
-            $this->app->bind(SocialPublisher::class.':tiktok', TikTokPublisher::class);
         }
 
         RateLimiter::for('project-create', function (Request $request) {
