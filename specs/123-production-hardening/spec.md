@@ -119,6 +119,9 @@ Scope boundaries:
 - [ ] All findings are either fixed or recorded as explicit release blockers / accepted risks with owner and rationale.
 - [ ] Unit tests pass, integration tests pass, E2E tests pass at 3 viewports, lint clean, governance green.
 - [ ] Independent Tester approval and all required CI checks green before merge.
+- [ ] Backend CI `php artisan test --compact` → 0 failures (SocialPublish publish flow ends with status `published`, not `failed`)
+- [ ] E2E CI `npm run test:e2e` → 0 failures at all 3 viewports (390x844, 768x1024, 1440x900)
+- [ ] All existing M14 hardening acceptance criteria remain satisfied; CI correction scope adds no new user-facing features
 
 ---
 
@@ -229,6 +232,27 @@ Scope boundaries:
 | H.5 | Console cleanliness | no unexpected JS console errors |
 | H.6 | Network cleanliness | no unexpected 4xx/5xx unless scenario requires |
 
+### CI Correction Test Scenarios
+
+#### Backend — SocialPublish CI Fix
+
+| # | Scenario | Expected Result |
+|---|----------|-----------------|
+| CC.B.1 | SocialPublish publish flow ends with status `published` (not `failed`) | `PublishToYouTube`/`PublishToInstagram`/`PublishToTikTok` job marks the publish `published` when the fake publisher succeeds |
+| CC.B.2 | `SocialConnectionManager::getValidAccessToken()` returns valid token in testing env | valid access token returned for a connected social connection in the testing environment |
+| CC.B.3 | Backend CI `php artisan test --compact` → 0 failures | all backend tests pass, including the 13 SocialPublish tests |
+
+#### Frontend — E2E CI Fix
+
+| # | Scenario | Expected Result |
+|---|----------|-----------------|
+| CC.F.1 | E2E auth flow passes at 3 viewports | register → login → logout succeeds at 390x844, 768x1024, 1440x900 |
+| CC.F.2 | E2E media flow passes at 3 viewports | upload media / processing completes at all viewports |
+| CC.F.3 | E2E clip review flow passes at 3 viewports | view clip review → approve succeeds at all viewports |
+| CC.F.4 | E2E image studio flow passes at 3 viewports | image generation / approval succeeds at all viewports |
+| CC.F.5 | E2E projects flow passes at 3 viewports | create / list / delete project succeeds at all viewports |
+| CC.F.6 | Clean console/network at all viewports | no unexpected JS console errors or 4xx/5xx at any viewport |
+
 ---
 
 ## CI Requirements
@@ -256,6 +280,31 @@ Scope boundaries:
 | Frontend build | `npm run build` | clean |
 
 Failure of any step blocks merge via `scripts/merge_gate.py` and blocks issue closure (AGENTS.md §11).
+
+---
+
+## CI Correction Scope
+
+Issue #123 (M14 Production Hardening) now also includes fixing the pre-existing CI failures that block its merge. These failures existed before the M14 hardening work and must be resolved so issue #123 can reach CI green and merge (AGENTS.md §11).
+
+### Backend CI Correction
+
+**Problem:** 13 tests in `Tests\Feature\SocialPublish\` fail because SocialPublish publish jobs end with status `failed` instead of `published`. The publish flow does not reach the `published` terminal state when the fake publisher succeeds.
+
+**Scope:** Investigate root cause of the `failed` terminal status in the SocialPublish publish flow (jobs `PublishToYouTube`, `PublishToInstagram`, `PublishToTikTok`, `SocialConnectionManager::getValidAccessToken()` in testing env) and implement the minimal code/test fix so all 13 SocialPublish backend tests pass.
+
+### Frontend CI Correction
+
+**Problem:** 73 E2E tests fail across auth, clip-review, image-studio, media, and projects flows. E2E flows do not pass reliably at the required viewports.
+
+**Scope:** Investigate root cause of the E2E failures and implement the minimal code/test fix so all 73 E2E tests pass at all 3 viewports (390x844, 768x1024, 1440x900) with clean console/network.
+
+### Out of Scope (CI Correction)
+
+- CI workflow configuration files (`.github/workflows/*.yml`) are not modified; CI correction addresses application/test behavior so existing CI passes unchanged.
+- Local environment infrastructure (pdo_pgsql PHP extension, running PostgreSQL, shell access) — CI correction scope covers test behavior; the CI environment provides database services.
+- New user-facing features beyond hardening and CI correction.
+- Multi-region deployment, auto-scaling, or managed-service provisioning.
 
 ---
 
@@ -318,7 +367,7 @@ The Planner does not create production code. This section lists the categories o
 
 ## Branch & Commit Strategy
 
-**Branch**: `@carlosegoulart/123/feat/production-hardening` (created by Orchestrator).
+**Branch**: `@carlosegoulart/123/feat/production-hardening-v2` (created by Orchestrator).
 
 **Commits** (Conventional Commits, each referencing `Refs #123`):
 
@@ -331,3 +380,5 @@ The Planner does not create production code. This section lists the categories o
 7. `test(hardening): add production smoke test (Playwright, 3 viewports)`
 8. `test(hardening): add backend hardening tests (config, auth, queue, health, migration)`
 9. `ci(hardening): lint, governance, and full suite green`
+10. `fix(backend): fix SocialPublish publish terminal status to published`
+11. `fix(frontend): fix E2E flows at all 3 viewports`

@@ -6,7 +6,7 @@ This plan breaks down M14 Production Hardening into sequential, testable increme
 
 Each phase delivers a vertical slice that can be independently verified. Where the work is documentation/audit, the "implementation" is the document plus tests that verify the properties it describes.
 
-Branch: `@carlosegoulart/123/feat/production-hardening` (created by Orchestrator).
+Branch: `@carlosegoulart/123/feat/production-hardening-v2` (created by Orchestrator).
 
 ---
 
@@ -308,6 +308,66 @@ No new production feature code is required in this phase.
 
 ---
 
+## Phase 10: CI Correction — Backend SocialPublish Fix
+
+### 10.1 Investigate root cause (RED)
+
+- [ ] Reproduce the 13 failing `Tests\Feature\SocialPublish\` tests against CI-like PostgreSQL environment.
+- [ ] Confirm root cause: SocialPublish publish jobs end with status `failed` instead of `published` when the fake publisher succeeds.
+- [ ] Confirm `SocialConnectionManager::getValidAccessToken()` behavior in testing env returns a valid token for connected social connections.
+- [ ] Document root cause in plan notes (no code change yet).
+
+### 10.2 Implement fix (GREEN)
+
+- [ ] Fix SocialPublish publish flow so a successful fake publisher marks the publish `published` (terminal status), not `failed`.
+- [ ] Ensure `SocialConnectionManager::getValidAccessToken()` returns a valid token in testing env.
+- [ ] Add/adjust backend tests asserting publish flow ends `published`.
+- [ ] Run `php artisan test --filter=SocialPublish` → 13/13 pass.
+- [ ] Run full backend suite `php artisan test --compact` → 0 failures.
+
+### 10.3 REFACTOR
+
+- [ ] Refactor for clarity without changing terminal-status behavior.
+- [ ] Re-run SocialPublish tests → still 13/13 pass.
+
+---
+
+## Phase 11: CI Correction — Frontend E2E Fix
+
+### 11.1 Investigate root cause (RED)
+
+- [ ] Reproduce the 73 failing E2E tests across auth, clip-review, image-studio, media, projects at 3 viewports (390x844, 768x1024, 1440x900).
+- [ ] Inspect browser console, network, API responses, and screenshots for the failure pattern.
+- [ ] Confirm root cause of E2E instability/failures.
+- [ ] Document root cause in plan notes (no code change yet).
+
+### 11.2 Implement fix (GREEN)
+
+- [ ] Fix E2E flows so auth, media, clip review, image studio, and projects pass at all 3 viewports.
+- [ ] Ensure clean console/network (no unexpected JS errors or 4xx/5xx).
+- [ ] Run `npm run test:e2e` → 0 failures at all 3 viewports.
+
+### 11.3 REFACTOR
+
+- [ ] Refactor E2E helpers/selectors for stability without changing flow behavior.
+- [ ] Re-run E2E at all 3 viewports → still 0 failures.
+
+---
+
+## Phase 12: Full Definition of Done Verification
+
+- [ ] Backend lint `vendor/bin/pint --dirty --format agent` → clean.
+- [ ] Frontend lint `npm run lint` → clean.
+- [ ] Frontend build `npm run build` → clean.
+- [ ] Governance `php artisan test --filter=Governance` → all pass.
+- [ ] Full backend suite `php artisan test --compact` → 0 failures.
+- [ ] Full frontend unit suite `npm run test` → all pass.
+- [ ] Full E2E `npm run test:e2e` → 0 failures at 3 viewports.
+- [ ] Independent Tester approval; CI green; merge via `scripts/merge_gate.py`.
+- [ ] Update `specs/123-production-hardening/evidence.md` (Orchestrator-owned; Planner/Builder do not edit).
+
+---
+
 ## File Creation Summary
 
 ### Backend (new tests)
@@ -355,7 +415,7 @@ No new production feature code is required in this phase.
 
 ## Branch & Commit Strategy
 
-**Branch**: `@carlosegoulart/123/feat/production-hardening`
+**Branch**: `@carlosegoulart/123/feat/production-hardening-v2`
 
 **Commits** (Conventional Commits, each `Refs #123`):
 
@@ -368,3 +428,5 @@ No new production feature code is required in this phase.
 7. `test(hardening): add production smoke test (Playwright, 3 viewports)`
 8. `test(hardening): add backend hardening tests (config, auth, queue, health, migration)`
 9. `ci(hardening): lint, governance, and full suite green`
+10. `fix(backend): fix SocialPublish publish terminal status to published`
+11. `fix(frontend): fix E2E flows at all 3 viewports`

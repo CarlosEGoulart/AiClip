@@ -241,3 +241,33 @@ Failure of any step blocks merge via `scripts/merge_gate.py` and blocks issue cl
 ## 8. Evidence Collection
 
 The Planner and Builder do not edit `evidence.md` (Orchestrator-owned). Evidence of test execution, lint results, governance results, and the production-readiness checklist (fixed / blocker / accepted risk with owner and rationale) is recorded by Tester/Orchestrator during the merge gate.
+
+---
+
+## 9. CI Correction Test Scenarios
+
+### 9.1 Backend — SocialPublish CI Fix
+
+File: `tests/Feature/SocialPublish/` (existing 13 failing tests)
+
+| # | Scenario | Expected Result |
+|---|----------|-----------------|
+| 9.1.1 | `PublishToYouTube` job marks publish `published` when fake publisher succeeds | publish terminal status is `published`, not `failed` |
+| 9.1.2 | `PublishToInstagram` job marks publish `published` when fake publisher succeeds | publish terminal status is `published`, not `failed` |
+| 9.1.3 | `PublishToTikTok` job marks publish `published` when fake publisher succeeds | publish terminal status is `published`, not `failed` |
+| 9.1.4 | `SocialConnectionManager::getValidAccessToken()` returns valid token in testing env | valid non-expired access token returned for connected social connection in testing environment |
+| 9.1.5 | Backend CI `php artisan test --compact` → 0 failures | all backend tests pass, including the 13 SocialPublish tests |
+
+### 9.2 Frontend — E2E CI Fix
+
+File: `apps/web/tests/e2e/production-smoke.spec.ts` (existing E2E suites)
+
+| # | Scenario | Expected Result |
+|---|----------|-----------------|
+| 9.2.1 | E2E auth flow passes at 3 viewports | register → login → logout succeeds at 390x844, 768x1024, 1440x900 |
+| 9.2.2 | E2E media flow passes at 3 viewports | upload media / processing completes at all viewports |
+| 9.2.3 | E2E clip review flow passes at 3 viewports | view clip review → approve succeeds at all viewports |
+| 9.2.4 | E2E image studio flow passes at 3 viewports | image generation / approval succeeds at all viewports |
+| 9.2.5 | E2E projects flow passes at 3 viewports | create / list / delete project succeeds at all viewports |
+| 9.2.6 | Clean console/network at all viewports | no unexpected JS console errors or 4xx/5xx at any viewport |
+| 9.2.7 | E2E CI `npm run test:e2e` → 0 failures | all 73 E2E tests pass at all 3 viewports |
