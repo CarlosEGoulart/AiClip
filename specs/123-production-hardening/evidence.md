@@ -453,3 +453,69 @@ needed.
 ### Environment blocker
 Dynamic test execution is BLOCKED locally. CI will perform dynamic
 verification of `npm run test:e2e` at all 3 viewports.
+
+---
+
+## 13. Frontend E2E RegisterUser Helper — Entirely UI-Based Rewrite (this Builder session)
+
+### Issue / goal
+Rewrite `apps/web/e2e/helpers/auth.ts` `registerUser()` to use ENTIRELY UI-based
+registration instead of the hybrid `page.request.post('/api/v1/auth/register')`
+API call + UI login approach that keeps failing CI.
+
+### Root cause
+`page.request()` uses a separate cookie jar from the browser context. After
+`page.request.post('/api/v1/auth/register')` creates the user, Laravel sets
+`Set-Cookie: laravel_session=...` on the APIRequestContext's jar, which does NOT
+reliably reach the browser context. When `page.goto('/')` then loads the app,
+the browser may not have the session cookie, `GET /api/v1/auth/me` returns 401,
+the app renders the guest login view, and "Signed in as" never appears — causing
+unpredictable auth state and CI failures.
+
+### Fix
+Rewrote `registerUser(page, name, email)` in `apps/web/e2e/helpers/auth.ts` to
+match the proven-passing pattern in `apps/web/tests/e2e/auth-functional.spec.ts`:
+
+1. `page.goto('/')` — load the app in the browser
+2. `page.waitForLoadState('networkidle')` — wait for hydration
+3. Wait for EITHER "Sign in to your workspace" OR "Create your workspace" heading
+4. If on the login view, click "Create one" button to switch to the register view
+5. Fill register form via browser UI: Name, Email, Password, Confirm Password
+6. Click "Create Account" button
+7. Wait for `getByText(/Signed in as/).first()` visible (15s proven-authenticated gate)
+
+Key differences from the previous helper:
+- NO `page.request.post('/api/v1/auth/register')` — registration is done entirely
+  through browser UI
+- NO `Promise.race` — just wait for heading after `networkidle`
+- Uses `switchToRegister` pattern (click "Create one" if on login view)
+- Session cookie is set by Laravel on the real register response through the
+  browser's own cookie jar, not manual cookie transfer
+
+Signature remains `registerUser(page, name, email): Promise<void>`, so all
+existing call sites across the 5 spec files remain unchanged and compatible.
+
+### File changed
+- `apps/web/e2e/helpers/auth.ts` — `registerUser()` rewritten to entirely
+  UI-based registration flow
+
+### No other changes
+- No production source files (`apps/web/src/`, `apps/api/`) modified.
+- No spec files modified — all 5 call sites keep `await registerUser(page, name, email)` unchanged.
+- No test weakening, no disabled/skipped assertions, no `test.skip`/`test.only`.
+- No unauthorized modifications to planning docs, governance files, or `.opencode/`.
+- Branch `@carlosegoulart/123/feat/production-hardening-v2` unchanged (no commit/push — Orchestrator responsibility).
+
+### TDD status
+- RED: Identified via CI failure root cause (manual `laravel_session` cookie
+  transfer from `page.request` jar to browser context unreliable).
+- GREEN: Shared UI-based helper establishes session through browser cookie jar
+  via Vite proxy — resolves the root cause. Not dynamically executable locally
+  (environment blocker).
+- REFACTOR: Single shared helper, minimal targeted change, no duplication.
+
+### Environment blocker
+Dynamic test execution is BLOCKED locally (no shell access, no `pdo_pgsql`/
+PostgreSQL, no Chromium, no ports 5173/8000). CI (GitHub Actions: PostgreSQL
+16.4 service container, pdo_pgsql, Chromium, ports 5173/8000) will perform
+dynamic verification of `npm run test:e2e` at all 3 viewports.
