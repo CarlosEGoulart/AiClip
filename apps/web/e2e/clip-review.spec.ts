@@ -14,8 +14,17 @@ async function switchToRegister(page: import('@playwright/test').Page) {
 }
 
 async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
-  // Navigate to register page (this gets CSRF cookie via Vite proxy)
+  // Navigate to app (gets CSRF cookie via Vite proxy)
   await page.goto('/');
+
+  // Fetch CSRF cookie via browser (browser manages cookies)
+  await page.evaluate(async () => {
+    await fetch('/sanctum/csrf-cookie', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'include',
+    });
+  });
 
   // Switch to register if needed
   const registerHeading = page.getByRole('heading', { name: 'Create your workspace' });
