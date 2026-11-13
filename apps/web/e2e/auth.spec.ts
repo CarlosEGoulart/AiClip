@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { registerUser } from './helpers/auth'
 
 function uniqueEmail() {
   return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`
@@ -17,45 +18,6 @@ async function switchToRegister(page: import('@playwright/test').Page) {
   if (await registerHeading.isVisible().catch(() => false)) return
   await page.getByRole('button', { name: 'Create one' }).click()
   await expect(registerHeading).toBeVisible()
-}
-
-async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
-  await page.request.post('/sanctum/csrf-cookie', {
-    headers: { Accept: 'application/json' },
-  })
-
-  const registerResponse = await page.request.post('/api/v1/auth/register', {
-    data: { name, email, password: 'password123', password_confirmation: 'password123' },
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-  })
-  expect(registerResponse.status()).toBe(201)
-
-  const loginResponse = await page.request.post('/api/v1/auth/login', {
-    data: { email, password: 'password123' },
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-  })
-  expect(loginResponse.status()).toBe(200)
-
-  // Transfer session cookie to browser context via addCookies with domain
-  const setCookie = loginResponse.headers()['set-cookie']
-  if (setCookie) {
-    const headers = Array.isArray(setCookie) ? setCookie : [setCookie]
-    for (const header of headers) {
-      const match = header.match(/laravel_session=([^;]+)/)
-      if (match) {
-        await page.context().addCookies([{
-          name: 'laravel_session',
-          value: match[1],
-          domain: '127.0.0.1',
-          path: '/',
-        }])
-        break
-      }
-    }
-  }
-
-  await page.goto('/')
-  await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
 
 test.describe('Auth Lifecycle', () => {

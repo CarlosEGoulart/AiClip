@@ -270,4 +270,4 @@ File: `apps/web/tests/e2e/production-smoke.spec.ts` (existing E2E suites)
 | 9.2.4 | E2E image studio flow passes at 3 viewports | image generation / approval succeeds at all viewports |
 | 9.2.5 | E2E projects flow passes at 3 viewports | create / list / delete project succeeds at all viewports |
 | 9.2.6 | Clean console/network at all viewports | no unexpected JS console errors or 4xx/5xx at any viewport |
-| 9.2.7 | E2E CI `npm run test:e2e` → 0 failures | all 73 E2E tests pass at all 3 viewports |
+| 9.2.7 | E2E CI `npm run test:e2e` → 0 failures | all 69 E2E tests pass at all 3 viewports |

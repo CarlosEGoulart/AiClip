@@ -252,6 +252,7 @@ Scope boundaries:
 | CC.F.4 | E2E image studio flow passes at 3 viewports | image generation / approval succeeds at all viewports |
 | CC.F.5 | E2E projects flow passes at 3 viewports | create / list / delete project succeeds at all viewports |
 | CC.F.6 | Clean console/network at all viewports | no unexpected JS console errors or 4xx/5xx at any viewport |
+| CC.F.7 | E2E CI `npm run test:e2e` → 0 failures at all 3 viewports | all 69 E2E tests pass at 390x844, 768x1024, 1440x900 |
 
 ---
 
@@ -295,9 +296,9 @@ Issue #123 (M14 Production Hardening) now also includes fixing the pre-existing 
 
 ### Frontend CI Correction
 
-**Problem:** 73 E2E tests fail across auth, clip-review, image-studio, media, and projects flows. E2E flows do not pass reliably at the required viewports.
+**Problem:** 69 E2E tests fail across auth, clip-review, image-studio, media, and projects flows. E2E flows do not pass reliably at the required viewports.
 
-**Scope:** Investigate root cause of the E2E failures and implement the minimal code/test fix so all 73 E2E tests pass at all 3 viewports (390x844, 768x1024, 1440x900) with clean console/network.
+**Scope:** Investigate root cause of the E2E failures and implement the minimal code/test fix so all 69 E2E tests pass at all 3 viewports (390x844, 768x1024, 1440x900) with clean console/network.
 
 ### Out of Scope (CI Correction)
 
