@@ -14,34 +14,41 @@ async function switchToRegister(page: import('@playwright/test').Page) {
 }
 
 async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
-  // Navigate to app (gets CSRF cookie via Vite proxy)
-  await page.goto('/');
+  await page.request.post('/sanctum/csrf-cookie', {
+    headers: { Accept: 'application/json' },
+  })
 
-  // Fetch CSRF cookie via browser (browser manages cookies)
-  await page.evaluate(async () => {
-    await fetch('/sanctum/csrf-cookie', {
-      method: 'POST',
-      headers: { 'Accept': 'application/json' },
-      credentials: 'include',
-    });
-  });
+  const registerResponse = await page.request.post('/api/v1/auth/register', {
+    data: { name, email, password: 'password123', password_confirmation: 'password123' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+  })
+  expect(registerResponse.status()).toBe(201)
 
-  // Switch to register if needed
-  const registerHeading = page.getByRole('heading', { name: 'Create your workspace' });
-  if (!(await registerHeading.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Create one' }).click();
-    await expect(registerHeading).toBeVisible();
+  const loginResponse = await page.request.post('/api/v1/auth/login', {
+    data: { email, password: 'password123' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+  })
+  expect(loginResponse.status()).toBe(200)
+
+  // Transfer laravel_session cookie to browser context (host-only, no domain attr)
+  const setCookie = loginResponse.headers()['set-cookie']
+  if (setCookie) {
+    const headers = Array.isArray(setCookie) ? setCookie : [setCookie]
+    for (const header of headers) {
+      const match = header.match(/laravel_session=([^;]+)/)
+      if (match) {
+        await page.context().addCookies([{
+          name: 'laravel_session',
+          value: match[1],
+          path: '/',
+        }])
+        break
+      }
+    }
   }
 
-  // Fill form via UI
-  await page.getByLabel('Name').fill(name);
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password', { exact: true }).fill('password123');
-  await page.getByLabel('Confirm Password', { exact: true }).fill('password123');
-  await page.getByRole('button', { name: 'Create Account' }).click();
-
-  // Wait for session established
-  await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 });
+  await page.goto('/')
+  await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
 
 async function createProjectViaUi(page: import('@playwright/test').Page, projectName: string): Promise<number> {
