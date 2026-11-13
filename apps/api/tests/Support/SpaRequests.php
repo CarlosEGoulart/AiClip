@@ -15,7 +15,11 @@ trait SpaRequests
         // A new HTTP context without rebuilding the application/DB transaction.
         // Forget auth guards, not global facade instances. Rebuild session stores
         // without destroying rows, flushing attributes, or changing saved cookies.
+        // Use database driver so sessions persist across requests within a test
+        // (register → login → publish share the same session via session cookie).
         Auth::forgetGuards();
+        config(['session.driver' => 'database']);
+
         Auth::shouldUse('web');
         $this->app->forgetInstance('auth.driver');
         $this->app->make('session')->forgetDrivers();
