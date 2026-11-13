@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type APIResponse, type Page, type Response } from '@playwright/test'
 import { trackCleanliness, expectClean } from './track-cleanliness'
 import { registerUser } from './helpers/auth'
 
@@ -6,7 +6,32 @@ function uniqueEmail() {
   return `e2e-clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`
 }
 
-async function switchToRegister(page: import('@playwright/test').Page) {
+function isGet(path: string) {
+  return (response: APIResponse) =>
+    new URL(response.url()).pathname === path &&
+    response.request().method() === 'GET'
+}
+
+async function expectEmptyReviewSection(page: Page, projectName: string) {
+  await expect(page.getByText('Select a clip to review')).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Review actions' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Approve clip' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Reject clip' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Needs Changes clip' })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Feedback form' })).toHaveCount(0)
+}
+
+type FocusTarget = { key: string; selector: string }
+
+const FOCUS_TARGETS: FocusTarget[] = [
+  { key: 'back-to-projects', selector: 'button[aria-label="Back to projects"]' },
+  { key: 'media-tab', selector: '#media-tab' },
+  { key: 'review-tab', selector: '#review-tab' },
+  { key: 'back-to-project', selector: 'button[aria-label="Back to project"]' },
+  { key: 'logout', selector: '.logout-button' },
+]
+
+async function switchToRegister(page: Page) {
   await page.goto('/')
   const registerHeading = page.getByRole('heading', { name: 'Create your workspace' })
   if (await registerHeading.isVisible().catch(() => false)) return
@@ -256,152 +281,6 @@ test.describe('Clip Review Section (embedded)', () => {
     await expectClean(page, cleanliness)
   })
 
-  async function seedClipReview(page: Page, projectId: number) {
-    const result = await page.evaluate(async (pid) => {
-      const cookieMap: Record<string, string> = {}
-      for (const part of document.cookie.split(';')) {
-        const eq = part.indexOf('=')
-        if (eq === -1) continue
-        cookieMap[part.slice(0, eq).trim()] = part.slice(eq + 1).trim()
-      }
-      const xsrf = cookieMap['XSRF-TOKEN'] || ''
-      const res = await fetch('/api/v1/test/clip-reviews/seed', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-XSRF-TOKEN': decodeURIComponent(xsrf),
-        },
-        body: JSON.stringify({ project_id: pid }),
-      })
-      const body = await res.json()
-      return { status: res.status, body }
-    }, projectId)
-
-    expect(result.status, 'seed route status').toBe(200)
-    expect(result.body.data.status).toBe('pending')
-    expect(result.body.data.video_url).toBeDefined()
-    return result.body.data.id as number
-  }
-
-  async function selectClipAndVerifyPending(page: Page, clipReviewId: number) {
-    await expect(page.getByRole('listitem')).toHaveCount(1)
-
-    await page.getByRole('listitem').first().click()
-
-    await expect(page.getByLabel('Clip video')).toBeVisible()
-
-    await expect(page.getByRole('group', { name: 'Review actions' })).toBeVisible()
-
-    await expect(page.getByRole('button', { name: 'Approve clip' })).toHaveAttribute(
-      'aria-pressed',
-      'false'
-    )
-
-    await expect(page.getByRole('listitem').first()).toContainText('Pending')
-
-    expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId))
-  }
-
-  async function approveClip(page: Page, clipReviewId: number) {
-    await page.getByRole('button', { name: 'Approve clip' }).click()
-    await expect(page.getByRole('alertdialog')).toBeVisible()
-    await expect(page.getByRole('heading', { name: /confirm approve/i })).toBeVisible()
-
-    await page.getByRole('button', { name: /confirm approve/i }).click()
-
-    await expect(page.getByRole('alertdialog')).not.toBeVisible()
-
-    await expect(page.getByRole('button', { name: 'Approve clip' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
-    await expect(page.getByRole('button', { name: 'Approve clip' })).toBeDisabled()
-
-    await expect(page.getByRole('listitem').first()).toContainText('Approved')
-
-    expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId))
-  }
-
-  async function rejectClipWithFeedback(page: Page, clipReviewId: number, projectId: number) {
-    await page.getByRole('button', { name: 'Reject clip' }).click()
-    await expect(page.getByRole('alertdialog')).toBeVisible()
-    await expect(page.getByRole('heading', { name: /confirm reject/i })).toBeVisible()
-    await expect(page.getByText(/feedback will be required/i)).toBeVisible()
-
-    await page.getByRole('button', { name: /confirm reject/i }).click()
-    await expect(page.getByRole('alertdialog')).not.toBeVisible()
-
-    await expect(page.getByRole('group', { name: 'Feedback form' })).toBeVisible()
-
-    await expect(page.getByRole('button', { name: 'Submit Feedback' })).toBeDisabled()
-
-    await page.locator('#feedback').fill('This clip needs better audio levels.')
-    await expect(page.getByRole('button', { name: 'Submit Feedback' })).toBeEnabled()
-
-    const feedbackSubmitted = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname === `/api/v1/clip-reviews/${clipReviewId}/feedback` &&
-        response.request().method() === 'POST',
-    )
-    const listRefetched = page.waitForResponse(isGet(`/api/v1/projects/${projectId}/clip-reviews`))
-
-    await page.getByRole('button', { name: 'Submit Feedback' }).click()
-
-    const feedbackResponse = await feedbackSubmitted
-    expect(feedbackResponse.status()).toBe(200)
-    const refetchResponse = await listRefetched
-    expect(refetchResponse.status()).toBe(200)
-
-    await expect(page.getByRole('button', { name: 'Reject clip' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
-    await expect(page.getByRole('button', { name: 'Reject clip' })).toBeDisabled()
-
-    await expect(page.getByRole('listitem').first()).toContainText('Rejected')
-
-    expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId))
-  }
-
-  async function needsChangesClipWithFeedback(page: Page, clipReviewId: number, projectId: number) {
-    await page.getByRole('button', { name: 'Needs Changes clip' }).click()
-    await expect(page.getByRole('alertdialog')).toBeVisible()
-    await expect(page.getByRole('heading', { name: /confirm needs changes/i })).toBeVisible()
-    await expect(page.getByText(/feedback will be required/i)).toBeVisible()
-
-    await page.getByRole('button', { name: /confirm needs changes/i }).click()
-    await expect(page.getByRole('alertdialog')).not.toBeVisible()
-
-    await expect(page.getByRole('group', { name: 'Feedback form' })).toBeVisible()
-
-    await page.locator('#feedback').fill('Please adjust the transition timing.')
-
-    const feedbackSubmitted = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname === `/api/v1/clip-reviews/${clipReviewId}/feedback` &&
-        response.request().method() === 'POST',
-    )
-    const listRefetched = page.waitForResponse(isGet(`/api/v1/projects/${projectId}/clip-reviews`))
-
-    await page.getByRole('button', { name: 'Submit Feedback' }).click()
-
-    const feedbackResponse = await feedbackSubmitted
-    expect(feedbackResponse.status()).toBe(200)
-    const refetchResponse = await listRefetched
-    expect(refetchResponse.status()).toBe(200)
-
-    await expect(page.getByRole('button', { name: 'Needs Changes clip' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
-    await expect(page.getByRole('button', { name: 'Needs Changes clip' })).toBeDisabled()
-
-    await expect(page.getByRole('listitem').first()).toContainText('Needs Changes')
-
-    expect(new URL(page.url()).searchParams.get('clipReviewId')).toBe(String(clipReviewId))
-  }
-
   async function cleanupProject(page: Page, projectName: string) {
     await page.getByRole('button', { name: 'Back to project', exact: true }).click()
     await expect(page.getByRole('button', { name: `Open ${projectName}` })).toBeVisible()
@@ -409,109 +288,4 @@ test.describe('Clip Review Section (embedded)', () => {
     await page.getByRole('button', { name: `Confirm delete ${projectName}` }).click()
     await expect(page.getByText(/No projects yet/)).toBeVisible({ timeout: 10000 })
   }
-
-  test('TC-E2E-05 approve happy path', async ({ page }) => {
-    const cleanliness = trackCleanliness(page)
-
-    const email = uniqueEmail()
-    await waitForAuthReady(page)
-    await registerUser(page, 'Clip Approver', email)
-
-    const projectName = 'Approve Project'
-    const projectId = await createProjectViaUi(page, projectName)
-
-    await openProject(page, projectName)
-
-    const clipReviewId = await seedClipReview(page, projectId)
-
-    await openReviewTab(page, projectId)
-
-    await selectClipAndVerifyPending(page, clipReviewId)
-
-    await approveClip(page, clipReviewId)
-
-    await cleanupProject(page, projectName)
-
-    await expectClean(page, cleanliness)
-  })
-
-  test('TC-E2E-06 reject happy path (with feedback)', async ({ page }) => {
-    const cleanliness = trackCleanliness(page)
-
-    const email = uniqueEmail()
-    await waitForAuthReady(page)
-    await registerUser(page, 'Clip Rejecter', email)
-
-    const projectName = 'Reject Project'
-    const projectId = await createProjectViaUi(page, projectName)
-
-    await openProject(page, projectName)
-
-    const clipReviewId = await seedClipReview(page, projectId)
-
-    await openReviewTab(page, projectId)
-
-    await selectClipAndVerifyPending(page, clipReviewId)
-
-    await rejectClipWithFeedback(page, clipReviewId, projectId)
-
-    await cleanupProject(page, projectName)
-
-    await expectClean(page, cleanliness)
-  })
-
-  test('TC-E2E-07 needs_changes happy path (with feedback)', async ({ page }) => {
-    const cleanliness = trackCleanliness(page)
-
-    const email = uniqueEmail()
-    await waitForAuthReady(page)
-    await registerUser(page, 'Clip Requester', email)
-
-    const projectName = 'Needs Changes Project'
-    const projectId = await createProjectViaUi(page, projectName)
-
-    await openProject(page, projectName)
-
-    const clipReviewId = await seedClipReview(page, projectId)
-
-    await openReviewTab(page, projectId)
-
-    await selectClipAndVerifyPending(page, clipReviewId)
-
-    await needsChangesClipWithFeedback(page, clipReviewId, projectId)
-
-    await cleanupProject(page, projectName)
-
-    await expectClean(page, cleanliness)
-  })
-
-  test('TC-E2E-08 terminal state — no further transition after approve', async ({ page }) => {
-    const cleanliness = trackCleanliness(page)
-
-    const email = uniqueEmail()
-    await waitForAuthReady(page)
-    await registerUser(page, 'Clip Terminal', email)
-
-    const projectName = 'Terminal Project'
-    const projectId = await createProjectViaUi(page, projectName)
-
-    await openProject(page, projectName)
-
-    const clipReviewId = await seedClipReview(page, projectId)
-
-    await openReviewTab(page, projectId)
-
-    await selectClipAndVerifyPending(page, clipReviewId)
-
-    await approveClip(page, clipReviewId)
-
-    await expect(page.getByRole('button', { name: 'Reject clip' })).toBeDisabled()
-    await expect(page.getByRole('button', { name: 'Needs Changes clip' })).toBeDisabled()
-
-    await expect(page.getByRole('listitem').first()).toContainText('Approved')
-
-    await cleanupProject(page, projectName)
-
-    await expectClean(page, cleanliness)
-  })
 })

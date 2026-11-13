@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type APIResponse, type Page, type Response } from '@playwright/test'
 import { trackCleanliness, expectClean } from './track-cleanliness'
 import { registerUser } from './helpers/auth'
 
@@ -6,7 +6,19 @@ function uniqueEmail() {
   return `e2e-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`
 }
 
-async function switchToRegister(page: import('@playwright/test').Page) {
+type ImageStudioFocusTarget = { key: string; selector: string }
+
+const IMAGE_STUDIO_FOCUS_TARGETS: ImageStudioFocusTarget[] = [
+  { key: 'image-studio-tab', selector: '#image-studio-tab' },
+  { key: 'prompt', selector: '#image-prompt' },
+  { key: 'style-preset', selector: '#image-style-preset' },
+  { key: 'dimensions', selector: '#image-dimensions' },
+  { key: 'generate', selector: '.image-studio button[type="submit"]' },
+  { key: 'download', selector: '.image-gallery-download' },
+  { key: 'back-to-projects', selector: 'button[aria-label="Back to projects"]' },
+]
+
+async function switchToRegister(page: Page) {
   await page.goto('/')
   const registerHeading = page.getByRole('heading', { name: 'Create your workspace' })
   if (await registerHeading.isVisible().catch(() => false)) return
@@ -14,7 +26,7 @@ async function switchToRegister(page: import('@playwright/test').Page) {
   await expect(registerHeading).toBeVisible()
 }
 
-async function createProjectViaUi(page: import('@playwright/test').Page, projectName: string): Promise<number> {
+async function createProjectViaUi(page: Page, projectName: string): Promise<number> {
   await page.getByLabel('Project Name').fill(projectName)
   const created = page.waitForResponse(
     (response) =>
@@ -30,13 +42,13 @@ async function createProjectViaUi(page: import('@playwright/test').Page, project
   return body.data.id as number
 }
 
-async function openProject(page: import('@playwright/test').Page, projectName: string) {
+async function openProject(page: Page, projectName: string) {
   await page.getByRole('button', { name: `Open ${projectName}` }).click()
   await expect(page.getByRole('button', { name: 'Back to projects' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Image Studio' })).toBeVisible()
 }
 
-async function openImageStudioTab(page: import('@playwright/test').Page): Promise<Response> {
+async function openImageStudioTab(page: Page): Promise<Response> {
   const imagesSeen = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/api/v1/images' && response.request().method() === 'GET')
   await page.getByRole('tab', { name: 'Image Studio' }).click()
@@ -56,7 +68,7 @@ async function openImageStudioTab(page: import('@playwright/test').Page): Promis
 
 const PROMPT = 'A serene mountain lake at sunrise'
 
-async function runGenerateFlow(page: import('@playwright/test').Page) {
+async function runGenerateFlow(page: Page) {
   await page.getByLabel('Prompt').fill(PROMPT)
   await page.getByLabel('Style preset').selectOption('cinematic')
   await page.getByLabel('Dimensions').selectOption('vertical')
@@ -120,7 +132,7 @@ async function runGenerateFlow(page: import('@playwright/test').Page) {
   await expect(downloadLink).toHaveAttribute('href', /expires=/)
 }
 
-async function cleanupProject(page: import('@playwright/test').Page, projectName: string) {
+async function cleanupProject(page: Page, projectName: string) {
   await page.getByRole('button', { name: 'Back to projects' }).click()
   await expect(page.getByRole('button', { name: `Open ${projectName}` })).toBeVisible()
   await page.getByRole('button', { name: `Delete ${projectName}` }).click()
@@ -128,7 +140,7 @@ async function cleanupProject(page: import('@playwright/test').Page, projectName
   await expect(page.getByText(/No projects yet/)).toBeVisible({ timeout: 10000 })
 }
 
-async function waitForAuthReady(page: import('@playwright/test').Page) {
+async function waitForAuthReady(page: Page) {
   await page.goto('/')
   await expect(
     page.getByRole('heading', { name: 'Sign in to your workspace' }).or(page.getByRole('heading', { name: 'Create your workspace' })),

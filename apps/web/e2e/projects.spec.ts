@@ -70,9 +70,9 @@ test.describe('Project Management', () => {
     await page.getByRole('button', { name: 'Create Project' }).click()
     await expect(page.getByText(projectName)).toBeVisible()
 
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Confirm delete project' })).toBeVisible()
-    await page.getByRole('button', { name: 'Confirm delete project' }).click()
+    await page.getByRole('button', { name: `Delete ${projectName}` }).click()
+    await expect(page.getByRole('button', { name: `Confirm delete ${projectName}` })).toBeVisible()
+    await page.getByRole('button', { name: `Confirm delete ${projectName}` }).click()
     await expect(page.getByText(projectName)).not.toBeVisible()
   })
 

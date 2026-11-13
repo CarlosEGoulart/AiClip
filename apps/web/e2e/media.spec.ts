@@ -59,6 +59,6 @@ test.describe('Media Upload and Management', () => {
       buffer: Buffer.from('fake-text-content'),
     })
 
-    await expect(page.getByText(/not a video/i)).toBeVisible()
+    await expect(page.getByText(/file type|validation failed/i)).toBeVisible()
   })
 })
