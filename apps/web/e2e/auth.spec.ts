@@ -71,7 +71,7 @@ test.describe('Auth Lifecycle', () => {
     // registerUser leaves us on the authenticated shell ("Signed in as"
     // visible), where "Create one" does not exist. Log out to return to the
     // login view first, then switch to the register view.
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await page.getByRole('button', { name: 'Log out' }).first().click()
 
     // Try to register again with same email
     await page.getByRole('button', { name: 'Create one' }).click()

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { trackCleanliness } from './track-cleanliness'
 import { registerUser } from './helpers/auth'
 
@@ -6,12 +6,17 @@ function uniqueEmail() {
   return `e2e-media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`
 }
 
-async function switchToRegister(page: import('@playwright/test').Page) {
+async function switchToRegister(page: Page) {
   await page.goto('/')
   const registerHeading = page.getByRole('heading', { name: 'Create your workspace' })
   if (await registerHeading.isVisible().catch(() => false)) return
   await page.getByRole('button', { name: 'Create one' }).click()
   await expect(registerHeading).toBeVisible()
+}
+
+async function openProject(page: Page, projectName: string) {
+  await page.getByRole('button', { name: `Open ${projectName}` }).click()
+  await expect(page.getByRole('button', { name: 'Back to projects' })).toBeVisible()
 }
 
 test.describe('Media Upload and Management', () => {
@@ -28,15 +33,20 @@ test.describe('Media Upload and Management', () => {
     const { data: project } = await projectResponse.json()
     await expect(page.getByText('Media Test Project')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Upload' }).click()
-    await page.getByLabel('Select file').setInputFiles({
+    await openProject(page, 'Media Test Project')
+
+    await page.getByLabel('Upload Video').setInputFiles({
       name: 'test-video.mp4',
       mimeType: 'video/mp4',
       buffer: Buffer.from('fake-video-content'),
     })
+    await page.getByRole('button', { name: 'Upload' }).click()
 
-    await expect(page.getByText('Media Test Project')).toBeVisible()
     await expect(page.getByText(/video/i)).toBeVisible()
+
+    await page.getByRole('button', { name: `Delete test-video.mp4` }).click()
+    await page.getByRole('button', { name: `Confirm delete test-video.mp4` }).click()
+    await expect(page.getByText('No media assets yet. Upload a video to get started.')).toBeVisible()
   })
 
   test('rejects non-video file upload', async ({ page }) => {
@@ -52,13 +62,15 @@ test.describe('Media Upload and Management', () => {
     const { data: project } = await projectResponse.json()
     await expect(page.getByText('Test Project')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Upload' }).click()
-    await page.getByLabel('Select file').setInputFiles({
+    await openProject(page, 'Test Project')
+
+    await page.getByLabel('Upload Video').setInputFiles({
       name: 'test.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('fake-text-content'),
     })
+    await page.getByRole('button', { name: 'Upload' }).click()
 
-    await expect(page.getByText(/not a video/i)).toBeVisible()
+    await expect(page.getByText(/file type|validation failed/i)).toBeVisible()
   })
 })
