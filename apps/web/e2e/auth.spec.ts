@@ -20,39 +20,70 @@ async function switchToRegister(page: import('@playwright/test').Page) {
 }
 
 async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
+  // Get CSRF cookie via API (APIRequestContext manages cookies)
   await page.request.post('/sanctum/csrf-cookie', {
     headers: { Accept: 'application/json' },
   })
 
+  // Extract XSRF-TOKEN cookie value from the csrf-cookie response
+  const csrfSetCookie = page.request.post('/sanctum/csrf-cookie', {
+    headers: { Accept: 'application/json' },
+  })
+  // NOTE: We already called csrf-cookie above. Extract XSRF-TOKEN from it.
+  
+  // Actually, better approach: call csrf-cookie once, extract XSRF-TOKEN, then use it
+  const csrfResponse = await page.request.post('/sanctum/csrf-cookie', {
+    headers: { Accept: 'application/json' },
+  })
+  const csrfSetCookieHeader = csrfResponse.headers()['set-cookie']
+  const csrfHeaders = Array.isArray(csrfSetCookieHeader) ? csrfSetCookieHeader : [csrfSetCookieHeader]
+  let xsrfToken = ''
+  for (const h of csrfHeaders) {
+    const m = h.match(/XSRF-TOKEN=([^;]+)/)
+    if (m) { xsrfToken = m[1]; break }
+  }
+
+  // Register via API with X-XSRF-TOKEN header
   const registerResponse = await page.request.post('/api/v1/auth/register', {
     data: { name, email, password: 'password123', password_confirmation: 'password123' },
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    headers: { 
+      'Accept': 'application/json', 
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': xsrfToken,
+    },
   })
   expect(registerResponse.status()).toBe(201)
 
+  // Login via API with X-XSRF-TOKEN header
   const loginResponse = await page.request.post('/api/v1/auth/login', {
     data: { email, password: 'password123' },
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    headers: { 
+      'Accept': 'application/json', 
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': xsrfToken,
+    },
   })
   expect(loginResponse.status()).toBe(200)
 
-  // Transfer laravel_session cookie to browser context (host-only, no domain attr)
-  const setCookie = loginResponse.headers()['set-cookie']
-  if (setCookie) {
-    const headers = Array.isArray(setCookie) ? setCookie : [setCookie]
-    for (const header of headers) {
-      const match = header.match(/laravel_session=([^;]+)/)
-      if (match) {
-        await page.context().addCookies([{
-          name: 'laravel_session',
-          value: match[1],
-          path: '/',
-        }])
-        break
-      }
-    }
+  // Extract laravel_session from login response Set-Cookie header
+  const loginSetCookie = loginResponse.headers()['set-cookie']
+  const loginHeaders = Array.isArray(loginSetCookie) ? loginSetCookie : [loginSetCookie]
+  let sessionValue = ''
+  for (const h of loginHeaders) {
+    const m = h.match(/laravel_session=([^;]+)/)
+    if (m) { sessionValue = m[1]; break }
   }
 
+  // Set session cookie in browser context (host-only, no domain attr = sent to 127.0.0.1:any port)
+  if (sessionValue) {
+    await page.context().addCookies([{
+      name: 'laravel_session',
+      value: sessionValue,
+      path: '/',
+    }])
+  }
+
+  // Navigate to app - browser sends session cookie via Vite proxy to Laravel
   await page.goto('/')
   await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
