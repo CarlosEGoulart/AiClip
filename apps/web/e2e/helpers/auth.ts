@@ -45,17 +45,12 @@ export async function registerUser(
   // 2. Load the app (Vite dev server on 5173; /api proxied to Laravel on 8000).
   await page.goto('/')
 
-  // 3. If the register API call already carried the laravel_session cookie
-  //    into the browser context, the app renders the authenticated shell
-  //    immediately — proven-authenticated, return early.
-  if (await page.getByText(/Signed in as/).first().isVisible()) {
-    return
-  }
-
-  // 4. Otherwise ensure the login view is showing. The app may render either
-  //    the login heading ("Sign in to your workspace") or the registration
-  //    heading ("Create your workspace") depending on in-browser state. Wait
-  //    for either to appear, then switch to login if needed.
+  // 3. Wait for EITHER the authenticated shell ("Signed in as") OR a
+  //    login/registration heading to appear. Using Promise.race ensures we
+  //    wait for hydration before branching, so we never proceed to a heading
+  //    that will never appear (e.g. the login heading when already
+  //    authenticated from the register API cookie).
+  const signedInAs = page.getByText(/Signed in as/).first()
   const loginHeading = page.getByRole('heading', {
     name: 'Sign in to your workspace',
   })
@@ -64,24 +59,32 @@ export async function registerUser(
   })
 
   await Promise.race([
+    signedInAs.waitFor({ state: 'visible', timeout: 15000 }),
     loginHeading.waitFor({ state: 'visible', timeout: 15000 }),
     createHeading.waitFor({ state: 'visible', timeout: 15000 }),
   ])
 
+  // 4. If "Signed in as" is visible → already authenticated from the register
+  //    API cookie carried into the browser context — return early.
+  if (await signedInAs.isVisible()) {
+    return
+  }
+
+  // 5. Otherwise ensure the login view is showing. The app may render the
+  //    onboarding view ("Create your workspace") instead of the login view;
+  //    click "Sign in" to switch to login, then wait for the login heading.
   if (await createHeading.isVisible()) {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await loginHeading.waitFor({ state: 'visible', timeout: 15000 })
   }
 
-  // 5. Fill the login form via the browser UI.
+  // 6. Fill the login form via the browser UI.
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill('password123')
 
-  // 6. Submit the form.
+  // 7. Submit the form.
   await page.getByRole('button', { name: 'Sign In' }).click()
 
-  // 7. Proven-authenticated gate: the authenticated shell must render.
-  await expect(page.getByText(/Signed in as/).first()).toBeVisible({
-    timeout: 15000,
-  })
+  // 8. Proven-authenticated gate: the authenticated shell must render.
+  await expect(signedInAs).toBeVisible({ timeout: 15000 })
 }

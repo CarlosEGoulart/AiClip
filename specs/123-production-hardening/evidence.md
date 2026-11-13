@@ -356,3 +356,91 @@ Dynamic test execution is BLOCKED locally (no shell access, no `pdo_pgsql`/
 PostgreSQL, no Chromium, no ports 5173/8000). CI (GitHub Actions: PostgreSQL
 16.4 service container, pdo_pgsql, Chromium, ports 5173/8000) will perform
 dynamic verification of `npm run test:e2e` at all 3 viewports.
+
+---
+
+## 12. Race Condition Fix + Duplicate Registration Fix (this Builder session)
+
+### Issue / goal
+Fix the remaining 39 E2E CI failures (69 → 39 after the first helper fix) caused by a race condition in `registerUser()` and a mis-ordered duplicate registration test.
+
+### Bug 1 — Race condition in `apps/web/e2e/helpers/auth.ts` `registerUser()`
+
+**Root cause:** After `page.goto('/')`, the previous code performed an immediate
+`getByText(/Signed in as/).first().isVisible()` check which returns IMMEDIATELY
+without waiting for hydration. If the page hadn't hydrated yet, "Signed in as"
+was not visible yet, so execution proceeded to the `Promise.race` that only
+waited for the login heading ("Sign in to your workspace") or the create
+heading ("Create your workspace"). When already authenticated (session cookie
+carried over from the register API call), neither login heading appeared → 15s
+timeout → test failure.
+
+**Fix:** Moved the "Signed in as" check INTO the `Promise.race` alongside the
+login and create headings, so execution waits for hydration before branching:
+
+1. `page.request.post('/api/v1/auth/register', {...})` → assert 201 (unchanged)
+2. `page.goto('/')` — load the app (unchanged)
+3. `Promise.race` over `getByText(/Signed in as/).first()`, login heading,
+   and create heading — all with 15s timeout — wait for hydration before
+   branching (FIXED)
+4. If "Signed in as" is visible → return early (already authenticated from
+   register API cookie)
+5. Otherwise (login/onboarding view): if "Create your workspace" heading is
+   visible, click "Sign in" button to switch to login, then wait for login
+   heading
+6. Fill Email + Password via browser UI
+7. Click "Sign In" button
+8. Wait for "Signed in as" visible (15s proven-authenticated gate)
+
+**File changed:** `apps/web/e2e/helpers/auth.ts` — `registerUser()` rewritten
+(race now includes "Signed in as"; premature immediate `isVisible()` check
+removed).
+
+### Bug 2 — Duplicate registration test in `apps/web/e2e/auth.spec.ts` (line 67-80)
+
+**Root cause:** After `registerUser()` returns, the app is on the authenticated
+shell ("Signed in as" visible). The test then clicked `getByRole('button',
+{ name: 'Create one' })` — but "Create one" only exists on the login view,
+NOT on the authenticated shell → click fails.
+
+**Fix:** After `registerUser()`, click the "Log out" button (exists on the
+authenticated shell) to return to the login view, then click "Create one" to
+switch to the register view, then proceed with the duplicate registration flow.
+
+**File changed:** `apps/web/e2e/auth.spec.ts` — added
+`await page.getByRole('button', { name: 'Log out' }).click()` before
+`await page.getByRole('button', { name: 'Create one' }).click()` in the
+"duplicate registration → validation feedback" test.
+
+### Bug 3 — `clip-review.spec.ts` and `image-studio.spec.ts` `waitForAuthReady` ordering
+
+**Verification:** In `clip-review.spec.ts` (lines 60-61) and
+`image-studio.spec.ts` (lines 143-144), `waitForAuthReady(page)` is called
+BEFORE `registerUser(page, ...)`, which is correct for a fresh context start
+(no session). After `registerUser()`, both tests proceed to
+`createProjectViaUi()` which operates on the authenticated shell. No change
+needed.
+
+### Files changed in this session (2 files)
+| File | Change |
+|------|--------|
+| `apps/web/e2e/helpers/auth.ts` | Bug 1 — race now includes "Signed in as"; removed premature immediate `isVisible()` check |
+| `apps/web/e2e/auth.spec.ts` | Bug 2 — log out before clicking "Create one" in duplicate registration test |
+
+### No other changes
+- Bug 3 verified correct, no change needed.
+- No production source files (`apps/web/src/`, `apps/api/`) modified.
+- No test weakening, no disabled/skipped assertions, no `test.skip`/`test.only`.
+- No unauthorized modifications to planning docs, governance files, or `.opencode/`.
+- Branch `@carlosegoulart/123/feat/production-hardening-v2` unchanged (no commit/push — Orchestrator responsibility).
+
+### TDD status
+- RED: Identified via CI failure root cause (login heading never appears when
+  session cookie carries over; "Create one" clicked on authenticated shell).
+- GREEN: Helper now races all three possible post-goto states before
+  branching; duplicate registration test logs out first.
+- REFACTOR: Single shared helper, minimal targeted change, no duplication.
+
+### Environment blocker
+Dynamic test execution is BLOCKED locally. CI will perform dynamic
+verification of `npm run test:e2e` at all 3 viewports.

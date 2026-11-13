@@ -68,6 +68,11 @@ test.describe('Auth Lifecycle', () => {
     const email = uniqueEmail()
     await registerUser(page, 'First User', email)
 
+    // registerUser leaves us on the authenticated shell ("Signed in as"
+    // visible), where "Create one" does not exist. Log out to return to the
+    // login view first, then switch to the register view.
+    await page.getByRole('button', { name: 'Log out' }).click()
+
     // Try to register again with same email
     await page.getByRole('button', { name: 'Create one' }).click()
     await page.getByRole('heading', { name: 'Create your workspace' }).first()
