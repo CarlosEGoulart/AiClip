@@ -12,8 +12,14 @@ import { expect, type Page } from '@playwright/test'
  * Instead this helper:
  *   1. Creates the user deterministically via the register API.
  *   2. Loads the app in the browser.
- *   3. Logs in through the browser UI (fill form + click submit).
- *   4. Waits for "Signed in as" as the proven-authenticated gate.
+ *   3. If the register API call already carried the `laravel_session` cookie
+ *      into the browser context (page.request shares cookies with the context),
+ *      the app renders the authenticated shell immediately — return early.
+ *   4. Otherwise ensure the login view is showing, handling the case where the
+ *      app shows "Create your workspace" (onboarding) instead of the login
+ *      heading by clicking "Sign in" to switch views.
+ *   5. Logs in through the browser UI (fill form + click submit).
+ *   6. Waits for "Signed in as" as the proven-authenticated gate.
  *
  * All state-changing browser requests flow through the app's own CSRF/XSRF
  * handling, so the session cookie is set by Laravel on the real login
@@ -39,19 +45,42 @@ export async function registerUser(
   // 2. Load the app (Vite dev server on 5173; /api proxied to Laravel on 8000).
   await page.goto('/')
 
-  // 3. Wait for the login view to be ready.
-  await expect(
-    page.getByRole('heading', { name: 'Sign in to your workspace' }),
-  ).toBeVisible({ timeout: 15000 })
+  // 3. If the register API call already carried the laravel_session cookie
+  //    into the browser context, the app renders the authenticated shell
+  //    immediately — proven-authenticated, return early.
+  if (await page.getByText(/Signed in as/).first().isVisible()) {
+    return
+  }
 
-  // 4. Fill the login form via the browser UI.
+  // 4. Otherwise ensure the login view is showing. The app may render either
+  //    the login heading ("Sign in to your workspace") or the registration
+  //    heading ("Create your workspace") depending on in-browser state. Wait
+  //    for either to appear, then switch to login if needed.
+  const loginHeading = page.getByRole('heading', {
+    name: 'Sign in to your workspace',
+  })
+  const createHeading = page.getByRole('heading', {
+    name: 'Create your workspace',
+  })
+
+  await Promise.race([
+    loginHeading.waitFor({ state: 'visible', timeout: 15000 }),
+    createHeading.waitFor({ state: 'visible', timeout: 15000 }),
+  ])
+
+  if (await createHeading.isVisible()) {
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await loginHeading.waitFor({ state: 'visible', timeout: 15000 })
+  }
+
+  // 5. Fill the login form via the browser UI.
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill('password123')
 
-  // 5. Submit the form.
+  // 6. Submit the form.
   await page.getByRole('button', { name: 'Sign In' }).click()
 
-  // 6. Proven-authenticated gate: the authenticated shell must render.
+  // 7. Proven-authenticated gate: the authenticated shell must render.
   await expect(page.getByText(/Signed in as/).first()).toBeVisible({
     timeout: 15000,
   })
