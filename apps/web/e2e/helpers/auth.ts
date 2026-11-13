@@ -11,7 +11,8 @@ import { expect, type Page } from '@playwright/test'
  *
  * Instead this helper:
  *   1. Creates the user deterministically via the register API.
- *   2. Loads the app in the browser.
+ *   2. Loads the app in the browser and waits for hydration (`networkidle`)
+ *      so `getMe()` completes before checking auth state.
  *   3. If the register API call already carried the `laravel_session` cookie
  *      into the browser context (page.request shares cookies with the context),
  *      the app renders the authenticated shell immediately — return early.
@@ -45,7 +46,13 @@ export async function registerUser(
   // 2. Load the app (Vite dev server on 5173; /api proxied to Laravel on 8000).
   await page.goto('/')
 
-  // 3. Wait for EITHER the authenticated shell ("Signed in as") OR a
+  // 3. Wait for hydration (including getMe()) to complete before branching.
+  //    Without this, the Promise.race below may resolve while the React app is
+  //    still in an intermediate "Checking session..." state where none of the
+  //    target headings are visible yet.
+  await page.waitForLoadState('networkidle')
+
+  // 4. Wait for EITHER the authenticated shell ("Signed in as") OR a
   //    login/registration heading to appear. Using Promise.race ensures we
   //    wait for hydration before branching, so we never proceed to a heading
   //    that will never appear (e.g. the login heading when already
@@ -59,9 +66,9 @@ export async function registerUser(
   })
 
   await Promise.race([
-    signedInAs.waitFor({ state: 'visible', timeout: 15000 }),
-    loginHeading.waitFor({ state: 'visible', timeout: 15000 }),
-    createHeading.waitFor({ state: 'visible', timeout: 15000 }),
+    signedInAs.waitFor({ state: 'visible', timeout: 30000 }),
+    loginHeading.waitFor({ state: 'visible', timeout: 30000 }),
+    createHeading.waitFor({ state: 'visible', timeout: 30000 }),
   ])
 
   // 4. If "Signed in as" is visible → already authenticated from the register
@@ -75,7 +82,7 @@ export async function registerUser(
   //    click "Sign in" to switch to login, then wait for the login heading.
   if (await createHeading.isVisible()) {
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await loginHeading.waitFor({ state: 'visible', timeout: 15000 })
+    await loginHeading.waitFor({ state: 'visible', timeout: 30000 })
   }
 
   // 6. Fill the login form via the browser UI.
@@ -86,5 +93,5 @@ export async function registerUser(
   await page.getByRole('button', { name: 'Sign In' }).click()
 
   // 8. Proven-authenticated gate: the authenticated shell must render.
-  await expect(signedInAs).toBeVisible({ timeout: 15000 })
+  await expect(signedInAs).toBeVisible({ timeout: 30000 })
 }

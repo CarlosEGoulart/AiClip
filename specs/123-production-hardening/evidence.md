@@ -61,6 +61,14 @@ All test execution evidence below is based on static code analysis + root-cause 
 
 **Files:** `apps/api/database/factories/SocialConnectionFactory.php`
 
+### Fix 7 — Missing `waitForLoadState('networkidle')` after `goto('/')` in auth helper (E2E CI still failing)
+
+**Root cause:** `apps/web/e2e/helpers/auth.ts` `registerUser()` calls `page.goto('/')` then immediately enters a `Promise.race` over the "Signed in as" / login heading / create heading. After `goto('/')`, the React app needs to hydrate and call `getMe()` before the auth state is known. The `Promise.race` could resolve while the page was still in an intermediate "Checking session..." state where none of the 3 target headings were visible yet, causing a 15s timeout → test failure. All 3 timeouts were also 15s, which is too tight for CI under load.
+
+**Fix:** Added `await page.waitForLoadState('networkidle')` after `page.goto('/')` so all network requests (including `getMe()`) complete before checking page state. Increased all 4 timeouts from 15s to 30s (Promise.race ×3, login-heading wait, and final "Signed in as" gate) for CI robustness. Updated code comments to document the hydration-wait step.
+
+**Files:** `apps/web/e2e/helpers/auth.ts`
+
 ---
 
 ## 3. Files Modified (8 files)
@@ -70,13 +78,14 @@ All test execution evidence below is based on static code analysis + root-cause 
 | `apps/api/bootstrap/app.php` | Fix 1 — AddQueuedCookiesToResponse middleware |
 | `apps/api/app/Providers/AppServiceProvider.php` | Fix 2 — Relax auth rate limits in testing |
 | `apps/api/database/factories/SocialConnectionFactory.php` | Fix 6 — access_token/refresh_token in connected() |
+| `apps/web/e2e/helpers/auth.ts` | Fix 7 — Add waitForLoadState('networkidle') after goto; timeouts 15s→30s |
 | `apps/web/e2e/clip-review.spec.ts` | Fix 3 — Add waitForAuthReady |
 | `apps/web/e2e/image-studio.spec.ts` | Fix 4 — Add waitForAuthReady |
 | `apps/web/e2e/auth.spec.ts` | Fix 5 — Fetch csrf-cookie before XSRF assertion |
 | `specs/123-production-hardening/spec.md` | Planning: branch name + commit entries |
 | `specs/123-production-hardening/plan.md` | Planning: branch name + commit entries |
 | `specs/123-production-hardening/test-plan.md` | Planning: no changes needed |
-| `specs/123-production-hardening/evidence.md` | This document (Orchestrator update) |
+| `specs/123-production-hardening/evidence.md` | This document (Builder update: Fix 7 record) |
 
 ---
 
