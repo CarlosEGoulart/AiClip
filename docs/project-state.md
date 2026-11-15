@@ -200,17 +200,25 @@ runtime does not allow local execution of `tests/governance/pr_enforcement.py`
 (it runs in Actions) or deletion of generated `__pycache__` files; generated
 caches must never be staged.
 
-CI BLOCKER: Issue #123 (M14 Production Hardening) is implemented and Tester-approved
-(PR #141 open, mergeable), but CI is RED due to pre-existing failures unrelated to #123:
-- Issue #142: Backend SocialPublish publish jobs fail (status 'failed' instead of 'published'), 13 tests
-- Issue #143: Frontend E2E test failures across auth, clip-review, image-studio, media, projects, 73 tests
-PR #141 cannot merge until both issues are resolved and CI is green (AGENTS.md §11).
+CI RESOLVED: Issue #123 (M14 Production Hardening) CI failures resolved.
+PR #141 CI green — all checks passed (governance, Frontend CI, Backend CI,
+E2E CI). Ready for merge via scripts/merge_gate.py.
+
+Backend SocialPublish fix (#142): `SocialConnectionFactory::connected()`
+now sets `access_token`/`refresh_token` so publish jobs reach `published`
+status instead of `failed` (13 tests fixed).
+
+Frontend E2E fix (#143): `apps/web/e2e/helpers/auth.ts` rewritten as shared
+UI-based `registerUser` (browser cookie jar via Vite proxy replaces fragile
+`page.request` cookie transfer). Additional E2E test stability fixes:
+waitForAuthReady added to clip-review/image-studio specs, CSRF cookie fetch
+before XSRF assertion, register rate limits relaxed in testing env, and
+duplicate registration test logs out before switching to register view.
 
 # Current Milestone
 
 M0–M9 completed. M14 — Production Hardening (Issue #123) is implemented,
-Tester-approved (specs/123-production-hardening/evidence.md: Decision: APPROVE),
-PR #141 open and mergeable, but BLOCKED by pre-existing CI failures (issues #142, #143).
+Tester-approved, PR #141 CI green and mergeable.
 M9 — Social Connection Framework (Issue #118): backend Pest suite 1714 tests
 (1694 passed, 20 skipped, 0 failed), Vitest 372 passed, Playwright E2E 102
 passed at 3 viewports, lint/build clean. PR #130 merged via scripts/merge_gate.py.
@@ -218,10 +226,9 @@ Issue #118 closed.
 
 # Next Architectural Goal
 
-Resolve CI failures #142 (Backend SocialPublish) and #143 (Frontend E2E), then
-merge PR #141 via scripts/merge_gate.py and close issue #123. After that, M8 AI
-Image Studio remaining slices and M7 remaining slices require separate explicit
-authorization and are not active.
+Merge PR #141 via scripts/merge_gate.py and close issue #123. After that,
+M8 AI Image Studio remaining slices and M7 remaining slices require separate
+explicit authorization and are not active.
 
 M8 — AI Image Studio continues beyond Slice 2: remaining slices (a real
 model-backed image generation provider behind the `ImageGenerationProvider`
