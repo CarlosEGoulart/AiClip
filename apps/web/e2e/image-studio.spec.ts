@@ -122,7 +122,7 @@ async function runGenerateFlow(page: Page) {
   const preview = page.getByRole('img', { name: /^Generated image:/ })
   await expect(preview).toBeVisible()
   await expect(
-    page.evaluate((element: HTMLImageElement) => element.naturalWidth, preview),
+    preview.evaluate((element: HTMLImageElement) => element.naturalWidth),
     { timeout: 10000 },
   ).toBeGreaterThan(0)
 

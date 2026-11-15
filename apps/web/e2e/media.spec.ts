@@ -40,7 +40,7 @@ test.describe('Media Upload and Management', () => {
       mimeType: 'video/mp4',
       buffer: Buffer.from('fake-video-content'),
     })
-    await page.getByRole('button', { name: 'Upload' }).click()
+    await page.getByRole('button', { name: 'Upload', exact: true }).click()
 
     await expect(page.getByText(/video/i)).toBeVisible()
 
@@ -69,7 +69,7 @@ test.describe('Media Upload and Management', () => {
       mimeType: 'text/plain',
       buffer: Buffer.from('fake-text-content'),
     })
-    await page.getByRole('button', { name: 'Upload' }).click()
+    await page.getByRole('button', { name: 'Upload', exact: true }).click()
 
     await expect(page.getByText(/file type|validation failed/i)).toBeVisible()
   })

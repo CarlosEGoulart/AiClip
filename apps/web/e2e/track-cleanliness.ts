@@ -38,8 +38,14 @@ export function trackCleanliness(page: Page): CleanlinessReport {
 
   page.on('response', (response: APIResponse) => {
     const status = response.status()
+    const url = response.url()
+    // Skip expected 401 from the initial session check (GET /api/v1/auth/me)
+    // that runs on app mount before the user authenticates.
+    if (status === 401 && url.endsWith('/api/v1/auth/me')) {
+      return
+    }
     if (status >= 400) {
-      report.failedResponses.push(`${status} ${response.url()}`)
+      report.failedResponses.push(`${status} ${url}`)
     }
   })
 
