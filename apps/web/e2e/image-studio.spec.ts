@@ -127,7 +127,7 @@ async function runGenerateFlow(page: Page) {
   await expect(naturalWidth).toBeGreaterThan(0)
 
   const downloadLink = page.getByRole('link', { name: 'Download image' })
-  await expect(downloadLink).toHaveAttribute('href', /api\/v1\/images\/\d+\/download\//)
+  await expect(downloadLink).toHaveAttribute('href', /api\/v1\/images\/\d+\/download/)
   await expect(downloadLink).toHaveAttribute('href', /signature=/)
   await expect(downloadLink).toHaveAttribute('href', /expires=/)
 }
