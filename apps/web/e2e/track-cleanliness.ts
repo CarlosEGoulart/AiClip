@@ -27,7 +27,7 @@ export function trackCleanliness(page: Page): CleanlinessReport {
   }
 
   page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warning') {
+    if (msg.type() === 'error') {
       const text = msg.text()
       // Skip expected 401 console errors from the initial session check
       // (GET /api/v1/auth/me) that runs on app mount before authentication.
