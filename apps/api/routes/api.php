@@ -47,8 +47,17 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::get('/sanctum/csrf-cookie', function () {
-        return response()->noContent();
-    })->middleware(AddQueuedCookiesToResponse::class, StartSession::class);
+        return response()->noContent()->cookie(
+            'XSRF-TOKEN',
+            csrf_token(),
+            null,
+            '/',
+            null,
+            false,
+            false,
+            'lax',
+        );
+    })->middleware(StartSession::class);
 
     Route::post('/auth/register', [AuthController::class, 'register'])
         ->middleware('throttle:auth-register', AddQueuedCookiesToResponse::class, StartSession::class, VerifyCsrfToken::class);

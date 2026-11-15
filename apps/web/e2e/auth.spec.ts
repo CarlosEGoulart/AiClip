@@ -72,10 +72,15 @@ test.describe('Auth Lifecycle', () => {
     // visible), where "Create one" does not exist. Log out to return to the
     // login view first, then switch to the register view.
     await page.getByRole('button', { name: 'Log out' }).first().click()
+    await expect(
+      page.getByRole('heading', { name: 'Sign in to your workspace' }).or(
+        page.getByRole('heading', { name: 'Create your workspace' })
+      ),
+    ).toBeVisible({ timeout: 15000 })
 
     // Try to register again with same email
     await page.getByRole('button', { name: 'Create one' }).click()
-    await page.getByRole('heading', { name: 'Create your workspace' }).first()
+    await expect(page.getByRole('heading', { name: 'Create your workspace' })).toBeVisible({ timeout: 15000 })
     await page.getByLabel('Name').fill('Second User')
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password', { exact: true }).fill('password123')
