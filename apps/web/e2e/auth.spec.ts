@@ -86,7 +86,7 @@ test.describe('Auth Lifecycle', () => {
     await page.getByLabel('Password', { exact: true }).fill('password123')
     await page.getByLabel('Confirm Password', { exact: true }).fill('password123')
     await page.getByRole('button', { name: 'Create Account' }).click()
-    await expect(page.getByRole('alert').first()).toContainText('already taken')
+    await expect(page.locator('#register-email-error')).toHaveText('The email has already been taken.')
   })
 
   test('password confirmation mismatch → validation feedback', async ({ page }) => {

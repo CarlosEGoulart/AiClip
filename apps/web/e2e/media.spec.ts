@@ -35,7 +35,7 @@ test.describe('Media Upload and Management', () => {
 
     await openProject(page, 'Media Test Project')
 
-    await page.getByLabel('Upload Video').setInputFiles('./fixtures/minimal.mp4')
+    await page.getByLabel('Upload Video').setInputFiles('e2e/fixtures/minimal.mp4')
     await page.getByRole('button', { name: 'Upload', exact: true }).click()
 
     await expect(page.getByText('minimal.mp4')).toBeVisible()

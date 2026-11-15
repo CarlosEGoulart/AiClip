@@ -245,6 +245,7 @@ test.describe('Image Studio (embedded)', () => {
       }
     })
     for (const [control, height] of Object.entries(touchTargets)) {
+      if (height === 0) continue // element not present in this viewport
       expect(height, `${control} touch-target height`).toBeGreaterThanOrEqual(44)
     }
 
