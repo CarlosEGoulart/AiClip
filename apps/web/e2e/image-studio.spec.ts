@@ -121,10 +121,10 @@ async function runGenerateFlow(page: Page) {
 
   const preview = page.getByRole('img', { name: /^Generated image:/ })
   await expect(preview).toBeVisible()
-  await expect(
-    preview.evaluate((element: HTMLImageElement) => element.naturalWidth),
-    { timeout: 10000 },
-  ).toBeGreaterThan(0)
+  const naturalWidth = await preview.evaluate(
+    (element: HTMLImageElement) => element.naturalWidth,
+  )
+  await expect(naturalWidth).toBeGreaterThan(0)
 
   const downloadLink = page.getByRole('link', { name: 'Download image' })
   await expect(downloadLink).toHaveAttribute('href', /api\/v1\/images\/\d+\/download\//)

@@ -42,7 +42,7 @@ test.describe('Media Upload and Management', () => {
     })
     await page.getByRole('button', { name: 'Upload', exact: true }).click()
 
-    await expect(page.getByText(/video/i)).toBeVisible()
+    await expect(page.getByText('test-video.mp4')).toBeVisible()
 
     await page.getByRole('button', { name: `Delete test-video.mp4` }).click()
     await page.getByRole('button', { name: `Confirm delete test-video.mp4` }).click()
