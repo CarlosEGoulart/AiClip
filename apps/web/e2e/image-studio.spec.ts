@@ -15,7 +15,6 @@ const IMAGE_STUDIO_FOCUS_TARGETS: ImageStudioFocusTarget[] = [
   { key: 'dimensions', selector: '#image-dimensions' },
   { key: 'generate', selector: '.image-studio button[type="submit"]' },
   { key: 'download', selector: '.image-gallery-download' },
-  { key: 'back-to-projects', selector: 'button[aria-label="Back to projects"]' },
 ]
 
 async function switchToRegister(page: Page) {
@@ -271,14 +270,9 @@ test.describe('Image Studio (embedded)', () => {
     let hit = await recordFocusedTarget()
     if (hit) focusVisible[hit.key] = hit.visible
 
-    // Determine which focus targets actually exist in this viewport
-    const existingTargetKeys = await page.evaluate((targets) => {
-      return targets.filter((t) => document.querySelector(t.selector) !== null).map((t) => t.key)
-    }, IMAGE_STUDIO_FOCUS_TARGETS)
-
     for (
       let i = 0;
-      i < 8 && Object.keys(focusVisible).length < existingTargetKeys.length;
+      i < 8 && Object.keys(focusVisible).length < IMAGE_STUDIO_FOCUS_TARGETS.length;
       i++
     ) {
       await page.keyboard.press('Tab')
@@ -287,10 +281,10 @@ test.describe('Image Studio (embedded)', () => {
     }
 
     expect(Object.keys(focusVisible), 'reached focus targets').toHaveLength(
-      existingTargetKeys.length,
+      IMAGE_STUDIO_FOCUS_TARGETS.length,
     )
-    for (const key of existingTargetKeys) {
-      expect(focusVisible[key], `${key} visible focus indicator`).toBe(true)
+    for (const target of IMAGE_STUDIO_FOCUS_TARGETS) {
+      expect(focusVisible[target.key], `${target.key} visible focus indicator`).toBe(true)
     }
 
     await cleanupProject(page, projectName)
