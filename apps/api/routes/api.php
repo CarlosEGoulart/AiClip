@@ -57,7 +57,7 @@ Route::prefix('v1')->group(function () {
             false,
             'lax',
         );
-    })->middleware(StartSession::class);
+    });
 
     Route::post('/auth/register', [AuthController::class, 'register'])
         ->middleware('throttle:auth-register', AddQueuedCookiesToResponse::class, StartSession::class, VerifyCsrfToken::class);
