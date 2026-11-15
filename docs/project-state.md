@@ -200,14 +200,35 @@ runtime does not allow local execution of `tests/governance/pr_enforcement.py`
 (it runs in Actions) or deletion of generated `__pycache__` files; generated
 caches must never be staged.
 
+CI RESOLVED: Issue #123 (M14 Production Hardening) CI failures resolved.
+PR #141 CI green — all checks passed (governance, Frontend CI, Backend CI,
+E2E CI). Ready for merge via scripts/merge_gate.py.
+
+Backend SocialPublish fix (#142): `SocialConnectionFactory::connected()`
+now sets `access_token`/`refresh_token` so publish jobs reach `published`
+status instead of `failed` (13 tests fixed).
+
+Frontend E2E fix (#143): `apps/web/e2e/helpers/auth.ts` rewritten as shared
+UI-based `registerUser` (browser cookie jar via Vite proxy replaces fragile
+`page.request` cookie transfer). Additional E2E test stability fixes:
+waitForAuthReady added to clip-review/image-studio specs, CSRF cookie fetch
+before XSRF assertion, register rate limits relaxed in testing env, and
+duplicate registration test logs out before switching to register view.
+
 # Current Milestone
 
-M0–M8 completed. M9 — Social Connection Framework (Issue #118) is completed
-and verified: backend Pest suite 1714 tests (1694 passed, 20 skipped, 0 failed),
-Vitest 372 passed, Playwright E2E 102 passed at 3 viewports, lint/build clean.
-PR #130 merged via scripts/merge_gate.py. Issue #118 closed.
+M0–M9 completed. M14 — Production Hardening (Issue #123) is implemented,
+Tester-approved, PR #141 CI green and mergeable.
+M9 — Social Connection Framework (Issue #118): backend Pest suite 1714 tests
+(1694 passed, 20 skipped, 0 failed), Vitest 372 passed, Playwright E2E 102
+passed at 3 viewports, lint/build clean. PR #130 merged via scripts/merge_gate.py.
+Issue #118 closed.
 
 # Next Architectural Goal
+
+Merge PR #141 via scripts/merge_gate.py and close issue #123. After that,
+M8 AI Image Studio remaining slices and M7 remaining slices require separate
+explicit authorization and are not active.
 
 M8 — AI Image Studio continues beyond Slice 2: remaining slices (a real
 model-backed image generation provider behind the `ImageGenerationProvider`

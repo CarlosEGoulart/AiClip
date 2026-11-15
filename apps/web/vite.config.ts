@@ -11,10 +11,12 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        cookieDomainRewrite: '127.0.0.1',
       },
       '/sanctum': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        cookieDomainRewrite: '127.0.0.1',
       },
     },
   },

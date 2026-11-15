@@ -59,6 +59,16 @@ class PublishToYouTube implements ShouldQueue
         }
 
         // Ownership re-validation: user must own clip review and connection
+        if (! $publish->socialConnection) {
+            Log::warning('PublishToYouTube: Social connection not found', [
+                'publish_id' => $this->publishId,
+            ]);
+
+            $this->markFailed($publish, 'Ownership validation failed');
+
+            return;
+        }
+
         if ($publish->user_id !== $publish->socialConnection->user_id) {
             Log::warning('PublishToYouTube: Ownership validation failed', [
                 'publish_id' => $this->publishId,

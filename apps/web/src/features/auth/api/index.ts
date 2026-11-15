@@ -53,10 +53,6 @@ async function request<T>(
 ): Promise<T> {
   const isStateChanging = options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH' || options.method === 'DELETE';
 
-  if (isStateChanging && retryCount === 0) {
-    await initCsrf();
-  }
-
   const headers: Record<string, string> = {
     'Accept': 'application/json',
     ...(options.headers as Record<string, string> || {}),

@@ -60,18 +60,14 @@ describe('media API boundary', () => {
   });
 
   describe('uploadMediaAsset', () => {
-    it('sends FormData POST after CSRF setup', async () => {
-      fetchMock.mockResolvedValueOnce(response(204)); // CSRF
+    it('sends FormData POST', async () => {
       fetchMock.mockResolvedValueOnce(response(201, { data: mediaAsset }));
 
       const file = new File(['content'], 'test.mp4', { type: 'video/mp4' });
       const result = await uploadMediaAsset(1, file);
       expect(result).toEqual({ data: mediaAsset });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock).toHaveBeenNthCalledWith(1, '/sanctum/csrf-cookie', expect.objectContaining({
-        credentials: 'include',
-      }));
-      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/projects/1/media/upload', expect.objectContaining({
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/projects/1/media/upload', expect.objectContaining({
         method: 'POST',
         credentials: 'include',
         body: expect.any(FormData),
@@ -80,39 +76,53 @@ describe('media API boundary', () => {
 
     it('maps 422 to validation', async () => {
       const errors = { file: ['The file field is required.'] };
-      fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(422, { errors }));
+      fetchMock.mockResolvedValueOnce(response(422, { errors }));
       const file = new File(['content'], 'test.txt', { type: 'text/plain' });
       await expect(uploadMediaAsset(1, file)).rejects.toMatchObject({ type: 'validation', errors });
     });
 
     it('maps 413 to file-too-large', async () => {
-      fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(413));
+      fetchMock.mockResolvedValueOnce(response(413));
       const file = new File(['content'], 'test.mp4', { type: 'video/mp4' });
       await expect(uploadMediaAsset(1, file)).rejects.toMatchObject({ type: 'file-too-large' });
     });
 
     it('maps 500 to server error', async () => {
-      fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(500));
+      fetchMock.mockResolvedValueOnce(response(500));
       const file = new File(['content'], 'test.mp4', { type: 'video/mp4' });
       await expect(uploadMediaAsset(1, file)).rejects.toMatchObject({ type: 'server' });
+    });
+
+    it('reacquires CSRF and retries upload once on 419', async () => {
+      fetchMock.mockResolvedValueOnce(response(419))
+        .mockImplementationOnce(async () => {
+          document.cookie = 'XSRF-TOKEN=fresh%2Ftoken%3D; path=/';
+          return response(204);
+        }).mockResolvedValueOnce(response(201, { data: mediaAsset }));
+
+      const file = new File(['content'], 'test.mp4', { type: 'video/mp4' });
+      const result = await uploadMediaAsset(1, file);
+      expect(result).toEqual({ data: mediaAsset });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const csrfCalls = fetchMock.mock.calls.filter(([url]) => url === '/sanctum/csrf-cookie');
+      expect(csrfCalls).toHaveLength(1);
     });
   });
 
   describe('deleteMediaAsset', () => {
-    it('sends credentialed DELETE after CSRF setup', async () => {
-      fetchMock.mockResolvedValueOnce(response(204)); // CSRF
+    it('sends credentialed DELETE', async () => {
       fetchMock.mockResolvedValueOnce(response(204)); // DELETE
 
       await deleteMediaAsset(1);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/media/1', expect.objectContaining({
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/media/1', expect.objectContaining({
         method: 'DELETE',
         credentials: 'include',
       }));
     });
 
     it('maps 401 to unauthorized', async () => {
-      fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(401));
+      fetchMock.mockResolvedValueOnce(response(401));
       await expect(deleteMediaAsset(1)).rejects.toMatchObject({ type: 'unauthorized' });
     });
   });

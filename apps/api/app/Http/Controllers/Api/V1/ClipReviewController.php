@@ -15,7 +15,6 @@ use App\Models\MediaAsset;
 use App\Models\Project;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
@@ -153,7 +152,7 @@ class ClipReviewController extends Controller
         ]);
     }
 
-    public function video(Request $request, ClipReview $clipReview): RedirectResponse
+    public function video(Request $request, ClipReview $clipReview)
     {
         if ($request->filled('signature')) {
             // Signed playback URLs are time-limited, owner-scoped tokens issued via
@@ -172,7 +171,9 @@ class ClipReviewController extends Controller
             abort(Response::HTTP_NOT_FOUND);
         }
 
-        // Generate a temporary signed URL to the storage (1 hour expiry)
+        // Generate a temporary signed URL to the storage (1 hour expiry).
+        // The local filesystem driver does not support temporaryUrl(), so fall
+        // back to streaming the file directly for local-disk environments.
         try {
             $disk = Storage::disk(config('media.disk', 'media'));
             $url = $disk->temporaryUrl(
@@ -182,10 +183,22 @@ class ClipReviewController extends Controller
 
             return redirect()->away($url);
         } catch (\Exception $e) {
+            Log::warning('temporaryUrl unavailable, streaming file directly', [
+                'clip_review_id' => $clipReview->id,
+                'derived_asset_id' => $derivedAsset->id,
+                'disk' => config('media.disk', 'media'),
+                'error' => $e->getMessage(),
+            ]);
+
+            $disk = Storage::disk(config('media.disk', 'media'));
+            if ($disk->exists($derivedAsset->storage_key)) {
+                return response()->file($disk->path($derivedAsset->storage_key));
+            }
+
             Log::error('Failed to generate signed video URL', [
                 'clip_review_id' => $clipReview->id,
                 'derived_asset_id' => $derivedAsset->id,
-                'error' => $e->getMessage(),
+                'error' => 'Storage object not found',
             ]);
 
             abort(Response::HTTP_INTERNAL_SERVER_ERROR);

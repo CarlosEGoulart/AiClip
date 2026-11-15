@@ -12,7 +12,6 @@ use App\Models\Image;
 use App\Models\Project;
 use App\Services\StorageKeyBuilder;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
@@ -128,7 +127,7 @@ class ImageController extends Controller
      * internals never leak for artifacts that do not exist. Storage
      * failures fail closed: 500 with a sanitized log.
      */
-    public function download(Request $request, Image $image): RedirectResponse
+    public function download(Request $request, Image $image)
     {
         if ($request->filled('signature')) {
             abort_unless($request->hasValidSignature(), Response::HTTP_FORBIDDEN);
@@ -160,9 +159,20 @@ class ImageController extends Controller
 
             return redirect()->away($url);
         } catch (\Exception $e) {
+            Log::warning('temporaryUrl unavailable, streaming file directly', [
+                'image_id' => $image->id,
+                'disk' => $image->storage_disk,
+                'error' => $e->getMessage(),
+            ]);
+
+            $disk = Storage::disk($image->storage_disk);
+            if ($disk->exists($image->storage_key)) {
+                return response()->file($disk->path($image->storage_key));
+            }
+
             Log::error('Failed to generate signed image URL', [
                 'image_id' => $image->id,
-                'error' => $e->getMessage(),
+                'error' => 'Storage object not found',
             ]);
 
             abort(Response::HTTP_INTERNAL_SERVER_ERROR);

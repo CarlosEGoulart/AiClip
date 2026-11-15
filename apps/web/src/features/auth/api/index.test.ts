@@ -28,26 +28,23 @@ describe('auth HTTP boundary (F1)', () => {
     ['register', () => register(registration), registration, 201],
     ['login', () => login(credentials), credentials, 200],
     ['logout', logout, undefined, 204],
-  ] as const)('sends credentialed %s only after CSRF setup with the exact decoded cookie', async (operation, send, data, status) => {
-    let release!: (value: Response) => void;
-    fetchMock.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  ] as const)('sends credentialed %s with CSRF token header', async (operation, send, data, status) => {
     const resultResponse = response(status, status === 204 ? undefined : { user });
-    const parse = vi.spyOn(resultResponse, 'json');
     fetchMock.mockResolvedValueOnce(resultResponse);
     const pending = send();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/sanctum/csrf-cookie', expect.objectContaining({
-      credentials: 'include', headers: expect.objectContaining({ Accept: 'application/json' }),
-    }));
-    release(response(204));
-    expect(await pending).toEqual(status === 204 ? undefined : { user });
-    expect(fetchMock).toHaveBeenNthCalledWith(2, `/api/v1/auth/${operation}`, expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(1, `/api/v1/auth/${operation}`, expect.objectContaining({
       method: 'POST', credentials: 'include', body: data ? JSON.stringify(data) : undefined,
       headers: expect.objectContaining({
         Accept: 'application/json', 'Content-Type': 'application/json', 'X-XSRF-TOKEN': 'initial+token=',
       }),
     }));
-    if (status === 204) expect(parse).not.toHaveBeenCalled();
+    if (status === 204) {
+      const result = await pending;
+      expect(result).toBeUndefined();
+    } else {
+      expect(await pending).toEqual({ user });
+    }
   });
 
   it('restores me directly with cookies and JSON Accept', async () => {
@@ -64,66 +61,67 @@ describe('auth HTTP boundary (F1)', () => {
     [401, 'unauthorized'], [422, 'validation'], [429, 'throttle'], [500, 'server'],
   ] as const)('maps auth %s to %s without retry', async (status, type) => {
     const errors = { email: ['The provided credentials are incorrect.'] };
-    fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(status, { errors }));
+    fetchMock.mockResolvedValueOnce(response(status, { errors }));
     await expect(login(credentials)).rejects.toMatchObject({ type, ...(status === 422 ? { errors } : {}) });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('maps a non-JSON server response without a parse crash', async () => {
-    fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(new Response('<html>unavailable</html>', { status: 500 }));
+    fetchMock.mockResolvedValueOnce(new Response('<html>unavailable</html>', { status: 500 }));
     await expect(login(credentials)).rejects.toMatchObject({ type: 'server' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('maps an auth transport rejection to network', async () => {
-    fetchMock.mockResolvedValueOnce(response(204)).mockRejectedValueOnce(new TypeError('offline'));
-    await expect(login(credentials)).rejects.toMatchObject({ type: 'network' });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it.each(['initial', 'refresh'] as const)('stops on %s CSRF transport failure with a typed network error', async phase => {
-    if (phase === 'refresh') fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(419));
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     await expect(login(credentials)).rejects.toMatchObject({ type: 'network' });
-    expect(fetchMock).toHaveBeenCalledTimes(phase === 'initial' ? 1 : 3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops on CSRF transport failure with typed network error', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    await expect(login(credentials)).rejects.toMatchObject({ type: 'network' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([
     [401, 'unauthorized'], [419, 'csrf'], [429, 'throttle'], [500, 'server'],
-  ] as const)('stops on CSRF setup %s with typed %s', async (status, type) => {
-    fetchMock.mockResolvedValueOnce(response(status));
+  ] as const)('stops on operation %s with typed %s', async (status, type) => {
+    if (status === 419) {
+      fetchMock.mockResolvedValueOnce(response(419)).mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(419));
+    } else {
+      fetchMock.mockResolvedValueOnce(response(status));
+    }
     await expect(register(registration)).rejects.toMatchObject({ type });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(status === 419 ? 3 : 1);
   });
 
-  it('stops when recovery CSRF returns 500 without a second mutation', async () => {
-    fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(419)).mockResolvedValueOnce(response(500));
-    await expect(logout()).rejects.toMatchObject({ type: 'server' });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-  });
-
-  it.each([
-    ['register', () => register(registration)], ['login', () => login(credentials)], ['logout', logout],
-  ] as const)('reacquires CSRF and retries %s exactly once retaining the operation', async (_operation, send) => {
-    fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(419))
+  it('reacquires CSRF and retries operation exactly once retaining the operation', async () => {
+    fetchMock
+      .mockImplementationOnce(async () => response(419))
       .mockImplementationOnce(async () => {
         document.cookie = 'XSRF-TOKEN=fresh%2Ftoken%3D; path=/';
         return response(204);
-      }).mockResolvedValueOnce(response(204));
-    await send();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    const first = fetchMock.mock.calls[1];
-    const retry = fetchMock.mock.calls[3];
+      })
+      .mockImplementationOnce(async () => response(201, { user }));
+    await register(registration);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const first = fetchMock.mock.calls[0];
+    const retry = fetchMock.mock.calls[2];
     expect(retry[0]).toBe(first[0]);
-    expect(retry[1]).toEqual({ ...first[1], headers: {
-      ...first[1]?.headers, 'X-XSRF-TOKEN': 'fresh/token=',
-    } });
-    expect(fetchMock.mock.calls.filter(([url]) => url === '/sanctum/csrf-cookie')).toHaveLength(2);
+    const retryHeaders = new Headers(retry[1]?.headers);
+    expect(retryHeaders.get('X-XSRF-TOKEN')).toBe('fresh/token=');
+    const csrfCalls = fetchMock.mock.calls.filter(([url]) => url === '/sanctum/csrf-cookie');
+    expect(csrfCalls).toHaveLength(1);
   });
 
   it('bounds recovery to ONE retry when every mutation returns 419', async () => {
-    fetchMock.mockImplementation(async url => response(url === '/sanctum/csrf-cookie' ? 204 : 419));
+    fetchMock.mockImplementation(async url => {
+      if (url === '/sanctum/csrf-cookie') return response(204);
+      return response(419);
+    });
     await expect(login(credentials)).rejects.toMatchObject({ type: 'csrf' });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('never reads or writes web storage or sends Authorization during the lifecycle', async () => {

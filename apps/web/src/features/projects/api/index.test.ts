@@ -32,17 +32,13 @@ describe('project API boundary', () => {
     }));
   });
 
-  it('sends credentialed POST for create project after CSRF setup', async () => {
-    fetchMock.mockResolvedValueOnce(response(204)); // CSRF
+  it('sends credentialed POST for create project', async () => {
     fetchMock.mockResolvedValueOnce(response(201, { data: project }));
 
     const result = await createProject({ name: 'Test Project' });
     expect(result).toEqual({ data: project });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/sanctum/csrf-cookie', expect.objectContaining({
-      credentials: 'include',
-    }));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/projects', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/projects', expect.objectContaining({
       method: 'POST',
       credentials: 'include',
       body: JSON.stringify({ name: 'Test Project' }),
@@ -53,13 +49,12 @@ describe('project API boundary', () => {
     }));
   });
 
-  it('sends credentialed DELETE for delete project after CSRF setup', async () => {
-    fetchMock.mockResolvedValueOnce(response(204)); // CSRF
+  it('sends credentialed DELETE for delete project', async () => {
     fetchMock.mockResolvedValueOnce(response(204)); // DELETE
 
     await deleteProject(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/projects/1', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/projects/1', expect.objectContaining({
       method: 'DELETE',
       credentials: 'include',
     }));
@@ -72,12 +67,26 @@ describe('project API boundary', () => {
 
   it('maps 422 to validation', async () => {
     const errors = { name: ['The name field is required.'] };
-    fetchMock.mockResolvedValueOnce(response(204)).mockResolvedValueOnce(response(422, { errors }));
+    fetchMock.mockResolvedValueOnce(response(422, { errors }));
     await expect(createProject({ name: '' })).rejects.toMatchObject({ type: 'validation', errors });
   });
 
   it('maps network rejection to network error', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
     await expect(getProjects()).rejects.toMatchObject({ type: 'network' });
+  });
+
+  it('reacquires CSRF and retries create project once on 419', async () => {
+    fetchMock.mockResolvedValueOnce(response(419))
+      .mockImplementationOnce(async () => {
+        document.cookie = 'XSRF-TOKEN=fresh%2Ftoken%3D; path=/';
+        return response(204);
+      }).mockResolvedValueOnce(response(201, { data: project }));
+
+    const result = await createProject({ name: 'Test Project' });
+    expect(result).toEqual({ data: project });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const csrfCalls = fetchMock.mock.calls.filter(([url]) => url === '/sanctum/csrf-cookie');
+    expect(csrfCalls).toHaveLength(1);
   });
 });

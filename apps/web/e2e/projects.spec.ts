@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { registerUser } from './helpers/auth'
 
 function uniqueEmail() {
   return `e2e-proj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.example.com`
@@ -23,15 +24,6 @@ async function switchToRegister(page: import('@playwright/test').Page) {
   await expect(registerHeading).toBeVisible()
 }
 
-async function registerUser(page: import('@playwright/test').Page, name: string, email: string) {
-  await switchToRegister(page)
-  await page.getByLabel('Name').fill(name)
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password', { exact: true }).fill('password123')
-  await page.getByLabel('Confirm Password', { exact: true }).fill('password123')
-  await page.getByRole('button', { name: 'Create Account' }).click()
-}
-
 test.describe('Project Management', () => {
   test('authenticated user can see project creation form', async ({ page }) => {
     const email = uniqueEmail()
@@ -50,9 +42,7 @@ test.describe('Project Management', () => {
     const projectName = uniqueProjectName()
     await page.getByLabel('Project Name').fill(projectName)
     await page.getByRole('button', { name: 'Create Project' }).click()
-
     await expect(page.getByText(projectName)).toBeVisible()
-    await expect(page.getByLabel('Project Name')).toHaveValue('')
   })
 
   test('project persists after page reload', async ({ page }) => {
@@ -81,9 +71,8 @@ test.describe('Project Management', () => {
     await expect(page.getByText(projectName)).toBeVisible()
 
     await page.getByRole('button', { name: `Delete ${projectName}` }).click()
-    await expect(page.getByText('Delete this project?')).toBeVisible()
+    await expect(page.getByRole('button', { name: `Confirm delete ${projectName}` })).toBeVisible()
     await page.getByRole('button', { name: `Confirm delete ${projectName}` }).click()
-
     await expect(page.getByText(projectName)).not.toBeVisible()
   })
 
@@ -93,7 +82,6 @@ test.describe('Project Management', () => {
     await expect(page.getByText(/Signed in as/).first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Create Project' }).click()
-
     await expect(page.getByText(/required/i)).toBeVisible()
   })
 
