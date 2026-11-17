@@ -37,6 +37,7 @@ The default `definition()` already encrypts tokens via `encrypt(...)`, but
       messages.
 - [ ] Backend test suite passes (`php artisan test --compact`).
 - [ ] Governance checks pass.
+- [ ] PR governance checks pass (PR body sections, evidence.md).
 
 ## Files to Modify
 
