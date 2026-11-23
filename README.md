@@ -13,9 +13,10 @@ AiClip is an AI-assisted creator platform that transforms long-form video into s
 | M4 — Video Understanding | Completed |
 | M5 — AI Clip Recommendation | Completed (Issue #64, PR #66) |
 | M6 — Vertical Clip Rendering | M6.1 Complete (Issue #69, PR #73); M6.2 Slices 3A–3E Complete (Issues #81, #81B, #87, #89, #101) |
-| M7 — Clip Review Experience | Slice 1 Complete (Issue #106, PR #107) |
+| M7 — Clip Review Experience | Slice 1 Complete (Issue #106, PR #107); Slice 2 Complete (Issue #110, PR #111) |
 | M8 — AI Image Studio | Slice 1 Complete (Issue #113, PR #114); Slice 2 Complete (Issue #115, PR #116) |
 | M9 — Social Connection Framework | Completed (Issue #118, PR #130) |
+| M14 — Production Hardening | CI Green / Mergeable (Issue #123, PR #141) — not yet merged or closed |
 
 M1 delivered: Laravel/React/PostgreSQL foundation, health vertical slice, foundation stabilization, Sanctum SPA authentication, and authenticated project management. M2 delivered: project-scoped video upload with S3-compatible storage (MinIO for development, AWS S3 in production).
 
@@ -242,4 +243,16 @@ An issue is done when all applicable items are satisfied:
 - PR merged
 - Issue closed
 
-Return to NO_ACTIVE_ISSUE and wait for explicit authorization before starting another issue.
+## Future Work / Next Architectural Goals
+
+The following capabilities are planned but **not implemented**. Each requires separate explicit authorization before work may begin:
+
+- **M6 remaining slices** — multi-candidate batch rendering, render profiles beyond `vertical_v1` (Issue #69 follow-ups)
+- **M7 remaining slices** — approval-driven downstream actions, editor integrations, publishing hooks (Issue #110 follow-ups)
+- **M8 remaining slices** — real model-backed image generation provider, image deletion, batch generation, image editing (Issue #113/#115 follow-ups)
+- **M10 — YouTube Publishing** — social publishing integration (Issue #119)
+- **M11 — Instagram Publishing** — social publishing integration (Issue #135)
+- **M12 — TikTok Publishing** — social publishing integration (Issue #121)
+- **M14 — Production Hardening** (Issue #123, PR #141) — CI green and mergeable, pending merge and issue closure
+
+No future milestone is marked as implemented or production-ready without explicit evidence.

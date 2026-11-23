@@ -81,11 +81,13 @@ Completed slices:
 
 - **Slice 3E (Issue #101, PR #103 — merged; issue closed)**: End-to-end caption flow integration test — validates complete pipeline: upload → transcribe → detect scenes → recommend → render with captions → validate output → persist. Uses real MinIO, FFmpeg, Python worker, FFprobe. No mocks for storage, worker, or FFmpeg. 7 E2E test scenarios covering happy path, no transcript, pending transcript, empty projection, malformed segments, idempotency, and transcript change triggering new render.
 
-## M7 — Clip Review Experience (Slice 1 completed)
+## M7 — Clip Review Experience (Slices 1–2 completed)
 
 Completed slices:
 
 - **Slice 1 — Clip Review Experience foundation (Issue #106, PR #107 — merged; issue closed)**: ClipReview model with status enum (`pending`, `approved`, `rejected`, `needs_changes`), review API (project-scoped paginated list, show, status update with idempotent transitions, feedback submission, dual-gate signed video URL), `ProcessClipReview` queue job with event dispatch, automatic ClipReview creation when a rendered DerivedAsset completes, and per-endpoint rate limiting. Frontend delivers the embedded review experience inside ProjectMediaSection: VideoPlayer, ReviewActions, FeedbackForm, ReviewList, and ReviewPage with native History API URL sync (no client-side router library), a root React Query provider, 44px touch targets, and visible focus indicators. Verification: backend Pest suites, a `real-integration` group executing real MinIO presigned round trips and a real-database rollback case, Vitest component suites, and Playwright E2E covering the reachable review states at three viewports.
+
+- **Slice 2 — Clip Review Status Workflow (Issue #110, PR #111 — merged; issue closed)**: One-way status transition contract (`pending` → `approved`/`rejected`/`needs_changes`; terminal states reject all further transitions with 422). `PATCH /api/v1/clip-reviews/{clipReview}/status` terminal-state guard. Frontend `ReviewActions` confirmation dialogs with disabled/loading states, `ReviewPage` status reflection, feedback form for rejected/needs_changes only. Playwright E2E approve/reject/needs_changes happy paths plus terminal-state no-further-transition at three viewports with console/network cleanliness.
 
 ## M8 — AI Image Studio (Slices 1–2 completed)
 
@@ -98,14 +100,9 @@ Completed slices:
 
 | Milestone | Description |
 |-----------|-------------|
-| M6 | Vertical Clip Rendering (M6.1 baseline complete; M6.2 Slices 3A–3E completed) |
-| M7 | Clip Review Experience (Slice 1 Complete — Issue #106, PR #107) |
-| M8 | AI Image Studio (Slices 1–2 Complete — Issues #113/#115, PRs #114/#116) |
-| M9 | Social Connection Framework |
-| M10 | YouTube Publishing |
-| M11 | Instagram Publishing |
-| M12 | TikTok Publishing |
-| M14 | Unified One-Click Publishing |
-| M14 | Production Hardening |
+| M10 | YouTube Publishing (planned — not implemented; requires separate explicit authorization) |
+| M11 | Instagram Publishing (planned — not implemented; requires separate explicit authorization) |
+| M12 | TikTok Publishing (planned — not implemented; requires separate explicit authorization) |
+| M14 | Production Hardening (Issue #123, PR #141 — CI green and mergeable; pending merge and issue closure) |
 
-Only one implementation issue is active at a time.
+Only one implementation issue is active at a time. Planned milestones are not implemented until separately authorized.
