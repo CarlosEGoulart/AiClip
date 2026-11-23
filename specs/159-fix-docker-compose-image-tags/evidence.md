@@ -41,6 +41,30 @@ Both services confirmed `healthy` after `docker compose up -d`. `minio-init` exi
 
 ---
 
+## TDD Verification (AGENTS.md §12)
+
+This issue is an infrastructure/config fix (no application code), so the TDD cycle applies to operational verification:
+
+### RED
+Verified `docker compose up -d` fails on `master` before the fix:
+- `docker.io/minio/minio:RELEASE.2025-10-02T04-12-34Z: not found`
+- `postgres:16.4-alpine: not found`
+
+### GREEN
+Applied the three image-tag substitutions in `docker-compose.yml`:
+- `postgres:16.4-alpine` → `postgres:16-alpine`
+- `minio/minio:RELEASE...` → `pgsty/minio:latest` (×2)
+
+Verified `docker compose up -d` succeeds:
+- `aiclip-postgres` (postgres:16-alpine) healthy on port 5432
+- `aiclip-minio` (pgsty/minio:latest) healthy on port 9000
+- `aiclip-minio-init` exits 0, bucket `aiclip/aiclip-media` created (private)
+
+### REFACTOR
+Reviewed `git diff docker-compose.yml`: only the three intended image-tag lines, no unrelated changes. Re-ran `docker compose up -d` idempotently — remains green.
+
+---
+
 ## Decision
 
 **Decision: APPROVE**
