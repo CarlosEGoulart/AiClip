@@ -31,22 +31,29 @@ export async function registerUser(
   await page.waitForLoadState('networkidle')
 
   // If already authenticated (e.g. previous test in same worker left a
-  // valid session), skip registration entirely.
+  // valid session), log out first to start from a clean login screen.
   const alreadySignedIn = await page
     .getByText(/Signed in as/)
     .first()
     .isVisible()
     .catch(() => false)
-  if (alreadySignedIn) return
+  if (alreadySignedIn) {
+    await page.getByRole('button', { name: 'Log out' }).first().click()
+    await expect(
+      page.getByRole('heading', { name: 'Sign in to your workspace' }).or(
+        page.getByRole('heading', { name: 'Create your workspace' }),
+      ),
+    ).toBeVisible({ timeout: 15000 })
+  } else {
+    // Wait for login or register heading
+    await expect(
+      page.getByRole('heading', { name: 'Sign in to your workspace' }).or(
+        page.getByRole('heading', { name: 'Create your workspace' }),
+      ),
+    ).toBeVisible({ timeout: 15000 })
+  }
 
-  // 2. Wait for login or register heading
-  await expect(
-    page.getByRole('heading', { name: 'Sign in to your workspace' }).or(
-      page.getByRole('heading', { name: 'Create your workspace' })
-    )
-  ).toBeVisible({ timeout: 15000 })
-
-  // 3. If on login view, switch to register view
+  // 2. If on login view, switch to register view
   const loginHeading = page.getByRole('heading', { name: 'Sign in to your workspace' })
   const registerHeading = page.getByRole('heading', { name: 'Create your workspace' })
   if (await loginHeading.isVisible()) {
@@ -54,15 +61,15 @@ export async function registerUser(
     await expect(registerHeading).toBeVisible()
   }
 
-  // 4. Fill register form via browser UI
+  // 3. Fill register form via browser UI
   await page.getByLabel('Name').fill(name)
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill('password123')
   await page.getByLabel('Confirm Password', { exact: true }).fill('password123')
 
-  // 5. Submit
+  // 4. Submit
   await page.getByRole('button', { name: 'Create Account' }).click()
 
-  // 6. Wait for authenticated shell (proven-authenticated gate)
+  // 5. Wait for authenticated shell (proven-authenticated gate)
   await expect(page.getByText(/Signed in as/).first()).toBeVisible({ timeout: 15000 })
 }
