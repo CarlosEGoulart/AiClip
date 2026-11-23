@@ -6,7 +6,9 @@ use App\Contracts\ImageGenerationProvider;
 use App\Contracts\MediaProcessingContract;
 use App\Contracts\SocialConnectionProvider;
 use App\Contracts\SocialPublisher;
+use App\Contracts\YouTubeImportProvider;
 use App\Services\FakeImageGenerationProvider;
+use App\Services\FakeYouTubeImportProvider;
 use App\Services\FakeInstagramPublisher;
 use App\Services\FakeInstagramProvider;
 use App\Services\FakeTikTokPublisher;
@@ -41,6 +43,11 @@ class AppServiceProvider extends ServiceProvider
         // (Flux/SDXL via the Python worker CLI) replaces this binding in a
         // future slice without any domain changes.
         $this->app->singleton(ImageGenerationProvider::class, FakeImageGenerationProvider::class);
+
+        // YouTube import provider seam: the deterministic fake is the bound
+        // implementation. Real implementations replace this binding in a
+        // future slice without any domain changes.
+        $this->app->singleton(YouTubeImportProvider::class, FakeYouTubeImportProvider::class);
 
         // Social connection providers - register fake providers in all environments.
         // Real provider implementations replace these bindings in a future slice.
@@ -171,6 +178,10 @@ class AppServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('image-generate', function (Request $request) {
+            return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('youtube-import', function (Request $request) {
             return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
         });
 

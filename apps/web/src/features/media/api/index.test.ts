@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getMediaAssets, uploadMediaAsset, deleteMediaAsset } from '../api';
+import { getMediaAssets, uploadMediaAsset, uploadMediaAssetByUrl, deleteMediaAsset } from '../api';
 
 const mediaAsset = {
   id: 1,
@@ -124,6 +124,62 @@ describe('media API boundary', () => {
     it('maps 401 to unauthorized', async () => {
       fetchMock.mockResolvedValueOnce(response(401));
       await expect(deleteMediaAsset(1)).rejects.toMatchObject({ type: 'unauthorized' });
+    });
+  });
+
+  describe('uploadMediaAssetByUrl', () => {
+    it('sends JSON POST with credentials and X-XSRF-TOKEN', async () => {
+      fetchMock.mockResolvedValueOnce(response(202, { data: { media_asset_id: 1, status: 'queued' } }));
+
+      const result = await uploadMediaAssetByUrl(1, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+      expect(result).toEqual({ data: { media_asset_id: 1, status: 'queued' } });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/projects/1/media/import/youtube', expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-XSRF-TOKEN': 'test=',
+        }),
+        body: JSON.stringify({ url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }),
+      }));
+    });
+
+    it('maps 202 to success response', async () => {
+      fetchMock.mockResolvedValueOnce(response(202, { data: { media_asset_id: 5, status: 'queued' } }));
+
+      const result = await uploadMediaAssetByUrl(1, 'https://youtu.be/dQw4w9WgXcQ');
+      expect(result).toEqual({ data: { media_asset_id: 5, status: 'queued' } });
+    });
+
+    it('maps 422 to validation error', async () => {
+      const errors = { url: ['The YouTube URL is invalid.'] };
+      fetchMock.mockResolvedValueOnce(response(422, { errors }));
+
+      await expect(uploadMediaAssetByUrl(1, 'https://example.com/video'))
+        .rejects.toMatchObject({ type: 'validation', errors });
+    });
+
+    it('maps 429 to throttle error', async () => {
+      fetchMock.mockResolvedValueOnce(response(429));
+
+      await expect(uploadMediaAssetByUrl(1, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'))
+        .rejects.toMatchObject({ type: 'throttle' });
+    });
+
+    it('maps 401 to unauthorized error', async () => {
+      fetchMock.mockResolvedValueOnce(response(401));
+
+      await expect(uploadMediaAssetByUrl(1, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'))
+        .rejects.toMatchObject({ type: 'unauthorized' });
+    });
+
+    it('maps network rejection to network error', async () => {
+      fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+
+      await expect(uploadMediaAssetByUrl(1, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'))
+        .rejects.toMatchObject({ type: 'network' });
     });
   });
 });

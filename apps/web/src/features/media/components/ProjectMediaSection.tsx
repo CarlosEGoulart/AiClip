@@ -22,6 +22,7 @@ export function ProjectMediaSection({ projectId, projectName, onBack }: ProjectM
     error,
     fetchMedia,
     uploadFile,
+    uploadYouTubeUrl,
     deleteMedia,
   } = useMediaAssets(projectId);
 
@@ -105,6 +106,7 @@ export function ProjectMediaSection({ projectId, projectName, onBack }: ProjectM
         <div id="media-panel" role="tabpanel" aria-labelledby="media-tab">
           <MediaUploadForm
             onUpload={uploadFile}
+            onUploadYouTubeUrl={uploadYouTubeUrl}
             uploading={uploading}
             error={error}
           />

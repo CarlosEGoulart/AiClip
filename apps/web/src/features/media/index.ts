@@ -11,6 +11,7 @@ export type {
 export {
   getMediaAssets,
   uploadMediaAsset,
+  uploadMediaAssetByUrl,
   deleteMediaAsset,
 } from './api';
 

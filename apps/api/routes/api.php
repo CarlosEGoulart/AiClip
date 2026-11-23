@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\ProjectController;
 use App\Http\Controllers\Api\V1\SocialConnectionController;
 use App\Http\Controllers\Api\V1\SocialPublishCampaignController;
 use App\Http\Controllers\Api\V1\SocialPublishController;
+use App\Http\Controllers\Api\V1\YouTubeImportController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Session\Middleware\StartSession;
@@ -89,6 +90,8 @@ Route::prefix('v1')->group(function () {
         }
         Route::post('/projects/{project}/media/upload', [MediaAssetController::class, 'upload'])
             ->middleware('throttle:media-upload', VerifyCsrfToken::class);
+        Route::post('/projects/{project}/media/import/youtube', [YouTubeImportController::class, 'import'])
+            ->middleware('throttle:youtube-import', VerifyCsrfToken::class);
         Route::get('/projects/{project}/media', [MediaAssetController::class, 'index']);
         Route::delete('/media/{media}', [MediaAssetController::class, 'destroy'])
             ->middleware('throttle:media-destroy', VerifyCsrfToken::class);

@@ -4,7 +4,8 @@ export interface MediaAsset {
   original_name: string;
   mime_type: string;
   size_bytes: number;
-  status: 'stored';
+  status: 'stored' | 'queued';
+  source?: 'file' | 'url';
   created_at: string;
   updated_at: string;
 }

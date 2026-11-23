@@ -130,3 +130,13 @@ export async function deleteMediaAsset(mediaId: number): Promise<void> {
     method: 'DELETE',
   });
 }
+
+export async function uploadMediaAssetByUrl(
+  projectId: number,
+  url: string,
+): Promise<MediaAssetResponse> {
+  return request<MediaAssetResponse>(`/api/v1/projects/${projectId}/media/import/youtube`, {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+}
