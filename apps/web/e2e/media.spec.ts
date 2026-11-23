@@ -112,7 +112,8 @@ test.describe('Media Upload and Management', () => {
     await page.getByLabel('Import from YouTube URL').fill('https://example.com/video')
     await page.getByRole('button', { name: 'Import', exact: true }).click()
 
-    await expect(page.getByRole('alert')).toHaveTextContent(
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(await page.getByRole('alert').innerText()).toMatch(
       /Please enter a valid YouTube URL/,
     )
     await expect(page.getByText('No media assets yet. Upload a video to get started.')).toBeVisible()
