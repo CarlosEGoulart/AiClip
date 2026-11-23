@@ -5,7 +5,7 @@ import { ProjectMediaSection } from '../../media';
 import heroImage from '../../../assets/hero.png';
 
 export function AuthenticatedShell() {
-  const { state } = useAuth();
+  const { state, errorMessage, clearErrors } = useAuth();
   const {
     projects,
     loading,
@@ -30,6 +30,11 @@ export function AuthenticatedShell() {
 
   return (
     <div className="dashboard">
+      {errorMessage && (
+        <div role="alert" className="auth-error" onClick={clearErrors}>
+          {errorMessage}
+        </div>
+      )}
       {!selectedProjectId && (
         <section className="dashboard-hero section-enters" aria-label="Dashboard">
           <div className="dashboard-hero-content">
