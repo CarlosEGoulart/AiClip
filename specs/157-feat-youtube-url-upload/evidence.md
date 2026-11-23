@@ -1,6 +1,6 @@
 # Tester Evidence — Issue #157 YouTube URL Upload
 
-**Tester decision: APPROVE**
+**Decision: APPROVE**
 
 ## Summary
 
