@@ -30,6 +30,15 @@ export async function registerUser(
   await page.goto('/')
   await page.waitForLoadState('networkidle')
 
+  // If already authenticated (e.g. previous test in same worker left a
+  // valid session), skip registration entirely.
+  const alreadySignedIn = await page
+    .getByText(/Signed in as/)
+    .first()
+    .isVisible()
+    .catch(() => false)
+  if (alreadySignedIn) return
+
   // 2. Wait for login or register heading
   await expect(
     page.getByRole('heading', { name: 'Sign in to your workspace' }).or(
