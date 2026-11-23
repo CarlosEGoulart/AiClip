@@ -31,13 +31,17 @@ export async function registerUser(
   await page.waitForLoadState('networkidle')
 
   // If already authenticated (e.g. previous test in same worker left a
-  // valid session), we're already on the dashboard — skip registration.
+  // valid session), navigate to the dashboard — skip registration.
   const alreadySignedIn = await page
     .getByText(/Signed in as/)
     .first()
     .isVisible()
     .catch(() => false)
-  if (alreadySignedIn) return
+  if (alreadySignedIn) {
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+    return
+  }
 
   // 2. Wait for login or register heading
   await expect(
