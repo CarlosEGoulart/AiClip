@@ -75,7 +75,7 @@ test.describe('Layout Redesign — T.1 to T.6', () => {
     // Media tab is active by default; upload controls present
     await expect(page.getByLabel('Upload Video')).toBeVisible()
     await expect(page.getByLabel('Import from YouTube URL')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Upload' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Upload', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Import' })).toBeVisible()
 
     // Empty state present before upload
