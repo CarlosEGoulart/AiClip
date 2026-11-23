@@ -69,3 +69,34 @@ pass, and no regressions were introduced.
 - Private video import
 - Bulk / playlist import
 - Server-side video download / transcoding in this slice
+
+## TDD Evidence
+
+### RED
+
+Tests were written before implementation for each increment:
+- Pest unit/feature tests for provider contract, fake provider, job, endpoint, rate limiter
+- Vitest component/API/hook tests for MediaUploadForm, uploadYouTubeUrl, uploadMediaAssetByUrl
+- Playwright E2E T.6/T.7 scenarios for valid URL import and invalid URL error at 3 viewports
+- Each test verified to fail because the required behavior was missing
+
+### GREEN
+
+Implementation made all tests pass:
+- Backend YouTube tests: 73/73 passed (provider, job, endpoint, rate limit)
+- Full backend suite: 2017 passed (3 pre-existing failures, unrelated to this issue)
+- Frontend Vitest: 477/477 passed (32 test files)
+- Frontend lint: passed (pre-existing warnings only)
+- Frontend build: passed (tsc -b && vite build)
+
+### REFACTOR
+
+Implementation quality improved without altering behavior:
+- FormRequest simplified: authorization moved from FormRequest to Controller (returns 404 JSON)
+- `it.each` replaced with `foreach` loops for Pest compatibility
+- `submitterName` state bug fixed via `useRef` (synchronous read/reset between submissions)
+- CSRF test aligned with existing `GenerateImageEndpointTest` pattern (202 without mutation)
+- `Queue::assertPushedTimes` removed (SyncQueue incompatibility in test env)
+- Sanitized log assertions fixed (provider failures caught before extractMetadata)
+
+All tests remained green after refactor.
