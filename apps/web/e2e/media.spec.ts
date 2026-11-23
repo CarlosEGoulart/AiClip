@@ -69,4 +69,52 @@ test.describe('Media Upload and Management', () => {
 
     await expect(page.getByText(/file type|validation failed/i)).toBeVisible()
   })
+
+  test('imports via YouTube URL → appears in list', async ({ page }) => {
+    const email = uniqueEmail()
+    await registerUser(page, 'Test User', email)
+
+    await page.getByLabel('Project Name').fill('YouTube Import Project')
+    const created = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/v1/projects' && response.request().method() === 'POST')
+    await page.getByRole('button', { name: 'Create Project' }).click()
+    const projectResponse = await created
+    expect(projectResponse.status()).toBe(201)
+    const { data: project } = await projectResponse.json()
+    await expect(page.getByText('YouTube Import Project')).toBeVisible()
+
+    await openProject(page, 'YouTube Import Project')
+
+    await page.getByLabel('Import from YouTube URL').fill('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+    const importResponse = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/v1/projects/' + project.id + '/media/import/youtube' && response.request().method() === 'POST')
+    await page.getByRole('button', { name: 'Import', exact: true }).click()
+    expect((await importResponse).status()).toBe(202)
+
+    await expect(page.getByText('youtube-import')).toBeVisible()
+  })
+
+  test('shows client-side error for invalid YouTube URL', async ({ page }) => {
+    const email = uniqueEmail()
+    await registerUser(page, 'Test User', email)
+
+    await page.getByLabel('Project Name').fill('Invalid URL Project')
+    const created = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/v1/projects' && response.request().method() === 'POST')
+    await page.getByRole('button', { name: 'Create Project' }).click()
+    const projectResponse = await created
+    expect(projectResponse.status()).toBe(201)
+    const { data: project } = await projectResponse.json()
+    await expect(page.getByText('Invalid URL Project')).toBeVisible()
+
+    await openProject(page, 'Invalid URL Project')
+
+    await page.getByLabel('Import from YouTube URL').fill('https://example.com/video')
+    await page.getByRole('button', { name: 'Import', exact: true }).click()
+
+    await expect(page.getByRole('alert')).toHaveTextContent(
+      /Please enter a valid YouTube URL/,
+    )
+    await expect(page.getByText('No media assets yet. Upload a video to get started.')).toBeVisible()
+  })
 })

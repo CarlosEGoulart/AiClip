@@ -8,6 +8,7 @@ import type { MediaAsset, MediaAssetResponse, MediaAssetsResponse } from '../typ
 vi.mock('../api', () => ({
   getMediaAssets: vi.fn(),
   uploadMediaAsset: vi.fn(),
+  uploadMediaAssetByUrl: vi.fn(),
   deleteMediaAsset: vi.fn(),
 }));
 
@@ -686,5 +687,62 @@ describe('useMediaAssets hook', () => {
     });
 
     expect(screen.getByTestId('error').textContent).toBe('null');
+  });
+
+  it('uploadYouTubeUrl calls mediaApi.uploadMediaAssetByUrl and adds the asset', async () => {
+    vi.mocked(mediaApi.uploadMediaAssetByUrl).mockResolvedValue({
+      data: { media_asset_id: 3, status: 'queued' },
+    });
+
+    const { result } = mountMedia();
+    await act(async () => {
+      expect(await result.current.uploadYouTubeUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe(true);
+    });
+
+    expect(mediaApi.uploadMediaAssetByUrl).toHaveBeenCalledWith(1, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    expect(result.current.mediaAssets).toHaveLength(1);
+    expect(result.current.mediaAssets[0]).toMatchObject({
+      id: 3,
+      project_id: 1,
+      status: 'queued',
+      source: 'url',
+    });
+    expect(result.current.uploading).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('uploadYouTubeUrl returns false and sets error on failure', async () => {
+    vi.mocked(mediaApi.uploadMediaAssetByUrl).mockRejectedValue({ type: 'validation', errors: { url: ['Invalid'] } });
+
+    const { result } = mountMedia();
+    await act(async () => {
+      expect(await result.current.uploadYouTubeUrl('https://example.com/video')).toBe(false);
+    });
+
+    expect(result.current.error).toContain('Validation');
+    expect(result.current.uploading).toBe(false);
+    expect(result.current.mediaAssets).toEqual([]);
+  });
+
+  it('uploadYouTubeUrl sets uploading during import', async () => {
+    const upload = deferred<{ data: { media_asset_id: number } }>();
+    vi.mocked(mediaApi.uploadMediaAssetByUrl).mockReturnValueOnce(upload.promise);
+
+    const { result } = mountMedia();
+    let uploading!: Promise<boolean>;
+    act(() => { uploading = result.current.uploadYouTubeUrl('https://youtu.be/dQw4w9WgXcQ'); });
+    expect(result.current.uploading).toBe(true);
+
+    await act(async () => {
+      upload.resolve({ data: { media_asset_id: 4 } });
+      expect(await uploading).toBe(true);
+    });
+    expect(result.current.uploading).toBe(false);
+  });
+
+  it('uploadYouTubeUrl with null project makes no request and returns false', async () => {
+    const { result } = mountMedia(null);
+    expect(await result.current.uploadYouTubeUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toBe(false);
+    expect(mediaApi.uploadMediaAssetByUrl).not.toHaveBeenCalled();
   });
 });

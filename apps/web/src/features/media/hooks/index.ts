@@ -9,6 +9,7 @@ export interface UseMediaAssetsReturn {
   error: string | null;
   fetchMedia: () => Promise<void>;
   uploadFile: (file: File) => Promise<boolean>;
+  uploadYouTubeUrl: (url: string) => Promise<boolean>;
   deleteMedia: (id: number) => Promise<boolean>;
   clearErrors: () => void;
 }
@@ -115,6 +116,43 @@ export function useMediaAssets(projectId: number | null): UseMediaAssetsReturn {
     }
   }, [projectId]);
 
+  const uploadYouTubeUrl = useCallback(async (url: string): Promise<boolean> => {
+    const scope = scopeRef.current;
+    if (projectId === null || !scope?.active || scope.projectId !== projectId) return false;
+    scope.pendingUploads++;
+    setUploading(true);
+    setError(null);
+    try {
+      const response = await mediaApi.uploadMediaAssetByUrl(projectId, url);
+      if (!scope.active) return false;
+      scope.listVersion++;
+      setLoading(false);
+      setError(null);
+      const mediaId = (response.data as { media_asset_id?: number }).media_asset_id ?? 0;
+      setMediaAssets((prev) => [
+        {
+          id: mediaId,
+          project_id: projectId,
+          original_name: 'youtube-import',
+          mime_type: 'video/mp4',
+          size_bytes: 0,
+          status: 'queued',
+          source: 'url',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as MediaAsset,
+        ...prev.filter((m) => m.id !== mediaId),
+      ]);
+      return true;
+    } catch (err: unknown) {
+      if (scope.active) setError(classifyError(err).message);
+      return false;
+    } finally {
+      scope.pendingUploads--;
+      if (scope.active) setUploading(scope.pendingUploads > 0);
+    }
+  }, [projectId]);
+
   const deleteMedia = useCallback(async (id: number): Promise<boolean> => {
     const scope = scopeRef.current;
     if (projectId === null || !scope?.active || scope.projectId !== projectId) return false;
@@ -145,6 +183,7 @@ export function useMediaAssets(projectId: number | null): UseMediaAssetsReturn {
     error,
     fetchMedia,
     uploadFile,
+    uploadYouTubeUrl,
     deleteMedia,
     clearErrors,
   };
