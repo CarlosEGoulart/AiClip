@@ -1987,3 +1987,14 @@ textarea.image-studio-field-control {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* --- Mobile: reduce padding so content fits within narrow viewports --- */
+@media (max-width: 768px) {
+  .dashboard-hero {
+    padding: var(--space-md);
+  }
+
+  .media-upload-form {
+    padding: var(--space-md);
+  }
+}
