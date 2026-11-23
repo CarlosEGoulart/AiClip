@@ -40,6 +40,10 @@ export async function registerUser(
   if (alreadySignedIn) {
     await page.goto('/')
     await page.waitForLoadState('networkidle')
+    // Ensure we're on the authenticated shell
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible({
+      timeout: 15000,
+    })
     return
   }
 
