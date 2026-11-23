@@ -86,7 +86,12 @@ export function MediaUploadForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="media-upload-form">
+    <form onSubmit={handleSubmit} className="media-upload-form" aria-label="Upload media">
+      <h2 className="media-upload-heading">Add media to this project</h2>
+      <p className="media-upload-intro">
+        Upload a video file, or import a clip directly from YouTube. Supported: MP4, QuickTime, WebM.
+      </p>
+
       <div className="media-upload-field">
         <label htmlFor="media-file-input" className="media-upload-label">
           Upload Video
@@ -136,7 +141,7 @@ export function MediaUploadForm({
           name="file"
           onClick={() => (submitterRef.current = 'file')}
           disabled={!selectedFile || uploading}
-          className="media-upload-button"
+          className="btn btn-primary media-upload-button"
         >
           {uploading ? 'Uploading...' : 'Upload'}
         </button>
@@ -145,7 +150,7 @@ export function MediaUploadForm({
           name="youtube"
           onClick={() => (submitterRef.current = 'youtube')}
           disabled={!youtubeUrl.trim() || uploading}
-          className="media-upload-button media-youtube-button"
+          className="btn btn-secondary media-upload-button media-youtube-button"
         >
           {uploading ? 'Importing...' : 'Import'}
         </button>

@@ -35,72 +35,54 @@ export function ProjectMediaSection({ projectId, projectName, onBack }: ProjectM
   return (
     <div className="project-media-section">
       <div className="project-media-header">
-        <button onClick={onBack} className="back-button" aria-label="Back to projects">
-          &larr; Back to Projects
+        <button onClick={onBack} className="btn btn-ghost back-button" aria-label="Back to projects">
+          <span aria-hidden="true">←</span> Back to Projects
         </button>
         <h2 className="project-media-title">{projectName}</h2>
       </div>
 
-      <div className="tab-navigation border-b border-gray-200 dark:border-gray-700 mb-6">
-        <nav className="flex gap-4" role="tablist" aria-label="Project sections">
-          <button
-            role="tab"
-            aria-selected={activeTab === 'media'}
-            aria-controls="media-panel"
-            id="media-tab"
-            onClick={() => setActiveTab('media')}
-            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'media'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
-            Media
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'review'}
-            aria-controls="review-panel"
-            id="review-tab"
-            onClick={() => setActiveTab('review')}
-            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'review'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
-            Review Clips
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'image-studio'}
-            aria-controls="image-studio-panel"
-            id="image-studio-tab"
-            onClick={() => setActiveTab('image-studio')}
-            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'image-studio'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
-            Image Studio
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'social'}
-            aria-controls="social-panel"
-            id="social-tab"
-            onClick={() => setActiveTab('social')}
-            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'social'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}
-          >
-            Social
-          </button>
-        </nav>
-      </div>
+      <nav className="tab-navigation" role="tablist" aria-label="Project sections">
+        <button
+          role="tab"
+          aria-selected={activeTab === 'media'}
+          aria-controls="media-panel"
+          id="media-tab"
+          onClick={() => setActiveTab('media')}
+          className={`tab-button ${activeTab === 'media' ? 'tab-button--active' : ''}`}
+        >
+          Media
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === 'review'}
+          aria-controls="review-panel"
+          id="review-tab"
+          onClick={() => setActiveTab('review')}
+          className={`tab-button ${activeTab === 'review' ? 'tab-button--active' : ''}`}
+        >
+          Review Clips
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === 'image-studio'}
+          aria-controls="image-studio-panel"
+          id="image-studio-tab"
+          onClick={() => setActiveTab('image-studio')}
+          className={`tab-button ${activeTab === 'image-studio' ? 'tab-button--active' : ''}`}
+        >
+          Image Studio
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === 'social'}
+          aria-controls="social-panel"
+          id="social-tab"
+          onClick={() => setActiveTab('social')}
+          className={`tab-button ${activeTab === 'social' ? 'tab-button--active' : ''}`}
+        >
+          Social
+        </button>
+      </nav>
 
       {activeTab === 'media' && (
         <div id="media-panel" role="tabpanel" aria-labelledby="media-tab">

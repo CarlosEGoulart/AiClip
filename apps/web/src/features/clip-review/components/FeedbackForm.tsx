@@ -119,8 +119,8 @@ export const FeedbackForm: React.FC<FeedbackFormProps> = ({
         {announcement}
       </div>
 
-      <label htmlFor="feedback" className="block text-sm font-medium text-gray-900 dark:text-white">
-        Feedback {isRequired ? <span className="text-gray-500 dark:text-gray-400 font-normal">(required for {statusLabel})</span> : <span className="text-gray-500 dark:text-gray-400 font-normal">(optional)</span>}
+      <label htmlFor="feedback" className="review-feedback-label">
+        Feedback {isRequired ? <span className="review-feedback-required">(required for {statusLabel})</span> : <span className="review-feedback-optional">(optional)</span>}
       </label>
 
       <textarea
@@ -133,26 +133,18 @@ export const FeedbackForm: React.FC<FeedbackFormProps> = ({
         disabled={disabled || loading}
         rows={4}
         autoComplete="off"
-        className={`
-          w-full px-4 py-3 border rounded-lg
-          focus:outline-none focus:ring-2 transition-colors resize-none
-          bg-white dark:bg-gray-800
-          text-gray-900 dark:text-white
-          placeholder:text-gray-400 dark:placeholder:text-gray-500
-          ${isError ? 'border-red-500 focus:ring-red-500/30' : isWarning ? 'border-yellow-500 focus:ring-yellow-500/30' : 'border-gray-300 dark:border-gray-600 focus:ring-blue-500/30'}
-          ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-        `}
+        className={`review-feedback-textarea ${isError ? 'review-feedback-textarea--error' : ''} ${disabled ? 'review-feedback-textarea--disabled' : ''}`}
         placeholder={isRequired ? `Explain why you are ${statusLabel.toLowerCase()}ing this clip…` : 'Optional feedback…'}
         aria-describedby="feedback-count feedback-error"
         aria-invalid={isError}
         aria-required={isRequired}
       />
 
-      <div className="flex items-center justify-between text-sm">
-        <span id="feedback-error" className={isError ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}>
+      <div className="review-feedback-meta">
+        <span id="feedback-error" className={`review-feedback-error ${isError ? 'review-feedback-error--active' : ''} ${isWarning ? 'review-feedback-error--warning' : ''}`}>
           {isOverLimit ? 'Exceeds 1000 characters' : isRequired && charCount > 0 && charCount < minLength ? `Minimum ${minLength} characters required` : ''}
         </span>
-        <span id="feedback-count" className={`tabular-nums ${isOverLimit ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500 dark:text-gray-400'}`}>
+        <span id="feedback-count" className="review-feedback-count">
           {charCount}/{maxLength}
         </span>
       </div>
@@ -161,7 +153,7 @@ export const FeedbackForm: React.FC<FeedbackFormProps> = ({
         type="button"
         onClick={handleSubmit}
         disabled={submitDisabled}
-        className="w-full py-2.5 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-action-manipulation"
+        className="btn btn-primary review-feedback-submit"
       >
         {loading ? 'Submitting…' : 'Submit Feedback'}
       </button>

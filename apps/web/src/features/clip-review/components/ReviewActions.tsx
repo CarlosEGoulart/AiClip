@@ -125,7 +125,6 @@ export const ReviewActions: React.FC<ReviewActionsProps> = ({
       </div>
 
       {actions.map((action) => {
-        const info = statusInfo[action.status];
         const isActive = currentStatus === action.status;
         // Terminal states (approved/rejected/needs_changes) reject further
         // transitions server-side (422); disable all buttons to prevent
@@ -137,17 +136,10 @@ export const ReviewActions: React.FC<ReviewActionsProps> = ({
             key={action.status}
             onClick={() => handleOpenDialog(action.status)}
             disabled={disabled || loading || isTerminal}
-            className={`
-              w-full py-3 px-4 rounded-lg font-medium transition-colors
-              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-900
-              disabled:opacity-50 disabled:cursor-not-allowed
-              flex items-center justify-center gap-2
-              ${isActive ? 'opacity-60 cursor-default' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}
-              ${info.bgColor} ${info.color}
-            `}
+            className={`btn btn-ghost review-action-button ${isActive ? 'review-action-button--active' : ''}`}
             aria-label={`${action.label} clip`}
             aria-pressed={isActive}
-            style={{ touchAction: 'manipulation' }}
+            style={{ touchAction: 'manipulation', width: '100%' }}
           >
             {loading && openDialog === action.status ? (
               <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">

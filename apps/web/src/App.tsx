@@ -158,11 +158,14 @@ function AuthenticatedLayoutWrapper() {
             </svg>
           </button>
         )}
-        <h1>AiClip</h1>
+        <div className="app-brand">
+          <span className="brand-mark" aria-hidden="true">▋</span>
+          <span className="brand-name">AiClip</span>
+        </div>
       </header>
-      <div className="app-main">
-        <div className="user-info">
-          <p className="welcome-message">
+      <div className="app-canvas">
+        <div className="app-user">
+          <p className="user-welcome">
             Signed in as <strong>{user?.name}</strong>
           </p>
           <p className="user-email">{user?.email}</p>

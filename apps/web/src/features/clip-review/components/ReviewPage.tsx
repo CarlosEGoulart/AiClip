@@ -221,7 +221,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                   poster={selectedClipReview.thumbnail_url || undefined}
                 />
 
-                <div className="bg-gray-100 dark:bg-gray-800/50 rounded-xl p-6 space-y-6">
+                <div className="review-actions-panel">
                   <ReviewActions
                     currentStatus={selectedClipReview.status}
                     onStatusChange={handleStatusChange}
@@ -239,8 +239,8 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                     />
                   ) : selectedClipReview.status === 'approved' ? (
                     <>
-                      <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                        <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
+                      <div className="review-note">
+                        <p className="review-note-text">
                           Feedback is optional for approved clips. You can add feedback after approving if needed.
                         </p>
                       </div>
@@ -251,7 +251,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                             setPublishDialogOpen(true);
                           }}
                           disabled={publishPending}
-                          className="btn btn-primary w-full"
+                          className="btn btn-primary review-publish-button"
                           aria-label="Publish to YouTube"
                         >
                           {publishPending ? 'Publishing…' : 'Publish to YouTube'}
@@ -259,16 +259,16 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                       )}
                     </>
                   ) : (
-                    <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                      <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
+                    <div className="review-note">
+                      <p className="review-note-text">
                         Publish to YouTube once this clip is approved.
                       </p>
                     </div>
                   )}
 
                   {publishError && (
-                    <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg" role="alert">
-                      <p className="text-red-700 dark:text-red-400 text-sm">{publishError}</p>
+                    <div className="review-alert" role="alert">
+                      <p className="review-alert-text">{publishError}</p>
                     </div>
                   )}
 
@@ -281,25 +281,31 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                     error={publishError}
                   />
 
-                  <div className="grid grid-cols-2 gap-4 pt-6">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        Duration: <span className="font-normal tabular-nums">{Math.floor(selectedClipReview.duration_ms / 60000)}:{String(Math.floor((selectedClipReview.duration_ms % 60000) / 1000)).padStart(2, '0')}</span>
+                  <div className="review-metrics">
+                    <div className="review-metric">
+                      <p className="review-metric-label">Duration</p>
+                      <p className="review-metric-value">
+                        {Math.floor(selectedClipReview.duration_ms / 60000)}:{String(
+                          Math.floor((selectedClipReview.duration_ms % 60000) / 1000),
+                        ).padStart(2, '0')}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        Resolution: <span className="font-normal tabular-nums">{selectedClipReview.width}×{selectedClipReview.height}</span>
+                    <div className="review-metric">
+                      <p className="review-metric-label">Resolution</p>
+                      <p className="review-metric-value">
+                        {selectedClipReview.width}×{selectedClipReview.height}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        Candidate: <span className="font-normal">#{selectedClipReview.candidate_index + 1}</span>
+                    <div className="review-metric">
+                      <p className="review-metric-label">Candidate</p>
+                      <p className="review-metric-value">
+                        #{selectedClipReview.candidate_index + 1}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                        Render Profile: <span className="font-normal">{selectedClipReview.render_profile_version}</span>
+                    <div className="review-metric">
+                      <p className="review-metric-label">Render Profile</p>
+                      <p className="review-metric-value">
+                        {selectedClipReview.render_profile_version}
                       </p>
                     </div>
                   </div>

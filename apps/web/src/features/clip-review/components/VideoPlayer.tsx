@@ -201,7 +201,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   return (
     <div
-      className="relative w-full aspect-[9/16] bg-black rounded-xl overflow-hidden"
+      className="video-player relative w-full aspect-[9/16] bg-black rounded-xl overflow-hidden"
       role="region"
       aria-label="Video player"
       tabIndex={0}
