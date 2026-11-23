@@ -30,7 +30,7 @@ Every evidence.md for a governed issue must contain:
 
 | Field | Format | Meaning |
 |-------|--------|---------|
-| Decision | `Decision: APPROVE` or `Decision: REJECT` | Official Tester decision line. |
+| Decision | `Decision:` with value APPROVE or REJECT | Official Tester decision line. |
 | Commit SHA | `Commit: <40-hex-sha>` | Full commit SHA the decision was taken against. |
 | PR URL | `PR: <https://github.com/<owner>/<repo>/pull/<n>>` | Pull Request URL the decision applies to. |
 | CI checks | `CI: <check-name>: <state>` | One line per observed CI check state at decision time. |
