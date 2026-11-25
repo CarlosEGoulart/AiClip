@@ -8,11 +8,9 @@
  * Live thing: none — clean typography-based design only.
  */
 
-:root {
+.auth-page {
+  color-scheme: light;
   /* --- Type: Switzer (grotesk-light) --- */
-  --font-sans: 'Switzer', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-heading: 'Switzer', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, Consolas, monospace;
 
   /* Type scale — five steps, clamp-based */
   --step-small: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem);    /* 13–14px */
@@ -29,55 +27,54 @@
   --leading-normal: 1.45;
   --leading-relaxed: 1.55;
 
-  /* --- Palette: Stone and blueprint --- */
-  --bg: #dfdedb;
-  --surface: #d3d2ce;
-  --ink: #26251e;
-  --muted: #5f5d55;
-  --accent: #2456d6;
-  --accent-ink: #ffffff;
+  /* --- Palette: dark identity shared with the rest of the app --- */
+  --bg: var(--color-ground);
+  --surface: var(--color-surface);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --accent: var(--color-accent);
+  --accent-ink: var(--color-accent-ink);
 
   /* Field tokens */
-  --field-1-bg: #181715;
-  --field-1-ink: #dfdedb;
+  --field-1-bg: var(--color-ground);
+  --field-1-ink: var(--color-ink);
 
-  /* Focus ring */
-  --focus-ring: 3px solid var(--accent);
-  --focus-offset: 2px;
+  /* Focus ring (shared with the app) */
+  --focus-ring: var(--focus-ring);
+  --focus-offset: var(--focus-offset);
 
-  /* Spacing */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 96px;
-  --space-4xl: 140px;
+  /* Spacing (4px-based scale, shared with the app) */
+  --space-xs: var(--space-xs);
+  --space-sm: var(--space-sm);
+  --space-md: var(--space-md);
+  --space-lg: var(--space-lg);
+  --space-xl: var(--space-xl);
+  --space-2xl: var(--space-2xl);
+  --space-3xl: var(--space-2xl);
+  --space-4xl: var(--space-2xl);
 
   /* Layout */
-  --container-max: 560px;
-  --column-start: 22%;           /* column starts at ~22% of viewport */
-  --column-width: 380px;         /* narrow column */
-  --section-gap: 120px;          /* gap between sections */
-  --page-margin: 24px;
+  --container-max: var(--container-max);
+  --column-width: var(--container-max);
+  --page-margin: var(--page-margin);
+  --section-gap: var(--section-gap);
 
-  /* Corners — square only (house rule) */
-  --radius: 0;
-  --radius-sm: 0;
-  --radius-lg: 0;
+  /* Corners (8-12px, shared with the app) */
+  --radius: var(--radius-control);
+  --radius-sm: var(--radius-control);
+  --radius-lg: var(--radius-card);
 
   /* Transitions */
-  --transition-fast: 0.1s ease;
-  --transition-normal: 0.15s ease;
+  --transition-fast: var(--motion-duration);
+  --transition-normal: var(--motion-duration);
 
   /* Motion */
-  --motion-duration: 300ms;
-  --motion-easing: ease-out;
+  --motion-duration: var(--motion-duration);
+  --motion-easing: var(--motion-easing);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  .auth-page {
     --bg: #1a1a18;
     --surface: #242422;
     --ink: #f2f2f0;
@@ -90,8 +87,6 @@
 }
 
 /* --- Font loading --- */
-@import url('https://api.fontshare.com/v2/css?f[]=switzer@400,500&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&display=swap');
 
 /* --- Base reset --- */
 *, *::before, *::after {
@@ -105,7 +100,7 @@ html {
   text-rendering: optimizeLegibility;
 }
 
-body {
+.auth-page {
   margin: 0;
   font-family: var(--font-sans);
   font-size: var(--step-body);
@@ -116,7 +111,7 @@ body {
   min-height: 100svh;
 }
 
-h1, h2, h3, h4, h5, h6 {
+.auth-page h1, .auth-page h2, .auth-page h3, .auth-page h4, .auth-page h5, .auth-page h6 {
   font-family: var(--font-heading);
   font-weight: 400;
   letter-spacing: var(--tracking-tight);
@@ -130,22 +125,22 @@ h1 { font-size: var(--step-display); }
 h2 { font-size: var(--step-head); }
 h3 { font-size: var(--step-lead); }
 
-p {
+.auth-page p {
   margin: 0 0 var(--space-md);
   max-width: 65ch;
 }
 
-a {
+.auth-page a {
   color: var(--accent);
   text-decoration: none;
   text-underline-offset: 2px;
 }
 
-a:hover {
+.auth-page a:hover {
   text-decoration: underline;
 }
 
-a:focus-visible {
+.auth-page a:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
   border-radius: 0;
@@ -156,7 +151,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
-[role="button"]:focus-visible {
+.auth-page [role="button"]:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
   border-radius: 0;
@@ -177,50 +172,50 @@ textarea:focus-visible,
   min-height: 100svh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-3xl) var(--page-margin);
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: var(--space-xl) var(--page-margin);
   position: relative;
   overflow-x: hidden;
 }
 
-/* The column is centered, never flush-left. Consistent side margins. */
-.auth-column {
+/* The column is flush-left, consistent with the rest of the app. */
+.auth-page .auth-column {
   width: 100%;
   max-width: var(--column-width);
   margin: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
-  align-items: center;
+  align-items: flex-start;
 }
 
 @media (max-width: 768px) {
-  .auth-column {
+  .auth-page .auth-column {
     margin: 0;
     max-width: calc(100% - 2 * var(--page-margin));
   }
 }
 
 @media (max-width: 390px) {
-  .auth-column {
+  .auth-page .auth-column {
     margin: 0;
     max-width: calc(100% - 2 * var(--page-margin));
   }
 }
 
-/* Logo/wordmark — centered */
-.auth-wordmark {
+/* Logo/wordmark — flush-left */
+.auth-page .auth-wordmark {
   font-size: var(--step-lead);
   font-weight: 500;
   letter-spacing: var(--tracking-tight);
   color: var(--muted);
   margin-bottom: var(--space-2xl);
-  align-self: center;
+  align-self: flex-start;
 }
 
 /* Headline — two lines max at every width */
-.auth-headline {
+.auth-page .auth-headline {
   font-size: var(--step-head);
   font-weight: 400;
   line-height: var(--leading-tight);
@@ -231,7 +226,7 @@ textarea:focus-visible,
 }
 
 /* Supporting sentence */
-.auth-supporting {
+.auth-page .auth-supporting {
   font-size: var(--step-body);
   line-height: var(--leading-relaxed);
   color: var(--muted);
@@ -240,27 +235,27 @@ textarea:focus-visible,
 }
 
 /* Form styles */
-.auth-form {
+.auth-page .auth-form {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
 }
 
-.auth-form .form-group {
+.auth-page .auth-form .form-group {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
 }
 
-.auth-form label {
+.auth-page .auth-form label {
   font-size: var(--step-small);
   font-weight: 500;
-  color: var(--ink);
+  color: var(--field-1-ink);
   letter-spacing: var(--tracking-normal);
 }
 
-.auth-form input {
+.auth-page .auth-form input {
   width: 100%;
   padding: 12px 16px;
   border: 1px solid var(--surface);
@@ -274,42 +269,42 @@ textarea:focus-visible,
   min-height: 44px; /* Touch target */
 }
 
-.auth-form input::placeholder {
+.auth-page .auth-form input::placeholder {
   color: var(--muted);
   opacity: 0.6;
 }
 
-.auth-form input:hover:not(:disabled) {
+.auth-page .auth-form input:hover:not(:disabled) {
   border-color: var(--muted);
 }
 
-.auth-form input:focus {
+.auth-page .auth-form input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-.auth-form input[aria-invalid="true"] {
+.auth-page .auth-form input[aria-invalid="true"] {
   border-color: #dc2626;
 }
 
-.auth-form input[aria-invalid="true"]:focus {
+.auth-page .auth-form input[aria-invalid="true"]:focus {
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
 }
 
-.auth-form input:disabled {
+.auth-page .auth-form input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.auth-form .field-error {
+.auth-page .auth-form .field-error {
   font-size: var(--step-small);
   color: #dc2626;
   line-height: 1.4;
 }
 
 /* Button — flat, one fill color, square corners */
-.auth-form button[type="submit"] {
+.auth-page .auth-form button[type="submit"] {
   width: 100%;
   padding: 14px 24px;
   border: none;
@@ -326,21 +321,21 @@ textarea:focus-visible,
   margin-top: var(--space-sm);
 }
 
-.auth-form button[type="submit"]:hover:not(:disabled) {
+.auth-page .auth-form button[type="submit"]:hover:not(:disabled) {
   opacity: 0.9;
 }
 
-.auth-form button[type="submit"]:active:not(:disabled) {
+.auth-page .auth-form button[type="submit"]:active:not(:disabled) {
   transform: scale(0.985);
 }
 
-.auth-form button[type="submit"]:disabled {
+.auth-page .auth-form button[type="submit"]:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 /* Loading state */
-.auth-form button[type="submit"] .spinner {
+.auth-page .auth-form button[type="submit"] .spinner {
   width: 18px;
   height: 18px;
   border: 2px solid currentColor;
@@ -352,7 +347,7 @@ textarea:focus-visible,
   vertical-align: middle;
 }
 
-.loading-text {
+.auth-page .loading-text {
   font-size: var(--step-body);
   color: var(--muted);
   text-align: center;
@@ -364,7 +359,7 @@ textarea:focus-visible,
 }
 
 /* Error message */
-.auth-error {
+.auth-page .auth-error {
   padding: var(--space-md) var(--space-lg);
   border-radius: var(--radius);
   background: rgba(220, 38, 38, 0.08);
@@ -375,14 +370,14 @@ textarea:focus-visible,
 }
 
 /* Auth switch link */
-.auth-switch {
+.auth-page .auth-switch {
   text-align: center;
   font-size: var(--step-body);
   color: var(--muted);
   margin-top: var(--space-lg);
 }
 
-.auth-switch .link-button {
+.auth-page .auth-switch .link-button {
   background: none;
   border: none;
   padding: 0;
@@ -394,17 +389,17 @@ textarea:focus-visible,
   text-underline-offset: 2px;
 }
 
-.auth-switch .link-button:hover {
+.auth-page .auth-switch .link-button:hover {
   opacity: 0.8;
 }
 
-.auth-switch .link-button:focus-visible {
+.auth-page .auth-switch .link-button:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
   border-radius: 0;
 }
 
-.auth-switch .link-button:disabled {
+.auth-page .auth-switch .link-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -421,7 +416,7 @@ textarea:focus-visible,
   }
 }
 
-.auth-column > * {
+.auth-page .auth-column > * {
   animation: fade-in-up var(--motion-duration) var(--motion-easing) both;
 }
 
