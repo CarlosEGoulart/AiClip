@@ -8,11 +8,9 @@
  * Live thing: The connection status updates in real-time; hovering a card reveals the OAuth flow preview.
  */
 
-:root {
+.social-page {
+  color-scheme: light;
   /* --- Type: Switzer (grotesk-tight) --- */
-  --font-sans: 'Switzer', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-heading: 'Switzer', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, Consolas, monospace;
 
   /* Type scale — five steps, clamp-based */
   --step-small: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem);    /* 13–14px */
@@ -29,22 +27,22 @@
   --leading-normal: 1.45;
   --leading-relaxed: 1.5;
 
-  /* --- Palette: Light-neutral / dark-neutral, mono-accent --- */
-  --bg: #f7f9fa;
-  --surface: #ecf0f2;
-  --ink: #1f3038;
-  --muted: #5d6b72;
-  --accent: #0d7480;
-  --accent-ink: #ffffff;
+  /* --- Palette: dark identity shared with the rest of the app --- */
+  --bg: var(--color-ground);
+  --surface: var(--color-surface);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --accent: var(--color-accent);
+  --accent-ink: var(--color-accent-ink);
 
-  /* Status colors */
-  --success: #15803d;
-  --success-bg: rgba(21, 128, 61, 0.1);
-  --warning: #b45309;
-  --warning-bg: rgba(180, 83, 9, 0.1);
-  --error: #dc2626;
-  --error-bg: rgba(220, 38, 38, 0.08);
-  --info: #0d7480;
+  /* Status colors (semantic, shared with the app) */
+  --success: var(--color-success);
+  --success-bg: var(--color-success-bg);
+  --warning: var(--color-warning);
+  --warning-bg: var(--color-warning-bg);
+  --error: var(--color-error);
+  --error-bg: var(--color-error-bg);
+  --info: var(--color-accent);
   --info-bg: rgba(13, 116, 128, 0.1);
 
   /* Platform brand colors (used sparingly as accent only) */
@@ -52,46 +50,46 @@
   --instagram: #e4405f;
   --tiktok: #000000;
 
-  /* Focus ring */
-  --focus-ring: 3px solid var(--accent);
-  --focus-offset: 2px;
+  /* Focus ring (visible, 44px touch targets) */
+  --focus-ring: var(--focus-ring);
+  --focus-offset: var(--focus-offset);
 
-  /* Spacing */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 96px;
-  --space-4xl: 140px;
+  /* Spacing (4px-based scale, shared with the app) */
+  --space-xs: var(--space-xs);
+  --space-sm: var(--space-sm);
+  --space-md: var(--space-md);
+  --space-lg: var(--space-lg);
+  --space-xl: var(--space-xl);
+  --space-2xl: var(--space-2xl);
+  --space-3xl: var(--space-2xl);
+  --space-4xl: var(--space-2xl);
 
   /* Layout */
-  --container-max: 800px;
-  --content-max: 600px;
-  --page-margin: 24px;
-  --section-gap: 120px;
+  --container-max: var(--container-max);
+  --content-max: var(--container-max);
+  --page-margin: var(--page-margin);
+  --section-gap: var(--section-gap);
 
-  /* Corners — square only (house rule) */
-  --radius: 0;
-  --radius-sm: 0;
-  --radius-lg: 0;
+  /* Corners (8-12px, shared with the app) */
+  --radius: var(--radius-control);
+  --radius-sm: var(--radius-control);
+  --radius-lg: var(--radius-card);
 
   /* Transitions */
-  --transition-fast: 0.1s ease;
-  --transition-normal: 0.15s ease;
+  --transition-fast: var(--motion-duration);
+  --transition-normal: var(--motion-duration);
 
   /* Motion */
-  --motion-duration: 300ms;
-  --motion-easing: ease-out;
+  --motion-duration: var(--motion-duration);
+  --motion-easing: var(--motion-easing);
 
-  /* Stage for fragments */
-  --stage-bg: var(--surface);
-  --stage-border: var(--surface);
+  /* Stage for fragments (dark surface, no shaped clip) */
+  --stage-bg: var(--color-surface);
+  --stage-border: var(--color-border);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  .social-page {
     --bg: #0a0d14;
     --surface: #131824;
     --ink: #e9edf3;
@@ -112,8 +110,6 @@
 }
 
 /* --- Font loading --- */
-@import url('https://api.fontshare.com/v2/css?f[]=switzer@400,500,600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&display=swap');
 
 /* --- Base reset --- */
 *, *::before, *::after {
@@ -127,7 +123,7 @@ html {
   text-rendering: optimizeLegibility;
 }
 
-body {
+.social-page {
   margin: 0;
   font-family: var(--font-sans);
   font-size: var(--step-body);
@@ -138,7 +134,7 @@ body {
   min-height: 100svh;
 }
 
-h1, h2, h3, h4, h5, h6 {
+.social-page h1, .social-page h2, .social-page h3, .social-page h4, .social-page h5, .social-page h6 {
   font-family: var(--font-heading);
   font-weight: 600;
   letter-spacing: var(--tracking-tight);
@@ -152,22 +148,22 @@ h1 { font-size: var(--step-display); }
 h2 { font-size: var(--step-head); }
 h3 { font-size: var(--step-lead); }
 
-p {
+.social-page p {
   margin: 0 0 var(--space-md);
   max-width: 65ch;
 }
 
-a {
+.social-page a {
   color: var(--accent);
   text-decoration: none;
   text-underline-offset: 2px;
 }
 
-a:hover {
+.social-page a:hover {
   text-decoration: underline;
 }
 
-a:focus-visible {
+.social-page a:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
   border-radius: 0;
@@ -179,7 +175,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [role="button"]:focus-visible,
-a:focus-visible {
+.social-page a:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
   border-radius: 0;
@@ -200,10 +196,12 @@ a:focus-visible {
   min-height: 100svh;
   padding: var(--space-3xl) var(--page-margin);
   background: var(--bg);
+  --page-description-ink: var(--muted);
+  --page-title-ink: var(--ink);
 }
 
 /* Hero section — fragment on shaped stage */
-.social-hero {
+.social-page .social-hero {
   max-width: var(--container-max);
   margin: 0 auto var(--space-4xl);
   display: grid;
@@ -213,20 +211,20 @@ a:focus-visible {
 }
 
 @media (min-width: 1024px) {
-  .social-hero {
+  .social-page .social-hero {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto 1fr;
   }
 }
 
 /* Left side — headline and description */
-.social-hero-content {
+.social-page .social-hero-content {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
 }
 
-.social-wordmark {
+.social-page .social-wordmark {
   font-size: var(--step-lead);
   font-weight: 500;
   letter-spacing: var(--tracking-tight);
@@ -234,7 +232,7 @@ a:focus-visible {
   margin-bottom: var(--space-lg);
 }
 
-.social-headline {
+.social-page .social-headline {
   font-size: var(--step-head);
   font-weight: 600;
   line-height: var(--leading-tight);
@@ -243,7 +241,7 @@ a:focus-visible {
   max-width: 100%;
 }
 
-.social-supporting {
+.social-page .social-supporting {
   font-size: var(--step-body);
   line-height: var(--leading-relaxed);
   color: var(--muted);
@@ -251,7 +249,7 @@ a:focus-visible {
 }
 
 /* Right side — shaped stage with interface fragment */
-.social-stage {
+.social-page .social-stage {
   background: var(--stage-bg);
   border: 1px solid var(--stage-border);
   border-radius: var(--radius);
@@ -265,21 +263,21 @@ a:focus-visible {
 }
 
 @media (min-width: 1024px) {
-  .social-stage {
+  .social-page .social-stage {
     /* Top-left corner cut with clip-path - the product's shape */
     clip-path: polygon(0 0, calc(100% - 60px) 0, 100% 60px, 100% 100%, 0 100%);
   }
 }
 
 /* Simulated connection fragment */
-.connection-fragment {
+.social-page .connection-fragment {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
 }
 
-.fragment-header {
+.social-page .fragment-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -287,13 +285,13 @@ a:focus-visible {
   border-bottom: 1px solid var(--stage-border);
 }
 
-.fragment-title {
+.social-page .fragment-title {
   font-size: var(--step-lead);
   font-weight: 600;
   color: var(--ink);
 }
 
-.fragment-status {
+.social-page .fragment-status {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
@@ -305,17 +303,17 @@ a:focus-visible {
   color: var(--success);
 }
 
-.fragment-status.warning {
+.social-page .fragment-status.warning {
   background: var(--warning-bg);
   color: var(--warning);
 }
 
-.fragment-status.error {
+.social-page .fragment-status.error {
   background: var(--error-bg);
   color: var(--error);
 }
 
-.fragment-status::before {
+.social-page .fragment-status::before {
   content: '';
   width: 8px;
   height: 8px;
@@ -323,7 +321,7 @@ a:focus-visible {
   background: currentColor;
 }
 
-.fragment-body {
+.social-page .fragment-body {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -331,7 +329,7 @@ a:focus-visible {
 }
 
 /* Connection preview card */
-.connection-preview {
+.social-page .connection-preview {
   background: var(--bg);
   border: 1px solid var(--surface);
   border-radius: var(--radius);
@@ -342,12 +340,12 @@ a:focus-visible {
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.connection-preview:hover {
+.social-page .connection-preview:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-.preview-avatar {
+.social-page .preview-avatar {
   width: 56px;
   height: 56px;
   border-radius: var(--radius);
@@ -359,23 +357,23 @@ a:focus-visible {
   flex-shrink: 0;
 }
 
-.preview-avatar img {
+.social-page .preview-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.preview-avatar svg {
+.social-page .preview-avatar svg {
   width: 28px;
   height: 28px;
 }
 
-.preview-info {
+.social-page .preview-info {
   flex: 1;
   min-width: 0;
 }
 
-.preview-name {
+.social-page .preview-name {
   font-size: var(--step-body);
   font-weight: 600;
   color: var(--ink);
@@ -384,7 +382,7 @@ a:focus-visible {
   text-overflow: ellipsis;
 }
 
-.preview-platform {
+.social-page .preview-platform {
   font-size: var(--step-small);
   color: var(--muted);
   text-transform: capitalize;
@@ -394,13 +392,13 @@ a:focus-visible {
 .preview-platform.instagram { color: var(--instagram); }
 .preview-platform.tiktok { color: var(--tiktok); }
 
-.preview-actions {
+.social-page .preview-actions {
   display: flex;
   gap: var(--space-sm);
 }
 
 /* Buttons — flat, one fill color, square corners */
-.btn {
+.social-page .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -418,62 +416,62 @@ a:focus-visible {
   text-decoration: none;
 }
 
-.btn:focus-visible {
+.social-page .btn:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
 
-.btn:active:not(:disabled) {
+.social-page .btn:active:not(:disabled) {
   transform: scale(0.985);
 }
 
-.btn:disabled {
+.social-page .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.btn-primary {
+.social-page .btn-primary {
   background: var(--accent);
   color: var(--accent-ink);
 }
 
-.btn-primary:hover:not(:disabled) {
+.social-page .btn-primary:hover:not(:disabled) {
   opacity: 0.9;
 }
 
-.btn-secondary {
+.social-page .btn-secondary {
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--stage-border);
 }
 
-.btn-secondary:hover:not(:disabled) {
+.social-page .btn-secondary:hover:not(:disabled) {
   background: var(--stage-border);
 }
 
-.btn-danger {
+.social-page .btn-danger {
   background: var(--error);
   color: #fff;
 }
 
-.btn-danger:hover:not(:disabled) {
+.social-page .btn-danger:hover:not(:disabled) {
   opacity: 0.9;
 }
 
-.btn-ghost {
+.social-page .btn-ghost {
   background: transparent;
   color: var(--accent);
   padding: var(--space-xs) var(--space-sm);
   min-height: auto;
 }
 
-.btn-ghost:hover:not(:disabled) {
+.social-page .btn-ghost:hover:not(:disabled) {
   opacity: 0.8;
   text-decoration: underline;
 }
 
 /* Spinner */
-.spinner {
+.social-page .spinner {
   width: 18px;
   height: 18px;
   border: 2px solid currentColor;
@@ -490,12 +488,12 @@ a:focus-visible {
 }
 
 /* --- Connection List --- */
-.social-connections {
+.social-page .social-connections {
   max-width: var(--container-max);
   margin: 0 auto;
 }
 
-.connections-header {
+.social-page .connections-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -506,28 +504,28 @@ a:focus-visible {
   border-bottom: 1px solid var(--surface);
 }
 
-.connections-title {
+.social-page .connections-title {
   font-size: var(--step-head);
   font-weight: 600;
   color: var(--ink);
 }
 
-.connections-count {
+.social-page .connections-count {
   font-size: var(--step-body);
   color: var(--muted);
 }
 
-.connect-button {
+.social-page .connect-button {
   flex-shrink: 0;
 }
 
-.connections-list {
+.social-page .connections-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
 }
 
-.connections-empty {
+.social-page .connections-empty {
   text-align: center;
   padding: var(--space-4xl) var(--space-xl);
   background: var(--surface);
@@ -535,7 +533,7 @@ a:focus-visible {
   border-radius: var(--radius);
 }
 
-.connections-empty-icon {
+.social-page .connections-empty-icon {
   width: 64px;
   height: 64px;
   margin: 0 auto var(--space-lg);
@@ -543,14 +541,14 @@ a:focus-visible {
   color: var(--muted);
 }
 
-.connections-empty-title {
+.social-page .connections-empty-title {
   font-size: var(--step-lead);
   font-weight: 600;
   color: var(--ink);
   margin-bottom: var(--space-sm);
 }
 
-.connections-empty-text {
+.social-page .connections-empty-text {
   font-size: var(--step-body);
   color: var(--muted);
   max-width: 30ch;
@@ -558,7 +556,7 @@ a:focus-visible {
 }
 
 /* --- Connection Card --- */
-.connection-card {
+.social-page .connection-card {
   background: var(--bg);
   border: 1px solid var(--surface);
   border-radius: var(--radius);
@@ -570,17 +568,17 @@ a:focus-visible {
   position: relative;
 }
 
-.connection-card:hover {
+.social-page .connection-card:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-.connection-card:focus-within {
+.social-page .connection-card:focus-within {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
 
-.card-avatar {
+.social-page .card-avatar {
   width: 56px;
   height: 56px;
   border-radius: var(--radius);
@@ -592,18 +590,18 @@ a:focus-visible {
   flex-shrink: 0;
 }
 
-.card-avatar img {
+.social-page .card-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.card-avatar svg {
+.social-page .card-avatar svg {
   width: 28px;
   height: 28px;
 }
 
-.card-content {
+.social-page .card-content {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -611,18 +609,18 @@ a:focus-visible {
   gap: var(--space-md);
 }
 
-.card-header {
+.social-page .card-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-md);
 }
 
-.card-info {
+.social-page .card-info {
   min-width: 0;
 }
 
-.card-name {
+.social-page .card-name {
   font-size: var(--step-body);
   font-weight: 600;
   color: var(--ink);
@@ -631,7 +629,7 @@ a:focus-visible {
   text-overflow: ellipsis;
 }
 
-.card-platform {
+.social-page .card-platform {
   font-size: var(--step-small);
   color: var(--muted);
   text-transform: capitalize;
@@ -643,7 +641,7 @@ a:focus-visible {
 .card-platform.tiktok { color: var(--tiktok); }
 
 /* Status badge — flat, no rounded pills */
-.card-status {
+.social-page .card-status {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
@@ -656,7 +654,7 @@ a:focus-visible {
   flex-shrink: 0;
 }
 
-.card-status::before {
+.social-page .card-status::before {
   content: '';
   width: 8px;
   height: 8px;
@@ -664,27 +662,27 @@ a:focus-visible {
   background: currentColor;
 }
 
-.card-status.warning {
+.social-page .card-status.warning {
   background: var(--warning-bg);
   color: var(--warning);
 }
 
-.card-status.error {
+.social-page .card-status.error {
   background: var(--error-bg);
   color: var(--error);
 }
 
-.card-status.revoked {
+.social-page .card-status.revoked {
   background: var(--muted);
   color: var(--muted);
   opacity: 0.6;
 }
 
-.card-status.revoked::before {
+.social-page .card-status.revoked::before {
   background: var(--muted);
 }
 
-.card-channel {
+.social-page .card-channel {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
@@ -696,11 +694,11 @@ a:focus-visible {
   transition: opacity var(--transition-fast);
 }
 
-.card-channel:hover {
+.social-page .card-channel:hover {
   opacity: 0.8;
 }
 
-.card-error {
+.social-page .card-error {
   padding: var(--space-md);
   background: var(--error-bg);
   border: 1px solid rgba(220, 38, 38, 0.15);
@@ -710,7 +708,7 @@ a:focus-visible {
   line-height: var(--leading-relaxed);
 }
 
-.card-actions {
+.social-page .card-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
@@ -718,7 +716,7 @@ a:focus-visible {
 }
 
 /* --- Disconnect Confirmation Dialog --- */
-.disconnect-dialog-overlay {
+.social-page .disconnect-dialog-overlay {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -735,7 +733,7 @@ a:focus-visible {
   to { opacity: 1; }
 }
 
-.disconnect-dialog {
+.social-page .disconnect-dialog {
   background: var(--bg);
   border: 1px solid var(--surface);
   border-radius: var(--radius);
@@ -757,27 +755,27 @@ a:focus-visible {
   }
 }
 
-.disconnect-dialog-title {
+.social-page .disconnect-dialog-title {
   font-size: var(--step-lead);
   font-weight: 600;
   color: var(--ink);
   margin-bottom: var(--space-sm);
 }
 
-.disconnect-dialog-text {
+.social-page .disconnect-dialog-text {
   font-size: var(--step-body);
   color: var(--muted);
   margin-bottom: var(--space-xl);
 }
 
-.disconnect-dialog-actions {
+.social-page .disconnect-dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-sm);
 }
 
 /* --- Connect Platform Modal --- */
-.connect-modal-overlay {
+.social-page .connect-modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -789,7 +787,7 @@ a:focus-visible {
   animation: fade-in var(--motion-duration) var(--motion-easing);
 }
 
-.connect-modal {
+.social-page .connect-modal {
   background: var(--bg);
   border: 1px solid var(--surface);
   border-radius: var(--radius);
@@ -802,20 +800,20 @@ a:focus-visible {
   animation: slide-up var(--motion-duration) var(--motion-easing);
 }
 
-.connect-modal-header {
+.social-page .connect-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-xl);
 }
 
-.connect-modal-title {
+.social-page .connect-modal-title {
   font-size: var(--step-lead);
   font-weight: 600;
   color: var(--ink);
 }
 
-.connect-modal-close {
+.social-page .connect-modal-close {
   width: 44px;
   height: 44px;
   border: none;
@@ -829,17 +827,17 @@ a:focus-visible {
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.connect-modal-close:hover {
+.social-page .connect-modal-close:hover {
   background: var(--stage-border);
   color: var(--ink);
 }
 
-.connect-modal-close:focus-visible {
+.social-page .connect-modal-close:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
 
-.connect-modal-error {
+.social-page .connect-modal-error {
   padding: var(--space-md);
   background: var(--error-bg);
   border: 1px solid rgba(220, 38, 38, 0.15);
@@ -849,7 +847,7 @@ a:focus-visible {
   margin-bottom: var(--space-lg);
 }
 
-.connect-modal-description {
+.social-page .connect-modal-description {
   font-size: var(--step-body);
   color: var(--muted);
   margin-bottom: var(--space-xl);
@@ -857,19 +855,19 @@ a:focus-visible {
 }
 
 /* Platform grid */
-.platform-grid {
+.social-page .platform-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-md);
 }
 
 @media (max-width: 768px) {
-  .platform-grid {
+  .social-page .platform-grid {
     grid-template-columns: 1fr;
   }
 }
 
-.platform-button {
+.social-page .platform-button {
   position: relative;
   padding: var(--space-xl);
   border: 2px solid var(--surface);
@@ -884,28 +882,28 @@ a:focus-visible {
   text-align: center;
 }
 
-.platform-button:hover:not(:disabled) {
+.social-page .platform-button:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--surface);
 }
 
-.platform-button:focus-visible {
+.social-page .platform-button:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
   border-color: var(--accent);
 }
 
-.platform-button:disabled {
+.social-page .platform-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.platform-button.selected {
+.social-page .platform-button.selected {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--bg));
 }
 
-.platform-icon {
+.social-page .platform-icon {
   width: 56px;
   height: 56px;
   border-radius: var(--radius);
@@ -919,25 +917,25 @@ a:focus-visible {
 .platform-icon.instagram { background: linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); }
 .platform-icon.tiktok { background: var(--tiktok); }
 
-.platform-icon svg {
+.social-page .platform-icon svg {
   width: 28px;
   height: 28px;
   color: #fff;
 }
 
-.platform-name {
+.social-page .platform-name {
   font-size: var(--step-body);
   font-weight: 600;
   color: var(--ink);
 }
 
-.platform-description {
+.social-page .platform-description {
   font-size: var(--step-small);
   color: var(--muted);
   max-width: 14ch;
 }
 
-.platform-selected-indicator {
+.social-page .platform-selected-indicator {
   position: absolute;
   bottom: -6px;
   left: 50%;
@@ -950,11 +948,11 @@ a:focus-visible {
   transition: opacity var(--transition-fast);
 }
 
-.platform-button.selected .platform-selected-indicator {
+.social-page .platform-button.selected .platform-selected-indicator {
   opacity: 1;
 }
 
-.connect-modal-loading {
+.social-page .connect-modal-loading {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -964,7 +962,7 @@ a:focus-visible {
   font-size: var(--step-body);
 }
 
-.connect-modal-loading .spinner {
+.social-page .connect-modal-loading .spinner {
   width: 24px;
   height: 24px;
   border-width: 3px;
@@ -982,19 +980,19 @@ a:focus-visible {
   }
 }
 
-.social-hero > * {
+.social-page .social-hero > * {
   animation: fade-in-up var(--motion-duration) var(--motion-easing) both;
 }
 
 .social-hero > *:nth-child(1) { animation-delay: 0ms; }
 .social-hero > *:nth-child(2) { animation-delay: 120ms; }
 
-.connections-header {
+.social-page .connections-header {
   animation: fade-in-up var(--motion-duration) var(--motion-easing) both;
   animation-delay: 180ms;
 }
 
-.connection-card {
+.social-page .connection-card {
   animation: fade-in-up var(--motion-duration) var(--motion-easing) both;
 }
 
@@ -1007,7 +1005,7 @@ a:focus-visible {
 .connections-list .connection-card:nth-child(6) { animation-delay: 540ms; }
 
 /* Back button in header */
-.back-button {
+.social-page .back-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1023,28 +1021,28 @@ a:focus-visible {
   flex-shrink: 0;
 }
 
-.back-button:hover {
+.social-page .back-button:hover {
   border-color: var(--accent);
   background: var(--surface);
 }
 
-.back-button:focus-visible {
+.social-page .back-button:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
 
-.back-button:active {
+.social-page .back-button:active {
   transform: scale(0.985);
 }
 
-.app-header {
+.social-page .app-header {
   display: flex;
   align-items: center;
   padding: var(--space-lg) var(--space-xl);
   border-bottom: 1px solid var(--surface);
 }
 
-.app-header h1 {
+.social-page .app-header h1 {
   font-size: var(--step-lead);
   font-weight: 600;
   color: var(--ink);

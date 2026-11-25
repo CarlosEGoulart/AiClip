@@ -1,0 +1,394 @@
+/*
+ * AiClip design tokens — "Frame and cut" direction
+ * Direction: frame-and-cut (saas, media-studio, quiet)
+ * Seed: manually selected from the video-editing subject
+ * Type: Switzer (grotesk) + Geist Mono (accent/numbers only)
+ * Palette: one ground, one ink, one accent (#2456d6 blue), flat colour
+ * Idea: "On this page, the long-form video becomes the short clip in the frame."
+ * Motif: the square-cornered frame — the viewport that holds the clip, the image, the connection.
+ * Corners: square only. Shadows: none at rest. Gradients: none.
+ */
+
+/* --- Ground / Ink / Accent (spec roles) --- */
+:root {
+  --color-ground: #ffffff;
+  --color-ink: #0b0a0c;
+  --color-accent: #2456d6;
+  --color-accent-ink: #ffffff;
+
+  /* Surfaces (tone steps, never lines/shadows for separation) */
+  --color-surface: #f7f6f4;
+  --color-surface-strong: #eef0ee;
+  --color-border: #e5e4e7;
+
+  /* Semantic colours (status only, not decorative) */
+  --color-error: #dc2626;
+  --color-error-bg: rgba(220, 38, 38, 0.08);
+  --color-error-border: rgba(220, 38, 38, 0.2);
+  --color-success: #15803d;
+  --color-success-bg: rgba(21, 128, 61, 0.1);
+  --color-muted: #5c5860;
+
+  /* --- Type --- */
+  --font-sans: 'Switzer', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-heading: 'Switzer', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, Consolas, monospace;
+
+  /* Type scale — five steps max */
+  --step-display: clamp(3rem, 1.5rem + 5vw, 6rem);     /* hero headline */
+  --step-head: clamp(2rem, 1.3rem + 3.2vw, 4rem);      /* section headings */
+  --step-lead: clamp(1.25rem, 1.1rem + 0.7vw, 1.625rem); /* supporting text */
+  --step-body: clamp(1.0625rem, 1rem + 0.25vw, 1.1875rem); /* UI text, labels */
+  --step-small: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem); /* captions, metadata */
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: -0.005em;
+  --leading-tight: 0.95;
+  --leading-normal: 1.45;
+  --leading-relaxed: 1.6;
+
+  /* --- Spacing --- */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 96px;
+  --space-4xl: 140px;
+
+  /* --- Layout --- */
+  --container-max: 800px;
+  --page-margin: 24px;
+  --section-gap: 120px; /* desktop: 120-240px between sections */
+
+  /* --- Corners: square only (house rule) --- */
+  --radius: 0;
+  --radius-sm: 0;
+  --radius-lg: 0;
+
+  /* --- Focus ring (visible, 44px touch targets) --- */
+  --focus-ring: 2px solid var(--color-accent);
+  --focus-offset: 2px;
+  --touch-target: 44px;
+
+  /* --- Motion --- */
+  --motion-duration: 300ms;
+  --motion-easing: ease-out;
+  --entrance-stagger: 75ms;
+  --entrance-rise: 24px;
+
+  /* Backward-compatible aliases for existing component styles */
+  --text: var(--color-ink);
+  --text-h: var(--color-ink);
+  --bg: var(--color-ground);
+  --surface: var(--color-surface);
+  --border: var(--color-border);
+  --accent: var(--color-accent);
+  --accent-ink: var(--color-accent-ink);
+  --error: var(--color-error);
+  --error-bg: var(--color-error-bg);
+  --success: var(--color-success);
+  --success-bg: var(--color-success-bg);
+  --shadow: none;
+
+  --sans: var(--font-sans);
+  --heading: var(--font-heading);
+  --mono: var(--font-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-ground: #0a0a0f;
+    --color-ink: #f3f4f6;
+    --color-accent: #5a9bfc;
+    --color-accent-ink: #0a0a0f;
+
+    --color-surface: #121114;
+    --color-surface-strong: #1a1b23;
+    --color-border: #1e2028;
+
+    --color-error: #f87171;
+    --color-error-bg: rgba(248, 113, 113, 0.12);
+    --color-error-border: rgba(248, 113, 113, 0.25);
+    --color-success: #4ade80;
+    --color-success-bg: rgba(74, 222, 128, 0.12);
+    --color-muted: #b0adb4;
+
+    --text: var(--color-ink);
+    --text-h: var(--color-ink);
+    --bg: var(--color-ground);
+    --surface: var(--color-surface);
+    --border: var(--color-border);
+    --accent: var(--color-accent);
+    --accent-ink: var(--color-accent-ink);
+    --error: var(--color-error);
+    --error-bg: var(--color-error-bg);
+    --success: var(--color-success);
+    --success-bg: var(--color-success-bg);
+    --shadow: none;
+  }
+}
+
+/* --- Base reset --- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--step-body);
+  line-height: var(--leading-relaxed);
+  letter-spacing: var(--tracking-normal);
+  color: var(--color-ink);
+  background: var(--color-ground);
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  color: var(--color-ink);
+  margin: 0;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--step-display);
+}
+
+h2 {
+  font-size: var(--step-head);
+}
+
+h3 {
+  font-size: var(--step-lead);
+}
+
+p {
+  margin: 0 0 var(--space-md);
+  max-width: 65ch;
+  color: var(--color-ink);
+  font-size: var(--step-body);
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  text-decoration: none;
+}
+
+a:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius);
+}
+
+/* --- Focus visible for every interactive element --- */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+a:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius);
+}
+
+/* --- Reduced motion: keep content, drop travel --- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  [data-entrance] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .section-enters > * {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+  .moving-picture {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+/* --- Touch target baseline --- */
+button,
+a[role="button"],
+input,
+select,
+textarea,
+[role="tab"],
+[role="button"] {
+  min-height: var(--touch-target);
+  min-width: var(--touch-target);
+  box-sizing: border-box;
+}
+
+/* --- Visually hidden (screen readers only) --- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Entrance motion: heading → text → picture, staggered 60–90ms, rising 16–32px --- */
+.section-enters > * {
+  opacity: 0;
+  transform: translateY(var(--entrance-rise));
+  animation: entrance-fade-up var(--motion-duration) var(--motion-easing) forwards;
+}
+
+.section-enters > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.section-enters > *:nth-child(2) {
+  animation-delay: var(--entrance-stagger);
+}
+.section-enters > *:nth-child(3) {
+  animation-delay: calc(var(--entrance-stagger) * 2);
+}
+.section-enters > *:nth-child(4) {
+  animation-delay: calc(var(--entrance-stagger) * 3);
+}
+.section-enters > *:nth-child(5) {
+  animation-delay: calc(var(--entrance-stagger) * 4);
+}
+.section-enters > *:nth-child(6) {
+  animation-delay: calc(var(--entrance-stagger) * 5);
+}
+
+@keyframes entrance-fade-up {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- One moving picture: slow drift on the hero image --- */
+.moving-picture {
+  animation: slow-drift 8s var(--motion-easing) infinite alternate;
+  will-change: transform;
+}
+
+@keyframes slow-drift {
+  from {
+    transform: translateY(0) scale(1);
+  }
+  to {
+    transform: translateY(-12px) scale(1.02);
+  }
+}
+
+/* --- Flat buttons (one fill colour, square corners) --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: var(--step-body);
+  font-weight: 500;
+  letter-spacing: var(--tracking-normal);
+  cursor: pointer;
+  min-height: var(--touch-target);
+  min-width: var(--touch-target);
+  text-decoration: none;
+  transition: opacity var(--motion-duration) var(--motion-easing),
+    transform var(--motion-duration) var(--motion-easing);
+}
+
+.btn:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-strong);
+}
+
+.btn-danger {
+  background: var(--color-error);
+  color: #ffffff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-accent);
+  padding: var(--space-xs) var(--space-sm);
+  min-height: auto;
+  border: 1px solid transparent;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  opacity: 0.8;
+  text-decoration: underline;
+}

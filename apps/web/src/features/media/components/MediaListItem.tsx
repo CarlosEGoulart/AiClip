@@ -27,14 +27,19 @@ export function MediaListItem({ media, onDelete }: MediaListItemProps) {
   };
 
   return (
-    <li className="media-list-item" role="listitem" aria-label={`Media: ${media.original_name}`}>
+    <li className="media-list-item" role="listitem" tabIndex={0} aria-label={`Media: ${media.original_name}`}>
       <div className="media-list-item-content">
-        <span className="media-list-item-name">{media.original_name}</span>
-        <span className="media-list-item-size">{formatBytes(media.size_bytes)}</span>
-        <span className="media-list-item-date">
-          {new Date(media.created_at).toLocaleDateString()}
-        </span>
-        <span className={`media-list-item-status media-list-item-status--${media.status}`}>
+        <div className="media-list-item-meta">
+          <span className="media-list-item-name">{media.original_name}</span>
+          <span className="media-list-item-size">{formatBytes(media.size_bytes)}</span>
+          <span className="media-list-item-date">
+            {new Date(media.created_at).toLocaleDateString()}
+          </span>
+        </div>
+        <span
+          className={`media-list-item-status media-list-item-status--${media.status}`}
+          aria-label={`Status: ${media.status}`}
+        >
           {media.status}
         </span>
       </div>
@@ -45,7 +50,7 @@ export function MediaListItem({ media, onDelete }: MediaListItemProps) {
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="delete-confirm-button"
+              className="btn btn-danger delete-confirm-button"
               aria-label={`Confirm delete ${media.original_name}`}
             >
               {deleting ? 'Deleting...' : 'Yes, delete'}
@@ -53,7 +58,7 @@ export function MediaListItem({ media, onDelete }: MediaListItemProps) {
             <button
               onClick={() => setConfirming(false)}
               disabled={deleting}
-              className="delete-cancel-button"
+              className="btn btn-ghost delete-cancel-button"
               aria-label={`Cancel delete ${media.original_name}`}
             >
               Cancel
@@ -62,7 +67,7 @@ export function MediaListItem({ media, onDelete }: MediaListItemProps) {
         ) : (
           <button
             onClick={() => setConfirming(true)}
-            className="delete-button"
+            className="btn btn-ghost delete-button"
             aria-label={`Delete ${media.original_name}`}
           >
             Delete

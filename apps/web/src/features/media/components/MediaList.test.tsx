@@ -27,15 +27,32 @@ describe('MediaList', () => {
       <MediaList mediaAssets={[]} onDelete={vi.fn()} loading={true} />,
     );
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading media assets...');
+    expect(screen.getByRole('status')).toHaveTextContent('Loading media assets…');
   });
 
-  it('shows empty state when no media assets', () => {
+  it('shows empty state heading when no media assets', () => {
     render(
       <MediaList mediaAssets={[]} onDelete={vi.fn()} loading={false} />,
     );
 
     expect(screen.getByText(/No media assets yet/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'No media assets yet' })).toBeInTheDocument();
+  });
+
+  it('shows empty state body text', () => {
+    render(
+      <MediaList mediaAssets={[]} onDelete={vi.fn()} loading={false} />,
+    );
+
+    expect(screen.getByText(/Upload a video to get started/)).toBeInTheDocument();
+  });
+
+  it('renders media list heading', () => {
+    render(
+      <MediaList mediaAssets={mockMediaAssets} onDelete={vi.fn()} loading={false} />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Media Assets' })).toBeInTheDocument();
   });
 
   it('renders media list items', () => {
@@ -64,5 +81,34 @@ describe('MediaList', () => {
 
     const deleteButtons = screen.getAllByRole('button', { name: /Delete/ });
     expect(deleteButtons.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // --- Visual / accessibility additions (issue #158) ---
+
+  it('every touch target is at least 44px', () => {
+    render(
+      <MediaList mediaAssets={mockMediaAssets} onDelete={vi.fn()} loading={false} />,
+    );
+
+    const buttons = screen.getAllByRole('button');
+    for (const button of buttons) {
+      const box = button.getBoundingClientRect();
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it('every list item is keyboard focusable in reading order', () => {
+    render(
+      <MediaList mediaAssets={mockMediaAssets} onDelete={vi.fn()} loading={false} />,
+    );
+
+    const items = screen.getAllByRole('listitem');
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(item).toHaveAttribute('tabindex', '0');
+      item.focus();
+      expect(document.activeElement).toBe(item);
+    }
   });
 });

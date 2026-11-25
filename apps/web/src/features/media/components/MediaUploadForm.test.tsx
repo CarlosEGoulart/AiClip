@@ -228,4 +228,58 @@ describe('MediaUploadForm', () => {
     fireEvent.change(urlInput, { target: { value: 'https://youtu.be/dQw4w9WgXcQ' } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  // --- Visual / accessibility additions (issue #158) ---
+
+  it('renders a heading on the first screen', () => {
+    renderForm();
+
+    expect(screen.getByRole('heading', { name: 'Add media to this project' })).toBeInTheDocument();
+  });
+
+  it('renders a primary action button', () => {
+    renderForm();
+
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument();
+  });
+
+  it('every touch target is at least 44px', () => {
+    renderForm();
+
+    const controls = [
+      screen.getByLabelText('Upload Video'),
+      screen.getByLabelText('Import from YouTube URL'),
+      screen.getByRole('button', { name: 'Upload' }),
+      screen.getByRole('button', { name: 'Import' }),
+    ];
+    for (const control of controls) {
+      const box = control.getBoundingClientRect();
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it('every interactive control has an accessible name', () => {
+    renderForm();
+
+    expect(screen.getByLabelText('Upload Video')).toBeInTheDocument();
+    expect(screen.getByLabelText('Import from YouTube URL')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument();
+  });
+
+  it('shows an error alert with role alert on invalid submission', () => {
+    renderForm({ error: 'File too large' });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('File too large');
+  });
+
+  it('disables submit buttons while uploading (loading state)', () => {
+    renderForm({ uploading: true });
+
+    expect(screen.getByRole('button', { name: 'Uploading...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Importing...' })).toBeDisabled();
+    expect(screen.getByLabelText('Upload Video')).toBeDisabled();
+    expect(screen.getByLabelText('Import from YouTube URL')).toBeDisabled();
+  });
 });

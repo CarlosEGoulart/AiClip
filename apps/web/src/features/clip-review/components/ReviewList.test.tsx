@@ -83,14 +83,14 @@ describe('ReviewList', () => {
   it('shows correct status badge colors', () => {
     render(<ReviewList clipReviews={mockClipReviews} loading={false} onReview={onReview} />);
 
-    // Pending - gray
-    expect(screen.getByText('Pending')).toHaveClass('bg-gray-100');
-    // Approved - green
-    expect(screen.getByText('Approved')).toHaveClass('bg-green-100');
-    // Rejected - red
-    expect(screen.getByText('Rejected')).toHaveClass('bg-red-100');
-    // Needs Changes - orange
-    expect(screen.getByText('Needs Changes')).toHaveClass('bg-orange-100');
+    // Pending - success tint
+    expect(screen.getByText('Pending')).toHaveClass('review-list-item-badge--pending');
+    // Approved - success tint
+    expect(screen.getByText('Approved')).toHaveClass('review-list-item-badge--approved');
+    // Rejected - error tint
+    expect(screen.getByText('Rejected')).toHaveClass('review-list-item-badge--rejected');
+    // Needs Changes - surface tint
+    expect(screen.getByText('Needs Changes')).toHaveClass('review-list-item-badge--needs_changes');
   });
 
   it('shows duration, candidate index, status badge, render profile', () => {
@@ -128,7 +128,7 @@ describe('ReviewList', () => {
     const { container } = render(<ReviewList clipReviews={mockClipReviews} loading={false} onReview={onReview} />);
 
     const list = container.querySelector('[role="list"]');
-    expect(list).toHaveClass('space-y-4');
+    expect(list).toHaveClass('review-list');
   });
 
   it('keyboard navigation works with Tab', async () => {
@@ -151,13 +151,13 @@ describe('ReviewList', () => {
     expect(buttons[1]).toHaveAttribute('aria-label', 'Review clip 2');
   });
 
-  it('alternates layout direction for visual variety', () => {
+  it('each item is a styled review card', () => {
     render(<ReviewList clipReviews={mockClipReviews} loading={false} onReview={onReview} />);
 
     const articles = screen.getAllByRole('listitem');
-    // First item (index 0) should have flex (not flex-row-reverse)
-    expect(articles[0].querySelector('div.flex')).not.toHaveClass('flex-row-reverse');
-    // Second item (index 1) should have flex-row-reverse
-    expect(articles[1].querySelector('div.flex')).toHaveClass('flex-row-reverse');
+    expect(articles).toHaveLength(4);
+    for (const article of articles) {
+      expect(article).toHaveClass('review-list-item');
+    }
   });
 });

@@ -30,11 +30,28 @@ export async function registerUser(
   await page.goto('/')
   await page.waitForLoadState('networkidle')
 
+  // If already authenticated (e.g. previous test in same worker left a
+  // valid session), navigate to the dashboard — skip registration.
+  const alreadySignedIn = await page
+    .getByText(/Signed in as/)
+    .first()
+    .isVisible()
+    .catch(() => false)
+  if (alreadySignedIn) {
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+    await page.waitForURL('**/', { timeout: 15000 })
+    await expect(page.getByText(/Signed in as/).first()).toBeVisible({
+      timeout: 15000,
+    })
+    return
+  }
+
   // 2. Wait for login or register heading
   await expect(
     page.getByRole('heading', { name: 'Sign in to your workspace' }).or(
-      page.getByRole('heading', { name: 'Create your workspace' })
-    )
+      page.getByRole('heading', { name: 'Create your workspace' }),
+    ),
   ).toBeVisible({ timeout: 15000 })
 
   // 3. If on login view, switch to register view

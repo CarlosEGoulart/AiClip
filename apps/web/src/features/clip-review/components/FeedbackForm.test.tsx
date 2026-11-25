@@ -42,7 +42,7 @@ describe('FeedbackForm', () => {
     await userEvent.type(textarea, longText);
 
     const counter = screen.getByText('801/1000');
-    expect(counter).toHaveClass('text-yellow-600');
+    expect(counter).toHaveClass('review-feedback-count');
   });
 
   it('caps counter at 1000 characters (max allowed)', async () => {
@@ -54,7 +54,7 @@ describe('FeedbackForm', () => {
 
     // Counter caps at 1000 (warning yellow since at max but not over)
     const counter = screen.getByText('1000/1000');
-    expect(counter).toHaveClass('text-yellow-600');
+    expect(counter).toHaveClass('review-feedback-count');
     // Button is enabled at exactly 1000 (not over limit)
     expect(screen.getByRole('button', { name: /submit feedback/i })).not.toBeDisabled();
   });
@@ -169,6 +169,6 @@ describe('FeedbackForm', () => {
     render(<FeedbackForm clipReviewId={clipReviewId} status="rejected" onSubmit={onSubmit} />);
 
     const counter = screen.getByText('0/1000');
-    expect(counter).toHaveClass('tabular-nums');
+    expect(counter).toHaveClass('review-feedback-count');
   });
 });

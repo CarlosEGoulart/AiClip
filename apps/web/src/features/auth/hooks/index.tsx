@@ -195,6 +195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mountedRef.current) return;
       const classified = classifyError(error);
       setErrorMessage(classified.message ?? 'Logout failed. The server session may still be active.');
+      // On logout failure, keep the user logged in (identity preserved).
+      // Only clear user when the session itself has expired (401/unauthorized).
       if (classified.state === 'session-expired') {
         setUser(null);
         setState('session-expired');

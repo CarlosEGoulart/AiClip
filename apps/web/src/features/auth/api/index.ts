@@ -81,7 +81,13 @@ async function request<T>(
     if (retryCount >= 1) {
       throw { type: 'csrf', message: 'CSRF token validation failed' } satisfies AuthError;
     }
-    await initCsrf();
+    try {
+      await initCsrf();
+    } catch {
+      // If CSRF cookie refresh fails (e.g. test environment with mocked fetch),
+      // treat as CSRF error so the caller can show session-expired messaging.
+      throw { type: 'csrf', message: 'CSRF token validation failed' } satisfies AuthError;
+    }
     return request<T>(url, options, retryCount + 1);
   }
 

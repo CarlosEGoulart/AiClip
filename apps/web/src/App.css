@@ -1,58 +1,63 @@
 .authenticated-shell {
-  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  padding: var(--space-xl);
+  max-width: var(--container-max);
   margin: 0 auto;
-  padding: 2rem;
+  width: 100%;
 }
 
 .app-header {
-  margin-bottom: 2rem;
+  margin-bottom: var(--space-xl);
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--step-head);
   font-weight: 600;
+  color: var(--color-ink);
 }
 
 .app-main {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--space-lg);
 }
 
 .user-info {
-  padding: 1.5rem;
-  background: #f9fafb;
-  border-radius: 0.5rem;
+  padding: var(--space-lg);
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
 }
 
 .welcome-message {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
+  margin: 0 0 var(--space-xs);
+  font-size: var(--step-body);
 }
 
 .user-email {
   margin: 0;
-  color: #666;
-  font-size: 0.875rem;
+  color: var(--color-muted);
+  font-size: var(--step-small);
 }
 
 .logout-button {
   align-self: flex-start;
-  padding: 0.5rem 1rem;
-  background: white;
-  color: #111;
-  border: 1px solid #ccc;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--color-ground);
+  color: var(--color-ink);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font-size: var(--step-body);
   cursor: pointer;
 }
 
 .logout-button:hover {
-  background: #f5f5f5;
+  background: var(--color-surface-strong);
 }
 
 .logout-button:focus-visible {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
